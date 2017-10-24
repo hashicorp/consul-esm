@@ -24,12 +24,10 @@ const (
 )
 
 type Agent struct {
-	config      *Config
-	client      *api.Client
-	logger      *log.Logger
-	id          string
-	sessionID   string
-	sessionLock sync.RWMutex
+	config *Config
+	client *api.Client
+	logger *log.Logger
+	id     string
 }
 
 func NewAgent(config *Config) (*Agent, error) {
@@ -53,6 +51,20 @@ func NewAgent(config *Config) (*Agent, error) {
 		logger: log.New(os.Stdout, "", log.LstdFlags),
 	}
 
+	for {
+		leader, err := client.Status().Leader()
+		if err != nil {
+			agent.logger.Printf("[ERR] error getting leader status: %q, retrying in %s...", err.Error(), retryTime.String())
+		} else if leader == "" {
+			agent.logger.Printf("[INFO] waiting for cluster to elect a leader before starting, will retry in %s...", retryTime.String())
+		} else {
+			break
+		}
+
+		time.Sleep(retryTime)
+		continue
+	}
+
 	return &agent, nil
 }
 
@@ -63,6 +75,7 @@ func (a *Agent) Run(shutdownCh <-chan struct{}) error {
 		return err
 	}
 
+	// todo: compress this once things are more finalized
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -77,6 +90,11 @@ func (a *Agent) Run(shutdownCh <-chan struct{}) error {
 	wg.Add(1)
 	go func() {
 		a.runHealthChecks(shutdownCh)
+		wg.Done()
+	}()
+	wg.Add(1)
+	go func() {
+		a.getExternalNodes(shutdownCh)
 		wg.Done()
 	}()
 
@@ -267,10 +285,14 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, shutdownCh <-c
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
 			a.logger.Printf("[WARN] Error querying for health check info: %v", err)
+			time.Sleep(retryTime)
 			continue
 		}
 
 		opts.WaitIndex = meta.LastIndex
 		updateCh <- checks
+
+		// Sleep here to limit how much load we put on the Consul servers.
+		time.Sleep(retryTime)
 	}
 }

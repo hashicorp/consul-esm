@@ -79,12 +79,15 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 		if check.HTTP != "" {
 			http := &agent.CheckHTTP{
-				Notify:   c,
-				CheckID:  checkHash,
-				HTTP:     check.HTTP,
-				Interval: interval,
-				Timeout:  timeout,
-				Logger:   c.logger,
+				Notify:        c,
+				CheckID:       checkHash,
+				HTTP:          check.HTTP,
+				Header:        check.Header,
+				Method:        check.Method,
+				TLSSkipVerify: check.TLSSkipVerify,
+				Interval:      interval,
+				Timeout:       timeout,
+				Logger:        c.logger,
 			}
 
 			http.Start()

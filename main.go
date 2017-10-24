@@ -28,6 +28,8 @@ func handleSignals(signalCh chan os.Signal, shutdownCh chan struct{}) {
 		switch sig {
 		case os.Interrupt:
 			close(shutdownCh)
+		default:
+			close(shutdownCh)
 		}
 	}
 }
