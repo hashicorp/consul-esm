@@ -1,15 +1,14 @@
 package main
 
 import (
-	"time"
-
-	"net"
-
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/serf/coordinate"
+	"github.com/mitchellh/mapstructure"
 	"github.com/tatsushid/go-fastping"
 )
 
@@ -51,17 +50,21 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 
 	for {
 		select {
-		case <-shutdownCh:
-			return
 		case nodes = <-nodeCh:
 		default:
 		}
 
 		for _, node := range nodes {
+			select {
+			case <-shutdownCh:
+				return
+			case <-time.After(a.config.CoordinateUpdateInterval):
+			default:
+			}
+
 			coords, _, err := a.client.Coordinate().Nodes(nil)
 			if err != nil {
 				a.logger.Printf("[ERR] error getting coordinate for node %q, skipping update", node.Node)
-				time.Sleep(retryTime)
 				continue
 			}
 
@@ -86,27 +89,25 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 			self, err := a.client.Agent().Self()
 			if err != nil {
 				a.logger.Printf("[ERR] could not retrieve local agent's coordinate info: %v", err)
-				time.Sleep(retryTime)
 				continue
 			}
-			coordInfo := self["Coord"]
-			vecRaw := coordInfo["Vec"].([]interface{})
-			vec := make([]float64, len(vecRaw))
-			for i, v := range vecRaw {
-				vec[i] = v.(float64)
+
+			coordInfo, ok := self["Coord"]
+			if !ok {
+				a.logger.Printf("[ERR] could not decode local agent's coordinate info: %v", err)
+				continue
 			}
-			localCoord := &coordinate.Coordinate{
-				Vec:        vec,
-				Error:      coordInfo["Error"].(float64),
-				Adjustment: coordInfo["Adjustment"].(float64),
-				Height:     coordInfo["Height"].(float64),
+
+			var localCoord coordinate.Coordinate
+			if err := mapstructure.Decode(coordInfo, &localCoord); err != nil {
+				a.logger.Printf("[ERR] could not decode local agent's coordinate info: %v", err)
+				continue
 			}
 
 			// Run an ICMP ping to the node.
 			rtt, err := pingNode(node.Address)
 			if err != nil {
 				a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
-				time.Sleep(retryTime)
 				continue
 			}
 
@@ -114,13 +115,11 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 			client, _ := coordinate.NewClient(coordConf)
 			if err := client.SetCoordinate(coord.Coord); err != nil {
 				a.logger.Printf("[ERR] invalid coordinate for node %q: %v", node.Node, err)
-				time.Sleep(retryTime)
 				continue
 			}
-			newCoord, err := client.Update("local", localCoord, rtt)
+			newCoord, err := client.Update("local", &localCoord, rtt)
 			if err != nil {
 				a.logger.Printf("[ERR] error updating coordinate for node %q: %v", node.Node, err)
-				time.Sleep(retryTime)
 				continue
 			}
 
@@ -133,11 +132,8 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 
 			if err != nil {
 				a.logger.Printf("[ERR] error applying coordinate update for node %q: %v", node.Node, err)
-				time.Sleep(retryTime)
 				continue
 			}
-
-			time.Sleep(a.config.CoordinateUpdateInterval)
 		}
 	}
 }

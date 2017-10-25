@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"os/signal"
 )
@@ -16,19 +17,18 @@ func main() {
 
 	signalCh := make(chan os.Signal, 10)
 	signal.Notify(signalCh)
-	go handleSignals(signalCh, shutdownCh)
+	go handleSignals(a.logger, signalCh, shutdownCh)
 
 	if err := a.Run(shutdownCh); err != nil {
 		panic(err)
 	}
 }
 
-func handleSignals(signalCh chan os.Signal, shutdownCh chan struct{}) {
+func handleSignals(logger *log.Logger, signalCh chan os.Signal, shutdownCh chan struct{}) {
 	for sig := range signalCh {
 		switch sig {
 		case os.Interrupt:
-			close(shutdownCh)
-		default:
+			logger.Printf("[INFO] got signal, shutting down...")
 			close(shutdownCh)
 		}
 	}
