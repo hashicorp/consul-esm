@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/consul/agent"
+	consulchecks "github.com/hashicorp/consul/agent/checks"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/types"
@@ -20,8 +20,8 @@ type CheckRunner struct {
 	client *api.Client
 
 	checks     map[types.CheckID]*api.HealthCheck
-	checksHTTP map[types.CheckID]*agent.CheckHTTP
-	checksTCP  map[types.CheckID]*agent.CheckTCP
+	checksHTTP map[types.CheckID]*consulchecks.CheckHTTP
+	checksTCP  map[types.CheckID]*consulchecks.CheckTCP
 
 	// Used to track checks that are being deferred
 	deferCheck map[types.CheckID]*time.Timer
@@ -34,8 +34,8 @@ func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.
 		logger:              logger,
 		client:              client,
 		checks:              make(map[types.CheckID]*api.HealthCheck),
-		checksHTTP:          make(map[types.CheckID]*agent.CheckHTTP),
-		checksTCP:           make(map[types.CheckID]*agent.CheckTCP),
+		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
+		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
 	}
@@ -71,14 +71,14 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 		interval, _ := time.ParseDuration(check.Interval)
 		timeout, _ := time.ParseDuration(check.Timeout)
-		if interval < agent.MinInterval {
+		if interval < consulchecks.MinInterval {
 			c.logger.Printf("[WARN] check '%s' has interval below minimum of %v",
-				check.CheckID, agent.MinInterval)
-			interval = agent.MinInterval
+				check.CheckID, consulchecks.MinInterval)
+			interval = consulchecks.MinInterval
 		}
 
 		if check.HTTP != "" {
-			http := &agent.CheckHTTP{
+			http := &consulchecks.CheckHTTP{
 				Notify:        c,
 				CheckID:       checkHash,
 				HTTP:          check.HTTP,
@@ -93,7 +93,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			http.Start()
 			c.checksHTTP[checkHash] = http
 		} else if check.TCP != "" {
-			tcp := &agent.CheckTCP{
+			tcp := &consulchecks.CheckTCP{
 				Notify:   c,
 				CheckID:  checkHash,
 				TCP:      check.TCP,
