@@ -11,6 +11,7 @@ type Config struct {
 	DeregisterAfter          time.Duration
 	CheckUpdateInterval      time.Duration
 	CoordinateUpdateInterval time.Duration
+	ReconnectTimeout         time.Duration
 }
 
 func DefaultConfig() *Config {
@@ -25,5 +26,6 @@ func DefaultConfig() *Config {
 		DeregisterAfter:          72 * time.Hour,
 		CheckUpdateInterval:      5 * time.Minute,
 		CoordinateUpdateInterval: 1 * time.Second,
+		ReconnectTimeout:         30 * time.Second,
 	}
 }

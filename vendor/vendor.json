@@ -2,26 +2,126 @@
 	"comment": "",
 	"ignore": "test",
 	"package": [
-		{"path":"github.com/Microsoft/go-winio","checksumSHA1":"o/3cn04KAiwC7NqNVvmfVTD+hgA=","revision":"78439966b38d69bf38227fbf57ac8a6fee70f69a","revisionTime":"2017-08-04T20:09:54Z"},
-		{"path":"github.com/armon/circbuf","checksumSHA1":"l0iFqayYAaEip6Olaq3/LCOa/Sg=","revision":"bbbad097214e2918d8543d5201d12bfd7bca254d","revisionTime":"2015-08-27T00:49:46Z"},
-		{"path":"github.com/docker/go-connections/sockets","checksumSHA1":"jUfDG3VQsA2UZHvvIXncgiddpYA=","revision":"3ede32e2033de7505e6500d6c868c2b9ed9f169d","revisionTime":"2017-06-23T20:36:43Z"},
-		{"path":"github.com/hashicorp/consul/agent/checks","checksumSHA1":"hDGS+5jEAzt9aTssXrqfUyTpWkc=","revision":"20f2037b270145265b92a5873ce5f65e398e565d","revisionTime":"2017-10-24T00:44:50Z"},
-		{"path":"github.com/hashicorp/consul/api","checksumSHA1":"C7zhREbKMArsQ29XU5Jt8hzx1LI=","revision":"20f2037b270145265b92a5873ce5f65e398e565d","revisionTime":"2017-10-24T00:44:50Z"},
-		{"path":"github.com/hashicorp/go-cleanhttp","checksumSHA1":"b8F628srIitj5p7Y130xc9k0QWs=","revision":"3573b8b52aa7b37b9358d966a898feb387f62437","revisionTime":"2017-02-11T01:34:15Z"},
-		{"path":"github.com/hashicorp/go-rootcerts","checksumSHA1":"A1PcINvF3UiwHRKn8UcgARgvGRs=","revision":"6bb64b370b90e7ef1fa532be9e591a81c3493e00","revisionTime":"2016-05-03T14:34:40Z"},
-		{"path":"github.com/hashicorp/go-uuid","checksumSHA1":"mAkPa/RLuIwN53GbwIEMATexams=","revision":"64130c7a86d732268a38cb04cfbaf0cc987fda98","revisionTime":"2016-07-17T02:21:40Z"},
-		{"path":"github.com/hashicorp/serf/coordinate","checksumSHA1":"mS15CkImPzXYsgNwl3Mt9Gh3Vb0=","revision":"c20a0b1b1ea9eb8168bcdec0116688fa9254e449","revisionTime":"2017-10-22T02:00:50Z"},
-		{"path":"github.com/mitchellh/go-homedir","checksumSHA1":"V/quM7+em2ByJbWBLOsEwnY3j/Q=","revision":"b8bc1bf767474819792c23f32d8286a45736f1c6","revisionTime":"2016-12-03T19:45:07Z"},
-		{"path":"github.com/mitchellh/mapstructure","checksumSHA1":"gILp4IL+xwXLH6tJtRLrnZ56F24=","revision":"06020f85339e21b2478f756a78e295255ffa4d6a","revisionTime":"2017-10-17T17:18:08Z"},
-		{"path":"github.com/tatsushid/go-fastping","checksumSHA1":"DpsruMRlfaXitPiELMUatEOMh1k=","revision":"d7bb493dee3e090e2ffb6914adddf17c1e7c026c","revisionTime":"2016-01-08T17:53:29Z"},
-		{"path":"golang.org/x/net/bpf","checksumSHA1":"uX2McdP4VcQ6zkAF0Q4oyd0rFtU=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/net/icmp","checksumSHA1":"DqdFGWbLLyVFeDvzvXyf1Y678uA=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/net/internal/iana","checksumSHA1":"5JWn/wMC+EWNDKI/AYE4JifQF54=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/net/internal/socket","checksumSHA1":"8vmmNy/fw4JJ8OjkC4wvzCrtjOk=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/net/ipv4","checksumSHA1":"zPTKyZ1C55w1fk1W+/qGE15jaek=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/net/ipv6","checksumSHA1":"3L3n7qKMO9X8E1ibA5mExKvwbmI=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/net/proxy","checksumSHA1":"r9l4r3H6FOLQ0c2JaoXpopFjpnw=","revision":"4b14673ba32bee7f5ac0f990a48f033919fd418b","revisionTime":"2017-09-15T10:16:46Z"},
-		{"path":"golang.org/x/sys/windows","checksumSHA1":"wGkVl9xZjgnLs/olurjDX2Yg8Xw=","revision":"e82597366816b6fa799040628e95490bbf6e6b2b","revisionTime":"2017-10-24T07:53:40Z"}
+		{
+			"checksumSHA1": "o/3cn04KAiwC7NqNVvmfVTD+hgA=",
+			"path": "github.com/Microsoft/go-winio",
+			"revision": "78439966b38d69bf38227fbf57ac8a6fee70f69a",
+			"revisionTime": "2017-08-04T20:09:54Z"
+		},
+		{
+			"checksumSHA1": "l0iFqayYAaEip6Olaq3/LCOa/Sg=",
+			"path": "github.com/armon/circbuf",
+			"revision": "bbbad097214e2918d8543d5201d12bfd7bca254d",
+			"revisionTime": "2015-08-27T00:49:46Z"
+		},
+		{
+			"checksumSHA1": "jUfDG3VQsA2UZHvvIXncgiddpYA=",
+			"path": "github.com/docker/go-connections/sockets",
+			"revision": "3ede32e2033de7505e6500d6c868c2b9ed9f169d",
+			"revisionTime": "2017-06-23T20:36:43Z"
+		},
+		{
+			"checksumSHA1": "hDGS+5jEAzt9aTssXrqfUyTpWkc=",
+			"path": "github.com/hashicorp/consul/agent/checks",
+			"revision": "20f2037b270145265b92a5873ce5f65e398e565d",
+			"revisionTime": "2017-10-24T00:44:50Z"
+		},
+		{
+			"checksumSHA1": "BrHFsFSgWG6FsXUAQGRZVzj9XZc=",
+			"path": "github.com/hashicorp/consul/api",
+			"revision": "ce4e8c46fa17b9ae073651da25a0bec67141cd74",
+			"revisionTime": "2017-10-26T02:17:41Z"
+		},
+		{
+			"checksumSHA1": "b8F628srIitj5p7Y130xc9k0QWs=",
+			"path": "github.com/hashicorp/go-cleanhttp",
+			"revision": "3573b8b52aa7b37b9358d966a898feb387f62437",
+			"revisionTime": "2017-02-11T01:34:15Z"
+		},
+		{
+			"checksumSHA1": "A1PcINvF3UiwHRKn8UcgARgvGRs=",
+			"path": "github.com/hashicorp/go-rootcerts",
+			"revision": "6bb64b370b90e7ef1fa532be9e591a81c3493e00",
+			"revisionTime": "2016-05-03T14:34:40Z"
+		},
+		{
+			"checksumSHA1": "mAkPa/RLuIwN53GbwIEMATexams=",
+			"path": "github.com/hashicorp/go-uuid",
+			"revision": "64130c7a86d732268a38cb04cfbaf0cc987fda98",
+			"revisionTime": "2016-07-17T02:21:40Z"
+		},
+		{
+			"checksumSHA1": "mS15CkImPzXYsgNwl3Mt9Gh3Vb0=",
+			"path": "github.com/hashicorp/serf/coordinate",
+			"revision": "c20a0b1b1ea9eb8168bcdec0116688fa9254e449",
+			"revisionTime": "2017-10-22T02:00:50Z"
+		},
+		{
+			"checksumSHA1": "V/quM7+em2ByJbWBLOsEwnY3j/Q=",
+			"path": "github.com/mitchellh/go-homedir",
+			"revision": "b8bc1bf767474819792c23f32d8286a45736f1c6",
+			"revisionTime": "2016-12-03T19:45:07Z"
+		},
+		{
+			"checksumSHA1": "gILp4IL+xwXLH6tJtRLrnZ56F24=",
+			"path": "github.com/mitchellh/mapstructure",
+			"revision": "06020f85339e21b2478f756a78e295255ffa4d6a",
+			"revisionTime": "2017-10-17T17:18:08Z"
+		},
+		{
+			"checksumSHA1": "DpsruMRlfaXitPiELMUatEOMh1k=",
+			"path": "github.com/tatsushid/go-fastping",
+			"revision": "d7bb493dee3e090e2ffb6914adddf17c1e7c026c",
+			"revisionTime": "2016-01-08T17:53:29Z"
+		},
+		{
+			"checksumSHA1": "uX2McdP4VcQ6zkAF0Q4oyd0rFtU=",
+			"path": "golang.org/x/net/bpf",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "DqdFGWbLLyVFeDvzvXyf1Y678uA=",
+			"path": "golang.org/x/net/icmp",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "5JWn/wMC+EWNDKI/AYE4JifQF54=",
+			"path": "golang.org/x/net/internal/iana",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "8vmmNy/fw4JJ8OjkC4wvzCrtjOk=",
+			"path": "golang.org/x/net/internal/socket",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "zPTKyZ1C55w1fk1W+/qGE15jaek=",
+			"path": "golang.org/x/net/ipv4",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "3L3n7qKMO9X8E1ibA5mExKvwbmI=",
+			"path": "golang.org/x/net/ipv6",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "r9l4r3H6FOLQ0c2JaoXpopFjpnw=",
+			"path": "golang.org/x/net/proxy",
+			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
+			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "wGkVl9xZjgnLs/olurjDX2Yg8Xw=",
+			"path": "golang.org/x/sys/windows",
+			"revision": "e82597366816b6fa799040628e95490bbf6e6b2b",
+			"revisionTime": "2017-10-24T07:53:40Z"
+		}
 	],
 	"rootPath": "github.com/hashicorp/consul-esm"
 }

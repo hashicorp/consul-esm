@@ -13,15 +13,18 @@ import (
 	"github.com/hashicorp/consul/types"
 )
 
+const externalCheckName = "externalNodeHealth"
+
 type CheckRunner struct {
 	sync.RWMutex
 
 	logger *log.Logger
 	client *api.Client
 
-	checks     map[types.CheckID]*api.HealthCheck
-	checksHTTP map[types.CheckID]*consulchecks.CheckHTTP
-	checksTCP  map[types.CheckID]*consulchecks.CheckTCP
+	checks         map[types.CheckID]*api.HealthCheck
+	checksHTTP     map[types.CheckID]*consulchecks.CheckHTTP
+	checksTCP      map[types.CheckID]*consulchecks.CheckTCP
+	checksCritical map[types.CheckID]time.Time
 
 	// Used to track checks that are being deferred
 	deferCheck map[types.CheckID]*time.Timer
@@ -36,6 +39,7 @@ func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.
 		checks:              make(map[types.CheckID]*api.HealthCheck),
 		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
 		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
+		checksCritical:      make(map[types.CheckID]time.Time),
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
 	}
@@ -63,18 +67,15 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 	found := make(map[types.CheckID]struct{})
 
 	for _, check := range checks {
-		checkHash := types.CheckID(checkHash(check))
-		found[checkHash] = struct{}{}
-		if _, ok := c.checks[checkHash]; ok {
+		// Skip the ping-based node check since we're managing that separately
+		if check.CheckID == externalCheckName {
 			continue
 		}
 
-		interval, _ := time.ParseDuration(check.Interval)
-		timeout, _ := time.ParseDuration(check.Timeout)
-		if interval < consulchecks.MinInterval {
-			c.logger.Printf("[WARN] check '%s' has interval below minimum of %v",
-				check.CheckID, consulchecks.MinInterval)
-			interval = consulchecks.MinInterval
+		checkHash := checkHash(check)
+		found[checkHash] = struct{}{}
+		if _, ok := c.checks[checkHash]; ok {
+			continue
 		}
 
 		if check.HTTP != "" {
@@ -85,8 +86,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Header:        check.Header,
 				Method:        check.Method,
 				TLSSkipVerify: check.TLSSkipVerify,
-				Interval:      interval,
-				Timeout:       timeout,
+				Interval:      check.Interval.Duration(),
+				Timeout:       check.Timeout.Duration(),
 				Logger:        c.logger,
 			}
 
@@ -97,8 +98,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Notify:   c,
 				CheckID:  checkHash,
 				TCP:      check.TCP,
-				Interval: interval,
-				Timeout:  timeout,
+				Interval: check.Interval.Duration(),
+				Timeout:  check.Timeout.Duration(),
 				Logger:   c.logger,
 			}
 
@@ -114,9 +115,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 	// Look for removed checks
 	for _, check := range c.checks {
-		checkHash := types.CheckID(checkHash(check))
+		checkHash := checkHash(check)
 		if _, ok := found[checkHash]; !ok {
 			delete(c.checks, checkHash)
+			delete(c.checksCritical, checkHash)
 			if check.HTTP != "" {
 				httpCheck := c.checksHTTP[checkHash]
 				httpCheck.Stop()
@@ -124,7 +126,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			} else {
 				tcpCheck := c.checksTCP[checkHash]
 				tcpCheck.Stop()
-				delete(c.checksHTTP, checkHash)
+				delete(c.checksTCP, checkHash)
 			}
 		}
 	}
@@ -139,6 +141,15 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 	check, ok := c.checks[checkID]
 	if !ok {
 		return
+	}
+
+	// Update the critical time tracking
+	if status == api.HealthCritical {
+		if _, ok := c.checksCritical[checkID]; !ok {
+			c.checksCritical[checkID] = time.Now()
+		}
+	} else {
+		delete(c.checksCritical, checkID)
 	}
 
 	// Do nothing if update is idempotent
@@ -174,7 +185,6 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	reg := &api.CatalogRegistration{
 		Node: check.Node,
 		Check: &api.AgentCheck{
-			Node:        check.Node,
 			CheckID:     strings.TrimPrefix(string(check.CheckID), check.Node+"/"),
 			Name:        check.Name,
 			Status:      status,
@@ -198,6 +208,54 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	// Only update the local check state if we successfully updated the catalog
 	check.Status = status
 	check.Output = output
+}
+
+// reapServices is a long running goroutine that looks for checks that have been
+// critical too long and deregisters their associated services.
+func (c *CheckRunner) reapServices(shutdownCh <-chan struct{}) {
+	for {
+		select {
+		case <-time.After(30 * time.Second):
+			c.reapServicesInternal()
+
+		case <-shutdownCh:
+			return
+		}
+	}
+}
+
+// reapServicesInternal does a single pass, looking for services to reap.
+func (c *CheckRunner) reapServicesInternal() {
+	c.Lock()
+	defer c.Unlock()
+
+	reaped := make(map[string]bool)
+	for checkID, criticalTime := range c.checksCritical {
+		check := c.checks[checkID]
+		serviceID := check.ServiceID
+
+		// There's nothing to do if there's no service.
+		if serviceID == "" {
+			continue
+		}
+
+		// There might be multiple checks for one service, so
+		// we don't need to reap multiple times.
+		if reaped[serviceID] {
+			continue
+		}
+
+		timeout := check.DeregisterCriticalServiceAfter.Duration()
+		if timeout > 0 && timeout > time.Since(criticalTime) {
+			c.client.Catalog().Deregister(&api.CatalogDeregistration{
+				Node:      check.Node,
+				ServiceID: serviceID,
+			}, nil)
+			c.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long; deregistered service",
+				checkID, serviceID)
+			reaped[serviceID] = true
+		}
+	}
 }
 
 func checkHash(check *api.HealthCheck) types.CheckID {

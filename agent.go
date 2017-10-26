@@ -62,7 +62,6 @@ func NewAgent(config *Config) (*Agent, error) {
 		}
 
 		time.Sleep(retryTime)
-		continue
 	}
 
 	return &agent, nil
@@ -251,6 +250,7 @@ LEADER_WAIT:
 	updateCh := make(chan api.HealthChecks, 0)
 	checkRunner := NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
 	go a.watchHealthChecks(updateCh, leaderCh)
+	go checkRunner.reapServices(leaderCh)
 
 	for {
 		// Wait for the next event.
