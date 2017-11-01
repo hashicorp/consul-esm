@@ -16,6 +16,10 @@ import (
 )
 
 type Config struct {
+	LogLevel       string
+	EnableSyslog   bool
+	SyslogFacility string
+
 	Service   string
 	LeaderKey string
 
@@ -69,6 +73,7 @@ func (c *Config) ClientConfig() *api.Config {
 
 func DefaultConfig() *Config {
 	return &Config{
+		LogLevel:  "INFO",
 		Service:   "consul-esm",
 		LeaderKey: "consul-esm/lock",
 		NodeMeta: map[string]string{
@@ -78,11 +83,15 @@ func DefaultConfig() *Config {
 		DeregisterAfter:          72 * time.Hour,
 		CheckUpdateInterval:      5 * time.Minute,
 		CoordinateUpdateInterval: 1 * time.Second,
-		NodeReconnectTimeout:     30 * time.Second,
+		NodeReconnectTimeout:     72 * time.Hour,
 	}
 }
 
 type HumanConfig struct {
+	LogLevel       flags.StringValue `mapstructure:"log_level"`
+	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
+	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
+
 	Service   flags.StringValue `mapstructure:"consul_service"`
 	LeaderKey flags.StringValue `mapstructure:"consul_leader_key"`
 
@@ -182,6 +191,7 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 }
 
 func MergeConfig(dst *Config, src *HumanConfig) {
+	src.LogLevel.Merge(&dst.LogLevel)
 	src.Service.Merge(&dst.Service)
 	src.LeaderKey.Merge(&dst.LeaderKey)
 	src.NodeReconnectTimeout.Merge(&dst.NodeReconnectTimeout)

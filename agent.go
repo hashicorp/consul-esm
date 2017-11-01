@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"sync"
 	"time"
+
+	"context"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-uuid"
@@ -30,7 +31,7 @@ type Agent struct {
 	id     string
 }
 
-func NewAgent(config *Config) (*Agent, error) {
+func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 	clientConf := config.ClientConfig()
 	client, err := api.NewClient(clientConf)
 	if err != nil {
@@ -48,15 +49,15 @@ func NewAgent(config *Config) (*Agent, error) {
 		config: config,
 		client: client,
 		id:     id,
-		logger: log.New(os.Stdout, "", log.LstdFlags),
+		logger: logger,
 	}
 
 	for {
 		leader, err := client.Status().Leader()
 		if err != nil {
-			agent.logger.Printf("[ERR] error getting leader status: %q, retrying in %s...", err.Error(), retryTime.String())
+			logger.Printf("[ERR] error getting leader status: %q, retrying in %s...", err.Error(), retryTime.String())
 		} else if leader == "" {
-			agent.logger.Printf("[INFO] waiting for cluster to elect a leader before starting, will retry in %s...", retryTime.String())
+			logger.Printf("[INFO] waiting for cluster to elect a leader before starting, will retry in %s...", retryTime.String())
 		} else {
 			break
 		}
@@ -274,25 +275,32 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, shutdownCh <-c
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
 	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	opts = opts.WithContext(ctx)
+	go func() {
+		<-shutdownCh
+		cancelFunc()
+	}()
 
+	firstRun := make(chan struct{}, 1)
+	firstRun <- struct{}{}
 	for {
 		select {
 		case <-shutdownCh:
 			return
-		default:
+		case <-firstRun:
+			// Skip the wait on the first run.
+		case <-time.After(retryTime):
+			// Sleep here to limit how much load we put on the Consul servers.
 		}
 
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
 			a.logger.Printf("[WARN] Error querying for health check info: %v", err)
-			time.Sleep(retryTime)
 			continue
 		}
 
 		opts.WaitIndex = meta.LastIndex
 		updateCh <- checks
-
-		// Sleep here to limit how much load we put on the Consul servers.
-		time.Sleep(retryTime)
 	}
 }

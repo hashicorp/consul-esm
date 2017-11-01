@@ -1,13 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"time"
-
-	"math/rand"
-
-	"context"
 
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
@@ -24,7 +22,7 @@ func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 		NodeMeta: a.config.NodeMeta,
 	}
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts.WithContext(ctx)
+	opts = opts.WithContext(ctx)
 
 	nodeCh := make(chan []*api.Node, 1)
 	go a.updateCoords(nodeCh, shutdownCh)
@@ -33,24 +31,37 @@ func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 		cancelFunc()
 	}()
 
+	firstRun := make(chan struct{}, 1)
+	firstRun <- struct{}{}
 	for {
 		select {
 		case <-shutdownCh:
 			return
+		case <-firstRun:
+			// Skip the wait on the first run.
 		case <-time.After(retryTime):
 		}
 
 		nodes, meta, err := a.client.Catalog().Nodes(opts)
 		if err != nil {
 			a.logger.Printf("[ERR] error getting external nodes: %v", err)
-			time.Sleep(retryTime)
 			continue
+		}
+
+		var filtered []*api.Node
+		for _, node := range nodes {
+			if node.Meta == nil {
+				continue
+			}
+			if _, ok := node.Meta["external-probe"]; ok {
+				filtered = append(filtered, node)
+			}
 		}
 
 		// Don't block on sending the update
 		if opts.WaitIndex != meta.LastIndex {
 			select {
-			case nodeCh <- nodes:
+			case nodeCh <- filtered:
 				opts.WaitIndex = meta.LastIndex
 			default:
 			}
@@ -66,7 +77,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 	nodes := <-nodeCh
 
 	// Shuffle the node ordering
-	for i := range nodes {
+	for i := len(nodes) - 1; i >= 0; i-- {
 		j := rand.Intn(i + 1)
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	}
@@ -82,7 +93,6 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 			case <-shutdownCh:
 				return
 			case <-time.After(a.config.CoordinateUpdateInterval):
-			default:
 			}
 
 			// Get the critical status of the node.
@@ -153,9 +163,16 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 		if time.Since(criticalStart) > a.config.NodeReconnectTimeout {
 			a.logger.Printf("[INFO] reaping node %q that has been failed for more then %s",
 				node.Node, a.config.NodeReconnectTimeout.String())
-			_, err := a.client.Catalog().Deregister(&api.CatalogDeregistration{Node: node.Node}, nil)
+			_, err := a.client.Catalog().Deregister(&api.CatalogDeregistration{
+				Node:       node.Node,
+				Datacenter: node.Datacenter,
+			}, nil)
 			if err != nil {
 				a.logger.Printf("[ERR] could not reap node %q: %v", node.Node, err)
+			}
+
+			if _, err := kvClient.Delete(key, nil); err != nil {
+				a.logger.Printf("[ERR] could not delete critical timer key %q for reaped node: %v", key, err)
 			}
 
 			// Return early to avoid re-registering the check
