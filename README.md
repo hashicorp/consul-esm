@@ -156,3 +156,8 @@ tls_server_name = ""
 ```
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"
+
+### Building
+
+The Consul External Service Monitor builds like a regular Go binary - simply run
+`go build` or `go install` from this directory.
