@@ -5,6 +5,10 @@ import (
 	"net"
 	"time"
 
+	"math/rand"
+
+	"context"
+
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/serf/coordinate"
@@ -12,19 +16,28 @@ import (
 	"github.com/tatsushid/go-fastping"
 )
 
+// getExternalNodes is a long running goroutine that polls for
+// nodes registered in the catalog with the identifying node metadata
+// and updates the coordinate runner when there is a change.
 func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
 	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	opts.WithContext(ctx)
 
 	nodeCh := make(chan []*api.Node, 1)
 	go a.updateCoords(nodeCh, shutdownCh)
+	go func() {
+		<-shutdownCh
+		cancelFunc()
+	}()
 
 	for {
 		select {
 		case <-shutdownCh:
 			return
-		default:
+		case <-time.After(retryTime):
 		}
 
 		nodes, meta, err := a.client.Catalog().Nodes(opts)
@@ -42,14 +55,21 @@ func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 			default:
 			}
 		}
-
-		time.Sleep(retryTime)
 	}
 }
 
+// updateCoords is a long running goroutine that pings an external node
+// once per interval and updates its coordinates and virtual health check
+// in the catalog.
 func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct{}) {
 	// Wait for the first node ordering
 	nodes := <-nodeCh
+
+	// Shuffle the node ordering
+	for i := range nodes {
+		j := rand.Intn(i + 1)
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	}
 
 	for {
 		select {
@@ -90,6 +110,8 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 	}
 }
 
+// updateHealthyNode updates the node's health check and clears any kv
+// critical tracking associated with it.
 func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) {
 	status := api.HealthPassing
 	output := "Node alive or reachable"
@@ -104,6 +126,8 @@ func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, 
 	a.updateNodeCheck(node, status, output)
 }
 
+// updateFailedNode sets the node's health check to critical and checks whether
+// the node has exceeded its timeout an needs to be reaped.
 func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) {
 	status := api.HealthCritical
 	output := "Node not live or unreachable"
@@ -124,9 +148,11 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 		if err != nil {
 			a.logger.Printf("[ERR] could not decode critical time for node %q: %v", node.Node, err)
 		}
-		if time.Since(criticalStart) > a.config.ReconnectTimeout {
+
+		// Check if the node has been critical for too long and needs to be reaped.
+		if time.Since(criticalStart) > a.config.NodeReconnectTimeout {
 			a.logger.Printf("[INFO] reaping node %q that has been failed for more then %s",
-				node.Node, a.config.ReconnectTimeout.String())
+				node.Node, a.config.NodeReconnectTimeout.String())
 			_, err := a.client.Catalog().Deregister(&api.CatalogDeregistration{Node: node.Node}, nil)
 			if err != nil {
 				a.logger.Printf("[ERR] could not reap node %q: %v", node.Node, err)
@@ -161,20 +187,18 @@ func (a *Agent) updateNodeCheck(node *api.Node, status, output string) {
 // given RTT from a ping
 func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	// Get coordinate info for the node.
-	// todo: add the /v1/coordinate/node endpoint and use that instead
-	coords, _, err := a.client.Coordinate().Nodes(nil)
+	coords, _, err := a.client.Coordinate().Node(node.Node, nil)
 	if err != nil {
 		return fmt.Errorf("error getting coordinate for node %q, skipping update", node.Node)
 	}
 
+	// Take the first coordinate in the list if there are pre-existing
+	// coordinates, we don't have to worry about picking the right one
+	// because segments don't apply to external nodes.
 	var coord *api.CoordinateEntry
-	for _, c := range coords {
-		if c.Node == node.Node {
-			coord = c
-			break
-		}
-	}
-	if coord == nil {
+	if len(coords) != 0 {
+		coord = coords[0]
+	} else {
 		coord = &api.CoordinateEntry{
 			Node:    node.Node,
 			Segment: node.Meta[structs.MetaSegmentKey],
@@ -232,7 +256,6 @@ func pingNode(addr string) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
-	fmt.Printf("[INFO] pinging address %q\n", ipAddr.String())
 	p.AddIPAddr(ipAddr)
 	p.MaxRTT = 10 * time.Second
 	p.OnRecv = func(addr *net.IPAddr, responseTime time.Duration) {

@@ -31,7 +31,7 @@ type Agent struct {
 }
 
 func NewAgent(config *Config) (*Agent, error) {
-	clientConf := api.DefaultConfig()
+	clientConf := config.ClientConfig()
 	client, err := api.NewClient(clientConf)
 	if err != nil {
 		return nil, err
@@ -218,7 +218,7 @@ LEADER_WAIT:
 	a.logger.Printf("[INFO] Waiting to obtain leadership...")
 	if lock == nil {
 		var err error
-		lock, err = a.client.LockKey(a.config.LockKey)
+		lock, err = a.client.LockKey(a.config.LeaderKey)
 		if err != nil {
 			a.logger.Printf("[ERR] Error trying to create leader lock (will retry): %v", err)
 			time.Sleep(retryTime)
