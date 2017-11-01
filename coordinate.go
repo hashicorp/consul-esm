@@ -7,6 +7,8 @@ import (
 	"net"
 	"time"
 
+	"strings"
+
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/serf/coordinate"
@@ -205,8 +207,8 @@ func (a *Agent) updateNodeCheck(node *api.Node, status, output string) {
 func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	// Get coordinate info for the node.
 	coords, _, err := a.client.Coordinate().Node(node.Node, nil)
-	if err != nil {
-		return fmt.Errorf("error getting coordinate for node %q, skipping update", node.Node)
+	if err != nil && !strings.Contains(err.Error(), "Unexpected response code: 404") {
+		return fmt.Errorf("error getting coordinate for node %q: %v, skipping update", node.Node, err)
 	}
 
 	// Take the first coordinate in the list if there are pre-existing
@@ -286,5 +288,9 @@ func pingNode(addr string) (time.Duration, error) {
 		return 0, err
 	}
 
-	return rtt, pingErr
+	if rtt != 0 {
+		return rtt, nil
+	} else {
+		return 0, pingErr
+	}
 }

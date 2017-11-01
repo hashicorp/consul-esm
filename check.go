@@ -78,28 +78,29 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			continue
 		}
 
-		if check.HTTP != "" {
+		definition := check.Definition
+		if definition.HTTP != "" {
 			http := &consulchecks.CheckHTTP{
 				Notify:        c,
 				CheckID:       checkHash,
-				HTTP:          check.HTTP,
-				Header:        check.Header,
-				Method:        check.Method,
-				TLSSkipVerify: check.TLSSkipVerify,
-				Interval:      check.Interval.Duration(),
-				Timeout:       check.Timeout.Duration(),
+				HTTP:          definition.HTTP,
+				Header:        definition.Header,
+				Method:        definition.Method,
+				TLSSkipVerify: definition.TLSSkipVerify,
+				Interval:      definition.Interval.Duration(),
+				Timeout:       definition.Timeout.Duration(),
 				Logger:        c.logger,
 			}
 
 			http.Start()
 			c.checksHTTP[checkHash] = http
-		} else if check.TCP != "" {
+		} else if definition.TCP != "" {
 			tcp := &consulchecks.CheckTCP{
 				Notify:   c,
 				CheckID:  checkHash,
-				TCP:      check.TCP,
-				Interval: check.Interval.Duration(),
-				Timeout:  check.Timeout.Duration(),
+				TCP:      definition.TCP,
+				Interval: definition.Interval.Duration(),
+				Timeout:  definition.Timeout.Duration(),
 				Logger:   c.logger,
 			}
 
@@ -119,7 +120,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		if _, ok := found[checkHash]; !ok {
 			delete(c.checks, checkHash)
 			delete(c.checksCritical, checkHash)
-			if check.HTTP != "" {
+			if check.Definition.HTTP != "" {
 				httpCheck := c.checksHTTP[checkHash]
 				httpCheck.Stop()
 				delete(c.checksHTTP, checkHash)
@@ -192,16 +193,16 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 			Output:      output,
 			ServiceID:   check.ServiceID,
 			ServiceName: check.ServiceName,
-			HTTP:        check.HTTP,
-			TCP:         check.TCP,
-			Timeout:     check.Timeout,
-			Interval:    check.Interval,
+			HTTP:        check.Definition.HTTP,
+			TCP:         check.Definition.TCP,
+			Timeout:     check.Definition.Timeout,
+			Interval:    check.Definition.Interval,
 		},
 		SkipNodeUpdate: true,
 	}
 	_, err := c.client.Catalog().Register(reg, nil)
 	if err != nil {
-		c.logger.Printf("[ERR] Error updating check status in Consul: %v", err)
+		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)
 		return
 	}
 
@@ -245,7 +246,7 @@ func (c *CheckRunner) reapServicesInternal() {
 			continue
 		}
 
-		timeout := check.DeregisterCriticalServiceAfter.Duration()
+		timeout := check.Definition.DeregisterCriticalServiceAfter.Duration()
 		if timeout > 0 && timeout > time.Since(criticalTime) {
 			c.client.Catalog().Deregister(&api.CatalogDeregistration{
 				Node:      check.Node,
