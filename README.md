@@ -66,7 +66,7 @@ node.json:
 ```
 
 The `external-probe` field determines whether the ESM will do regular pings to the node and
-maintain an "externalNodeHealth" check for the node (similar to the `serfHealth` check used
+maintain an `externalNodeHealth` check for the node (similar to the `serfHealth` check used
 by Consul agents).
 
 The ESM will perform a leader election by holding a lock in Consul, and the leader will then
