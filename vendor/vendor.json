@@ -27,10 +27,10 @@
 			"revisionTime": "2017-10-24T00:44:50Z"
 		},
 		{
-			"checksumSHA1": "BrHFsFSgWG6FsXUAQGRZVzj9XZc=",
+			"checksumSHA1": "HymffVohbIQotRjzt+ufEY1aqX0=",
 			"path": "github.com/hashicorp/consul/api",
-			"revision": "ce4e8c46fa17b9ae073651da25a0bec67141cd74",
-			"revisionTime": "2017-10-26T02:17:41Z"
+			"revision": "2392545adcd29d3795a0c245ae8d8fa7b839dd70",
+			"revisionTime": "2017-10-27T02:20:24Z"
 		},
 		{
 			"checksumSHA1": "b8F628srIitj5p7Y130xc9k0QWs=",
@@ -115,6 +115,12 @@
 			"path": "golang.org/x/net/proxy",
 			"revision": "4b14673ba32bee7f5ac0f990a48f033919fd418b",
 			"revisionTime": "2017-09-15T10:16:46Z"
+		},
+		{
+			"checksumSHA1": "fGI0otWWIlwqEhJDgXdhdLlUJzM=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "95c6576299259db960f6c5b9b69ea52422860fce",
+			"revisionTime": "2017-10-30T10:08:44Z"
 		},
 		{
 			"checksumSHA1": "wGkVl9xZjgnLs/olurjDX2Yg8Xw=",

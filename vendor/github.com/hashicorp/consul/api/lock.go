@@ -81,7 +81,7 @@ type LockOptions struct {
 	LockTryOnce      bool          // Optional, defaults to false which means try forever
 }
 
-// LockKey returns a handle to a lock struct which can be used
+// LeaderKey returns a handle to a lock struct which can be used
 // to acquire and release the mutex. The key used must have
 // write permissions.
 func (c *Client) LockKey(key string) (*Lock, error) {

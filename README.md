@@ -48,7 +48,7 @@ Consul ESM running!
             Datacenter: "dc1"
                Service: "consul-esm"
             Leader Key: "consul-esm/lock"
-Node Reconnect Timeout: "15s"
+Node Reconnect Timeout: "72h"
 
 Log data will now stream in as it occurs:
 
