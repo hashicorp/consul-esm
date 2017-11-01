@@ -39,7 +39,7 @@ external nodes it discovers. This allows externally registered services and chec
 the same features as if they were registered locally on Consul agents.
 
 ### Command Line
-To run the daemon, pass the `-config-file` or `config-dir` flag, giving the location of a config file
+To run the daemon, pass the `-config-file` or `-config-dir` flag, giving the location of a config file
 or a directory containing .json or .hcl files.
 
 ```
