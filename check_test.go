@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/testutil"
+	"github.com/hashicorp/consul/testutil/retry"
 )
 
 func TestHTTPCheck(t *testing.T) {
@@ -36,12 +37,14 @@ func TestHTTPCheck(t *testing.T) {
 		Datacenter: "dc1",
 		NodeMeta:   nodeMeta,
 		Check: &api.AgentCheck{
-			Node:     "external",
-			CheckID:  "ext-http",
-			Name:     "http-test",
-			Status:   api.HealthCritical,
-			HTTP:     "http://" + s.HTTPAddr + "/v1/status/leader",
-			Interval: "50ms",
+			Node:    "external",
+			CheckID: "ext-http",
+			Name:    "http-test",
+			Status:  api.HealthCritical,
+			Definition: api.HealthCheckDefinition{
+				HTTP:     "http://" + s.HTTPAddr + "/v1/status/leader",
+				Interval: api.ReadableDuration(50 * time.Millisecond),
+			},
 		},
 	}, nil)
 	if err != nil {
@@ -54,13 +57,14 @@ func TestHTTPCheck(t *testing.T) {
 	}
 
 	runner.UpdateChecks(checks)
-	time.Sleep(time.Second)
 
 	// Make sure the health has been updated to passing
-	checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
-	if len(checks) != 1 || checks[0].Status != api.HealthPassing {
-		t.Fatalf("bad: %v", checks[0])
-	}
+	retry.Run(t, func(r *retry.R) {
+		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
+			r.Fatalf("bad: %v", checks[0])
+		}
+	})
 }
 
 func TestTCPCheck(t *testing.T) {
@@ -86,12 +90,14 @@ func TestTCPCheck(t *testing.T) {
 		Datacenter: "dc1",
 		NodeMeta:   nodeMeta,
 		Check: &api.AgentCheck{
-			Node:     "external",
-			CheckID:  "ext-tcp",
-			Name:     "tcp-test",
-			Status:   api.HealthCritical,
-			TCP:      s.HTTPAddr,
-			Interval: "50ms",
+			Node:    "external",
+			CheckID: "ext-tcp",
+			Name:    "tcp-test",
+			Status:  api.HealthCritical,
+			Definition: api.HealthCheckDefinition{
+				TCP:      s.HTTPAddr,
+				Interval: api.ReadableDuration(50 * time.Millisecond),
+			},
 		},
 	}, nil)
 	if err != nil {
@@ -104,11 +110,12 @@ func TestTCPCheck(t *testing.T) {
 	}
 
 	runner.UpdateChecks(checks)
-	time.Sleep(time.Second)
 
 	// Make sure the health has been updated to passing
-	checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
-	if len(checks) != 1 || checks[0].Status != api.HealthPassing {
-		t.Fatalf("bad: %v", checks[0])
-	}
+	retry.Run(t, func(r *retry.R) {
+		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
+			r.Fatalf("bad: %v", checks[0])
+		}
+	})
 }

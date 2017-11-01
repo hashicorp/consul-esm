@@ -193,10 +193,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 			Output:      output,
 			ServiceID:   check.ServiceID,
 			ServiceName: check.ServiceName,
-			HTTP:        check.Definition.HTTP,
-			TCP:         check.Definition.TCP,
-			Timeout:     check.Definition.Timeout,
-			Interval:    check.Definition.Interval,
+			Definition:  check.Definition,
 		},
 		SkipNodeUpdate: true,
 	}
