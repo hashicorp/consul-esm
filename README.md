@@ -6,7 +6,8 @@ for external nodes and update the status of those health checks in the catalog. 
 manage updating the coordinates of these external nodes, if enabled.
 
 In order for the ESM to detect external nodes and health checks, any external nodes must be registered
-directly with the catalog with `"external-node": "true"` set in the node metadata. For example:
+directly with the catalog with `"external-node": "true"` set in the node metadata. Health checks can
+also be registered with a 'Definition' field which includes the details of running the check. For example:
 
 ```
 $ curl --request PUT --data @node.json localhost:8500/v1/catalog/register
@@ -25,7 +26,42 @@ node.json:
   "NodeMeta": {
     "external-node": "true",
     "external-probe": "true"
-  }
+  },
+  "Service": {
+    "ID": "web1",
+    "Service": "web",
+    "Tags": [
+      "v1"
+    ],
+    "Address": "127.0.0.1",
+    "Port": 8000
+  },
+  "Checks": [{
+    "Node": "foo",
+    "CheckID": "service:web1",
+    "Name": "Web HTTP check",
+    "Notes": "",
+    "Status": "passing",
+    "ServiceID": "web1",
+    "Definition": {
+      "HTTP": "http://localhost:8000/health",
+      "Interval": "10s",
+      "Timeout": "5s"
+    }
+  },{
+    "Node": "foo",
+    "CheckID": "service:web2",
+    "Name": "Web TCP check",
+    "Notes": "",
+    "Status": "passing",
+    "ServiceID": "web1",
+    "Definition": {
+      "TCP": "localhost:8000",
+      "Interval": "5s",
+      "Timeout": "1s",
+      "DeregisterCriticalServiceAfter": "30s"
+     }
+  }]
 }
 ```
 
@@ -54,7 +90,8 @@ Log data will now stream in as it occurs:
 
 2017/10/31 21:59:41 [INFO] Waiting to obtain leadership...
 2017/10/31 21:59:41 [INFO] Obtained leadership
-2017/10/31 21:59:42 [DEBUG] agent: Check 'foobar/service:redis1' is passing
+2017/10/31 21:59:42 [DEBUG] agent: Check 'foo/service:web1' is passing
+2017/10/31 21:59:42 [DEBUG] agent: Check 'foo/service:web2' is passing
 ```
 
 ### Configuration
