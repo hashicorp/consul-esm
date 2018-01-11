@@ -15,6 +15,7 @@ import (
 )
 
 func TestHTTPCheck(t *testing.T) {
+	t.Parallel()
 	s, err := testutil.NewTestServer()
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +29,7 @@ func TestHTTPCheck(t *testing.T) {
 
 	logger := log.New(os.Stdout, "", 0)
 	runner := NewCheckRunner(logger, client, 0)
+	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
 	nodeMeta := map[string]string{"external-node": "true"}
@@ -68,6 +70,7 @@ func TestHTTPCheck(t *testing.T) {
 }
 
 func TestTCPCheck(t *testing.T) {
+	t.Parallel()
 	s, err := testutil.NewTestServer()
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +84,7 @@ func TestTCPCheck(t *testing.T) {
 
 	logger := log.New(os.Stdout, "", 0)
 	runner := NewCheckRunner(logger, client, 0)
+	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
 	nodeMeta := map[string]string{"external-node": "true"}

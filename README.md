@@ -101,7 +101,7 @@ For more information, please see the [HCL specification][HCL]. The following is 
 with the default values filled in:
 
 ```hcl
-// The log level to filter by.
+// The log level to use.
 log_level = "INFO"
 
 // Controls whether to enable logging to syslog.
@@ -117,6 +117,12 @@ consul_service = "consul-esm"
 // stepping up as a leader for the local Consul cluster. Should be the same
 // across all Consul ESM agents in the datacenter.
 consul_leader_key = "consul-esm/lock"
+
+// The node metadata values used for the ESM to qualify a node in the catalog
+// as an "external node".
+external_node_meta {
+    instance_type = "c3.large"
+}
 
 // The length of time to wait before reaping an external node due to failed
 // pings.
@@ -153,6 +159,7 @@ key_file = ""
 // Can also be provided through the CONSUL_TLS_SERVER_NAME environment
 // variable.
 tls_server_name = ""
+
 ```
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"

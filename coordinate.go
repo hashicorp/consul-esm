@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"time"
-
 	"strings"
+	"time"
 
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/serf/coordinate"
 	"github.com/mitchellh/mapstructure"
 	"github.com/tatsushid/go-fastping"
+)
+
+const (
+	NodeAliveStatus    = "Node alive or reachable"
+	NodeCriticalStatus = "Node not live or unreachable"
 )
 
 // getExternalNodes is a long running goroutine that polls for
@@ -110,13 +114,17 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 
 			// Update the node's health based on the results of the ping.
 			if err == nil {
-				a.updateHealthyNode(node, kvClient, key, kvPair)
+				if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
+					a.logger.Printf("[WARN] error updating node: %v", err)
+				}
 				if err := a.updateNodeCoordinate(node, rtt); err != nil {
 					a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
 				}
 			} else {
 				a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
-				a.updateFailedNode(node, kvClient, key, kvPair)
+				if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
+					a.logger.Printf("[WARN] error updating node: %v", err)
+				}
 			}
 		}
 	}
@@ -124,25 +132,23 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 
 // updateHealthyNode updates the node's health check and clears any kv
 // critical tracking associated with it.
-func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) {
+func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	status := api.HealthPassing
-	output := "Node alive or reachable"
 
 	// If a critical node went back to passing, delete the KV entry for it.
 	if kvPair != nil {
 		if _, err := kvClient.Delete(key, nil); err != nil {
-			a.logger.Printf("[ERR] could not delete critical timer key %q: %v", key, err)
+			return fmt.Errorf("could not delete critical timer key %q: %v", key, err)
 		}
 	}
 
-	a.updateNodeCheck(node, status, output)
+	return a.updateNodeCheck(node, status, NodeAliveStatus)
 }
 
 // updateFailedNode sets the node's health check to critical and checks whether
 // the node has exceeded its timeout an needs to be reaped.
-func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) {
+func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	status := api.HealthCritical
-	output := "Node not live or unreachable"
 
 	// If there's no existing key tracking how long the node has been critical, create one.
 	if kvPair == nil {
@@ -152,13 +158,13 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 			Value: bytes,
 		}
 		if _, err := kvClient.Put(kvPair, nil); err != nil {
-			a.logger.Printf("[ERR] could not update critical time for node %q: %v", node.Node, err)
+			return fmt.Errorf("could not update critical time for node %q: %v", node.Node, err)
 		}
 	} else {
 		var criticalStart time.Time
 		err := criticalStart.GobDecode(kvPair.Value)
 		if err != nil {
-			a.logger.Printf("[ERR] could not decode critical time for node %q: %v", node.Node, err)
+			return fmt.Errorf("could not decode critical time for node %q: %v", node.Node, err)
 		}
 
 		// Check if the node has been critical for too long and needs to be reaped.
@@ -170,23 +176,23 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 				Datacenter: node.Datacenter,
 			}, nil)
 			if err != nil {
-				a.logger.Printf("[ERR] could not reap node %q: %v", node.Node, err)
+				return fmt.Errorf("could not reap node %q: %v", node.Node, err)
 			}
 
 			if _, err := kvClient.Delete(key, nil); err != nil {
-				a.logger.Printf("[ERR] could not delete critical timer key %q for reaped node: %v", key, err)
+				return fmt.Errorf("could not delete critical timer key %q for reaped node: %v", key, err)
 			}
 
 			// Return early to avoid re-registering the check
-			return
+			return nil
 		}
 	}
 
-	a.updateNodeCheck(node, status, output)
+	return a.updateNodeCheck(node, status, NodeCriticalStatus)
 }
 
 // updateNodeCheck updates the node's externalNodeHealth check with the given status/output.
-func (a *Agent) updateNodeCheck(node *api.Node, status, output string) {
+func (a *Agent) updateNodeCheck(node *api.Node, status, output string) error {
 	_, err := a.client.Catalog().Register(&api.CatalogRegistration{
 		Node: node.Node,
 		Check: &api.AgentCheck{
@@ -198,8 +204,10 @@ func (a *Agent) updateNodeCheck(node *api.Node, status, output string) {
 		SkipNodeUpdate: true,
 	}, nil)
 	if err != nil {
-		a.logger.Printf("[ERR] error updating external node check for node %q: %v", node.Node, err)
+		return fmt.Errorf("could not update external node check for node %q: %v", node.Node, err)
 	}
+
+	return nil
 }
 
 // updateNodeCoordinate updates the node's coordinate entry based on the

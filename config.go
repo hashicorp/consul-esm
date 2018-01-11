@@ -94,6 +94,7 @@ type HumanConfig struct {
 
 	Service   flags.StringValue `mapstructure:"consul_service"`
 	LeaderKey flags.StringValue `mapstructure:"consul_leader_key"`
+	NodeMeta  []map[string]string `mapstructure:"external_node_meta"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
 
@@ -126,6 +127,10 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 	}
 
 	list = list.Children()
+	nodeMeta := list.Filter("external_node_meta")
+	if len(nodeMeta.Elem().Items) > 1 {
+		return nil, fmt.Errorf("only one node_meta block allowed")
+	}
 
 	// Decode the full thing into a map[string]interface for ease of use
 	var config HumanConfig
@@ -194,6 +199,9 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.Service.Merge(&dst.Service)
 	src.LeaderKey.Merge(&dst.LeaderKey)
+	if len(src.NodeMeta) == 1 {
+		dst.NodeMeta = src.NodeMeta[0]
+	}
 	src.NodeReconnectTimeout.Merge(&dst.NodeReconnectTimeout)
 	src.HTTPAddr.Merge(&dst.HTTPAddr)
 	src.Token.Merge(&dst.Token)
