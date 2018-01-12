@@ -7,20 +7,29 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/consul/logger"
 	"github.com/mitchellh/cli"
 )
 
+const (
+	ExitCodeOK int = 0
+
+	ExitCodeError = 10 + iota
+)
+
 func main() {
 	// Handle parsing the CLI flags.
 	var configFiles flags.AppendSliceValue
+	var isVersion bool
 
 	f := flag.NewFlagSet("", flag.ContinueOnError)
 	f.Var(&configFiles, "config-file", "A config file to use. Can be either .hcl or .json "+
 		"format. Can be specified multiple times.")
 	f.Var(&configFiles, "config-dir", "A directory to look for .hcl or .json config files in. "+
 		"Can be specified multiple times.")
+	f.BoolVar(&isVersion, "version", false, "Print the version of this daemon.")
 
 	f.Usage = func() {
 		fmt.Print(flags.Usage(usage, f))
@@ -28,8 +37,15 @@ func main() {
 
 	err := f.Parse(os.Args[1:])
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		if err != flag.ErrHelp {
+			fmt.Printf("error parsing flags: %v", err)
+		}
+		os.Exit(ExitCodeError)
+	}
+
+	if isVersion {
+		fmt.Printf("%s\n", version.HumanVersion)
+		os.Exit(ExitCodeOK)
 	}
 
 	// Parse and merge the config.
@@ -37,7 +53,7 @@ func main() {
 	err = MergeConfigPaths(config, []string(configFiles))
 	if err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+		os.Exit(ExitCodeError)
 	}
 
 	// Set up logging.
@@ -49,9 +65,10 @@ func main() {
 	ui := &cli.BasicUi{Writer: os.Stdout, ErrorWriter: os.Stderr}
 	_, gatedWriter, _, logOutput, ok := logger.Setup(logConfig, ui)
 	if !ok {
-		os.Exit(1)
+		os.Exit(ExitCodeError)
 	}
 	logger := log.New(logOutput, "", log.LstdFlags)
+	gatedWriter.Flush()
 
 	a, err := NewAgent(config, logger)
 	if err != nil {
@@ -76,12 +93,14 @@ func main() {
 
 	ui.Info("")
 	ui.Output("Log data will now stream in as it occurs:\n")
-	gatedWriter.Flush()
 
 	// Run the agent!
 	if err := a.Run(shutdownCh); err != nil {
-		panic(err)
+		ui.Error(err.Error())
+		os.Exit(ExitCodeError)
 	}
+
+	os.Exit(ExitCodeOK)
 }
 
 func handleSignals(logger *log.Logger, signalCh chan os.Signal, shutdownCh chan struct{}) {

@@ -1,12 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
 	"time"
-
-	"context"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-uuid"
@@ -52,6 +51,7 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 		logger: logger,
 	}
 
+	logger.Printf("[INFO] Connecting to Consul on %s...", clientConf.Address)
 	for {
 		leader, err := client.Status().Leader()
 		if err != nil {

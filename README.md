@@ -166,5 +166,26 @@ tls_server_name = ""
 
 ### Building
 
-The Consul External Service Monitor builds like a regular Go binary - simply run
-`go build` or `go install` from this directory.
+The Makefile contains commands for testing and building the ESM:
+
+To build for local development:
+```
+make dev
+```
+
+To run the test suite:
+```
+make test
+```
+
+To build for a specific platform:
+```
+make darwin/amd64
+make linux/amd64
+...
+```
+
+To build for all supported platforms:
+```
+make build
+```
