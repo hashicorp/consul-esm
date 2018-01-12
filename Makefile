@@ -12,6 +12,7 @@ GOVERSION := 1.9.2
 PROJECT := $(CURRENT_DIR:$(GOPATH)/src/%=%)
 NAME := $(notdir $(PROJECT))
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
+VERSION := $(shell awk -F\" '/Version/ { print $$2; exit }' "${CURRENT_DIR}/version/version.go")
 
 # Tags specific for building
 GOTAGS ?=
@@ -25,7 +26,7 @@ GOFILES ?= $(shell go list ./... | grep -v /vendor/)
 # Default os-arch combination to build
 XC_OS ?= darwin freebsd linux netbsd openbsd solaris windows
 XC_ARCH ?= 386 amd64 arm
-XC_EXCLUDE ?= darwin/arm solaris/386 solaris/arm windows/arm
+XC_EXCLUDE ?= darwin/arm solaris/386 solaris/arm windows/arm netbsd/arm
 
 # List of ldflags
 LD_FLAGS ?= \
@@ -84,3 +85,77 @@ test:
 	@echo "==> Testing ${NAME}"
 	@go test -timeout=30s -parallel=20 -tags="${GOTAGS}" ${GOFILES} ${TESTARGS}
 .PHONY: test
+
+# dist builds the binaries and then signs and packages them for distribution
+dist:
+ifndef GPG_KEY
+	@echo "==> ERROR: No GPG key specified! Without a GPG key, this release cannot"
+	@echo "           be signed. Set the environment variable GPG_KEY to the ID of"
+	@echo "           the GPG key to continue."
+	@exit 127
+else
+	@$(MAKE) -f "${MKFILE_PATH}" _cleanup
+	@$(MAKE) -f "${MKFILE_PATH}" -j4 build
+	@$(MAKE) -f "${MKFILE_PATH}" _compress _checksum _sign
+endif
+.PHONY: dist
+
+# _cleanup removes any previous binaries
+_cleanup:
+	@rm -rf "${CURRENT_DIR}/pkg/"
+	@rm -rf "${CURRENT_DIR}/bin/"
+.PHONY: _cleanup
+
+# _compress compresses all the binaries in pkg/* as tarball and zip.
+_compress:
+	@mkdir -p "${CURRENT_DIR}/pkg/dist"
+	@for platform in $$(find ./pkg -mindepth 1 -maxdepth 1 -type d); do \
+		osarch=$$(basename "$$platform"); \
+		if [ "$$osarch" = "dist" ]; then \
+			continue; \
+		fi; \
+		\
+		ext=""; \
+		if test -z "$${osarch##*windows*}"; then \
+			ext=".exe"; \
+		fi; \
+		cd "$$platform"; \
+		tar -czf "${CURRENT_DIR}/pkg/dist/${NAME}_${VERSION}_$${osarch}.tgz" "${NAME}$${ext}"; \
+		zip -q "${CURRENT_DIR}/pkg/dist/${NAME}_${VERSION}_$${osarch}.zip" "${NAME}$${ext}"; \
+		cd - &>/dev/null; \
+	done
+.PHONY: _compress
+
+# _checksum produces the checksums for the binaries in pkg/dist
+_checksum:
+	@cd "${CURRENT_DIR}/pkg/dist" && \
+		shasum --algorithm 256 * > ${CURRENT_DIR}/pkg/dist/${NAME}_${VERSION}_SHA256SUMS && \
+		cd - &>/dev/null
+.PHONY: _checksum
+
+# _sign signs the binaries using the given GPG_KEY. This should not be called
+# as a separate function.
+_sign:
+	@echo "==> Signing ${PROJECT} at v${VERSION}"
+	@gpg \
+		--default-key "${GPG_KEY}" \
+		--detach-sig "${CURRENT_DIR}/pkg/dist/${NAME}_${VERSION}_SHA256SUMS"
+	@git commit \
+		--allow-empty \
+		--gpg-sign="${GPG_KEY}" \
+		--message "Release v${VERSION}" \
+		--quiet \
+		--signoff
+	@git tag \
+		--annotate \
+		--create-reflog \
+		--local-user "${GPG_KEY}" \
+		--message "Version ${VERSION}" \
+		--sign \
+		"v${VERSION}" master
+	@echo "--> Do not forget to run:"
+	@echo ""
+	@echo "    git push && git push --tags"
+	@echo ""
+	@echo "And then upload the binaries in dist/!"
+.PHONY: _sign
