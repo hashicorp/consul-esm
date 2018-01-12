@@ -4,7 +4,9 @@ Consul ESM (External Service Monitor)
 
 This project provides a daemon to run alongside Consul in order to run health checks
 for external nodes and update the status of those health checks in the catalog. It can also
-manage updating the coordinates of these external nodes, if enabled.
+manage updating the coordinates of these external nodes, if enabled. See Consul's
+[External Services](https://www.consul.io/docs/guides/external.html) guide for some more information
+about external nodes.
 
 In order for the ESM to detect external nodes and health checks, any external nodes must be registered
 directly with the catalog with `"external-node": "true"` set in the node metadata. Health checks can
