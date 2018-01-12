@@ -8,6 +8,19 @@ manage updating the coordinates of these external nodes, if enabled. See Consul'
 [External Services](https://www.consul.io/docs/guides/external.html) guide for some more information
 about external nodes.
 
+## Installation
+
+1. Download a pre-compiled, released version from the [Consul ESM releases page][releases].
+
+1. Extract the binary using `unzip` or `tar`.
+
+1. Move the binary into `$PATH`.
+
+To compile from source, please see the instructions in the
+[contributing section](#contributing).
+
+## Usage
+
 In order for the ESM to detect external nodes and health checks, any external nodes must be registered
 directly with the catalog with `"external-node": "true"` set in the node metadata. Health checks can
 also be registered with a 'Definition' field which includes the details of running the check. For example:
@@ -167,28 +180,52 @@ tls_server_name = ""
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"
 
-### Building
+## Contributing
 
-The Makefile contains commands for testing and building the ESM:
+To build and install Consul ESM locally, you will need to install the
+Docker engine:
 
-To build for local development:
-```
-make dev
+- [Docker for Mac](https://docs.docker.com/engine/installation/mac/)
+- [Docker for Windows](https://docs.docker.com/engine/installation/windows/)
+- [Docker for Linux](https://docs.docker.com/engine/installation/linux/ubuntulinux/)
+
+Clone the repository:
+
+```shell
+$ git clone https://github.com/hashicorp/consul-esm.git
 ```
 
-To run the test suite:
-```
-make test
+To compile the `consul-esn` binary for your local machine:
+
+```shell
+$ make dev
 ```
 
-To build for a specific platform:
+This will compile the `consul-esm` binary into `bin/consul-esm` as
+well as your `$GOPATH` and run the test suite.
+
+If you want to compile a specific binary, run `make XC_OS/XC_ARCH`. 
+For example:
 ```
 make darwin/amd64
-make linux/amd64
-...
 ```
 
-To build for all supported platforms:
+Or run the following to generate all binaries:
+
+```shell
+$ make build
 ```
-make build
+
+If you just want to run the tests:
+
+```shell
+$ make test
 ```
+
+Or to run a specific test in the suite:
+
+```shell
+go test ./... -run SomeTestFunction_name
+```
+
+[releases]: https://releases.hashicorp.com/consul-esm "Consul ESM Releases"
