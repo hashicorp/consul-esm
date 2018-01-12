@@ -321,6 +321,12 @@
 			"revisionTime": "2017-10-17T17:18:08Z"
 		},
 		{
+			"checksumSHA1": "5h+ERzHw3Rl2G0kFPxoJzxiA9s0=",
+			"path": "github.com/pascaldekloe/goe/verify",
+			"revision": "c580d16984352a427218a8e43232313d1c1c6f84",
+			"revisionTime": "2017-12-21T16:43:02Z"
+		},
+		{
 			"checksumSHA1": "xCv4GBFyw07vZkVtKF/XrUnkHRk=",
 			"path": "github.com/pkg/errors",
 			"revision": "e881fd58d78e04cf6d0de1217f8707c8cc2249bc",
