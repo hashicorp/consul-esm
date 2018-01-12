@@ -195,7 +195,7 @@ Clone the repository:
 $ git clone https://github.com/hashicorp/consul-esm.git
 ```
 
-To compile the `consul-esn` binary for your local machine:
+To compile the `consul-esm` binary for your local machine:
 
 ```shell
 $ make dev
