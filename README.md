@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/hashicorp/consul-esm.svg?branch=master)](https://travis-ci.org/hashicorp/consul-esm)  
 Consul ESM (External Service Monitor)
 ================
 
