@@ -23,7 +23,7 @@ const (
 // getExternalNodes is a long running goroutine that polls for
 // nodes registered in the catalog with the identifying node metadata
 // and updates the coordinate runner when there is a change.
-func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
+func (a *Agent) getExternalNodes() {
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
 	}
@@ -31,9 +31,9 @@ func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 	opts = opts.WithContext(ctx)
 
 	nodeCh := make(chan []*api.Node, 1)
-	go a.updateCoords(nodeCh, shutdownCh)
+	go a.updateCoords(nodeCh)
 	go func() {
-		<-shutdownCh
+		<-a.shutdownCh
 		cancelFunc()
 	}()
 
@@ -41,7 +41,7 @@ func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 	firstRun <- struct{}{}
 	for {
 		select {
-		case <-shutdownCh:
+		case <-a.shutdownCh:
 			return
 		case <-firstRun:
 			// Skip the wait on the first run.
@@ -78,7 +78,7 @@ func (a *Agent) getExternalNodes(shutdownCh <-chan struct{}) {
 // updateCoords is a long running goroutine that pings an external node
 // once per interval and updates its coordinates and virtual health check
 // in the catalog.
-func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct{}) {
+func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 	// Wait for the first node ordering
 	nodes := <-nodeCh
 
@@ -96,7 +96,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node, shutdownCh <-chan struct
 
 		for _, node := range nodes {
 			select {
-			case <-shutdownCh:
+			case <-a.shutdownCh:
 				return
 			case <-time.After(a.config.CoordinateUpdateInterval):
 			}

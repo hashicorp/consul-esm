@@ -70,16 +70,15 @@ func main() {
 	logger := log.New(logOutput, "", log.LstdFlags)
 	gatedWriter.Flush()
 
-	a, err := NewAgent(config, logger)
+	agent, err := NewAgent(config, logger)
 	if err != nil {
 		panic(err)
 	}
 
 	// Set up shutdown and signal handling.
-	shutdownCh := make(chan struct{})
 	signalCh := make(chan os.Signal, 10)
 	signal.Notify(signalCh)
-	go handleSignals(a.logger, signalCh, shutdownCh)
+	go handleSignals(agent.logger, signalCh, agent)
 
 	ui.Output("Consul ESM running!")
 	if config.Datacenter == "" {
@@ -95,7 +94,7 @@ func main() {
 	ui.Output("Log data will now stream in as it occurs:\n")
 
 	// Run the agent!
-	if err := a.Run(shutdownCh); err != nil {
+	if err := agent.Run(); err != nil {
 		ui.Error(err.Error())
 		os.Exit(ExitCodeError)
 	}
@@ -103,16 +102,12 @@ func main() {
 	os.Exit(ExitCodeOK)
 }
 
-func handleSignals(logger *log.Logger, signalCh chan os.Signal, shutdownCh chan struct{}) {
-	shutdown := false
+func handleSignals(logger *log.Logger, signalCh chan os.Signal, agent *Agent) {
 	for sig := range signalCh {
 		switch sig {
 		case os.Interrupt:
 			logger.Printf("[INFO] got signal, shutting down...")
-			if !shutdown {
-				close(shutdownCh)
-				shutdown = true
-			}
+			agent.Shutdown()
 		}
 	}
 }

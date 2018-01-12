@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/go-uuid"
 )
 
-const (
+var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
 	// determines how often we poll the agent to check on service
 	// registration.
@@ -28,6 +28,9 @@ type Agent struct {
 	client *api.Client
 	logger *log.Logger
 	id     string
+
+	shutdownCh chan struct{}
+	shutdown   bool
 }
 
 func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
@@ -45,10 +48,11 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 	}
 
 	agent := Agent{
-		config: config,
-		client: client,
-		id:     id,
-		logger: logger,
+		config:     config,
+		client:     client,
+		id:         id,
+		logger:     logger,
+		shutdownCh: make(chan struct{}),
 	}
 
 	logger.Printf("[INFO] Connecting to Consul on %s...", clientConf.Address)
@@ -68,7 +72,7 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 	return &agent, nil
 }
 
-func (a *Agent) Run(shutdownCh <-chan struct{}) error {
+func (a *Agent) Run() error {
 	// Do the initial service registration.
 	serviceID := fmt.Sprintf("%s:%s", a.config.Service, a.id)
 	if err := a.register(serviceID); err != nil {
@@ -79,27 +83,27 @@ func (a *Agent) Run(shutdownCh <-chan struct{}) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		a.runRegister(serviceID, shutdownCh)
+		a.runRegister(serviceID)
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		a.runTTL(serviceID, shutdownCh)
+		a.runTTL(serviceID)
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		a.runHealthChecks(shutdownCh)
+		a.runHealthChecks()
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		a.getExternalNodes(shutdownCh)
+		a.getExternalNodes()
 		wg.Done()
 	}()
 
 	// Wait for shutdown.
-	<-shutdownCh
+	<-a.shutdownCh
 	wg.Wait()
 
 	// Clean up.
@@ -108,6 +112,13 @@ func (a *Agent) Run(shutdownCh <-chan struct{}) error {
 	}
 
 	return nil
+}
+
+func (a *Agent) Shutdown() {
+	if !a.shutdown {
+		a.shutdown = true
+		close(a.shutdownCh)
+	}
 }
 
 // register is used to register this agent with Consul service discovery.
@@ -125,11 +136,11 @@ func (a *Agent) register(serviceID string) error {
 
 // runRegister is a long-running goroutine that ensures this agent is registered
 // with Consul's service discovery. It will run until the shutdownCh is closed.
-func (a *Agent) runRegister(serviceID string, shutdownCh <-chan struct{}) {
+func (a *Agent) runRegister(serviceID string) {
 	for {
 	REGISTER_CHECK:
 		select {
-		case <-shutdownCh:
+		case <-a.shutdownCh:
 			return
 
 		case <-time.After(agentTTL):
@@ -154,12 +165,12 @@ func (a *Agent) runRegister(serviceID string, shutdownCh <-chan struct{}) {
 
 // runTTL is a long-running goroutine that registers an "agent alive" TTL health
 // check and services it periodically. It will run until the shutdownCh is closed.
-func (a *Agent) runTTL(serviceID string, shutdownCh <-chan struct{}) {
+func (a *Agent) runTTL(serviceID string) {
 	ttlID := fmt.Sprintf("%s:agent-ttl", serviceID)
 
 REGISTER:
 	select {
-	case <-shutdownCh:
+	case <-a.shutdownCh:
 		return
 	default:
 	}
@@ -185,7 +196,7 @@ REGISTER:
 	// Wait for the shutdown signal and poke the TTL check.
 	for {
 		select {
-		case <-shutdownCh:
+		case <-a.shutdownCh:
 			return
 
 		case <-time.After(agentTTL / 2):
@@ -198,7 +209,7 @@ REGISTER:
 	}
 }
 
-func (a *Agent) runHealthChecks(shutdownCh <-chan struct{}) {
+func (a *Agent) runHealthChecks() {
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
 	var lock *api.Lock
@@ -210,7 +221,7 @@ func (a *Agent) runHealthChecks(shutdownCh <-chan struct{}) {
 
 LEADER_WAIT:
 	select {
-	case <-shutdownCh:
+	case <-a.shutdownCh:
 		return
 	default:
 	}
@@ -227,7 +238,7 @@ LEADER_WAIT:
 		}
 	}
 
-	leaderCh, err := lock.Lock(shutdownCh)
+	leaderCh, err := lock.Lock(a.shutdownCh)
 	if err != nil {
 		if err == api.ErrLockHeld {
 			a.logger.Printf("[ERR] Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry): %v", err)
@@ -250,7 +261,7 @@ LEADER_WAIT:
 	// Set up a watch for any health checks on external nodes.
 	updateCh := make(chan api.HealthChecks, 0)
 	checkRunner := NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
-	go a.watchHealthChecks(updateCh, leaderCh)
+	go a.watchHealthChecks(updateCh)
 	go checkRunner.reapServices(leaderCh)
 
 	for {
@@ -262,7 +273,7 @@ LEADER_WAIT:
 			a.logger.Printf("[WARN] Lost leadership, stopping checks")
 			checkRunner.Stop()
 			goto LEADER_WAIT
-		case <-shutdownCh:
+		case <-a.shutdownCh:
 			return
 		}
 	}
@@ -271,14 +282,14 @@ LEADER_WAIT:
 // watchHealthChecks does a blocking query to the Consul api to get
 // all health checks on nodes marked with the external node metadata
 // identifier and sends any updates through the given updateCh.
-func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, shutdownCh <-chan struct{}) {
+func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks) {
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
 	}
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts = opts.WithContext(ctx)
 	go func() {
-		<-shutdownCh
+		<-a.shutdownCh
 		cancelFunc()
 	}()
 
@@ -286,7 +297,7 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, shutdownCh <-c
 	firstRun <- struct{}{}
 	for {
 		select {
-		case <-shutdownCh:
+		case <-a.shutdownCh:
 			return
 		case <-firstRun:
 			// Skip the wait on the first run.
