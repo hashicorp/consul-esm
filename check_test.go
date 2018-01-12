@@ -1,13 +1,10 @@
 package main
 
 import (
-	"testing"
-
-	"time"
-
 	"log"
-
 	"os"
+	"testing"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/testutil"
@@ -31,7 +28,7 @@ func TestHTTPCheck(t *testing.T) {
 	runner := NewCheckRunner(logger, client, 0)
 	defer runner.Stop()
 
-	// Register an external node with an initially critical http check
+	// Register an external node with an initially critical http check.
 	nodeMeta := map[string]string{"external-node": "true"}
 	_, err = client.Catalog().Register(&api.CatalogRegistration{
 		Node:       "external",
