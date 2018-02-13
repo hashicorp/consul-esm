@@ -137,7 +137,7 @@ consul_leader_key = "consul-esm/lock"
 // The node metadata values used for the ESM to qualify a node in the catalog
 // as an "external node".
 external_node_meta {
-    instance_type = "c3.large"
+    "external-node" = "true"
 }
 
 // The length of time to wait before reaping an external node due to failed
