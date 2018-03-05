@@ -94,10 +94,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				if data, ok := c.checksHTTP[checkHash]; ok && data.HTTP == http.HTTP &&
 					reflect.DeepEqual(data.Header, http.Header) && data.Method == http.Method &&
 					data.TLSSkipVerify == http.TLSSkipVerify && data.Interval == http.Interval &&
-					data.Timeout == http.Timeout {
+					data.Timeout == http.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
 					continue
 				}
-				c.logger.Printf("[INFO] Update HTTP check %q, %v, %v", checkHash)
+				c.logger.Printf("[INFO] Update HTTP check %q", checkHash)
 				if c.checks[checkHash].Definition.HTTP != "" {
 					httpCheck := c.checksHTTP[checkHash]
 					httpCheck.Stop()
@@ -126,10 +126,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			if _, ok := c.checks[checkHash]; ok {
 				if data, ok := c.checksTCP[checkHash]; ok &&
 					data.TCP == tcp.TCP && data.Interval == tcp.Interval &&
-					data.Timeout == tcp.Timeout {
+					data.Timeout == tcp.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
 					continue
 				}
-				c.logger.Printf("[INFO] Update TCP check %q, %v, %v", checkHash, tcp, c.checksTCP[checkHash])
+				c.logger.Printf("[INFO] Update TCP check %q", checkHash)
 				if c.checks[checkHash].Definition.TCP != "" {
 					tcpCheck := c.checksTCP[checkHash]
 					tcpCheck.Stop()
