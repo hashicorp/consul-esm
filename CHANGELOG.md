@@ -7,6 +7,8 @@ IMPROVEMENTS:
 
 BUG FIXES:
 
+  * Fixed the DeregisterCriticalServiceAfter field not being handled correctly. [GH-7]
+
 ## v0.1.0 (January 12, 2018)
 
   * Initial release
