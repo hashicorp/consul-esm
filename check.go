@@ -249,9 +249,9 @@ func (c *CheckRunner) reapServicesInternal() {
 				Node:      check.Node,
 				ServiceID: serviceID,
 			}, nil)
-			c.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long (%q - %q); deregistered service",
+			c.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long (%s | timeout: %s); deregistered service",
 				checkID, serviceID,
-				timeout, time.Since(criticalTime))
+				time.Since(criticalTime), timeout)
 			reaped[serviceID] = true
 		}
 	}
