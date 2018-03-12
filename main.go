@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/command/flags"
@@ -105,8 +106,10 @@ func main() {
 func handleSignals(logger *log.Logger, signalCh chan os.Signal, agent *Agent) {
 	for sig := range signalCh {
 		switch sig {
-		case os.Interrupt:
-			logger.Printf("[INFO] got signal, shutting down...")
+		case syscall.SIGHUP, syscall.SIGPIPE:
+			continue
+		default:
+			logger.Printf("[INFO] Caught signal: %s, shutting down...", sig.String())
 			agent.Shutdown()
 		}
 	}
