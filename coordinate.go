@@ -279,11 +279,11 @@ func pingNode(addr string) (time.Duration, error) {
 	var pingErr error
 
 	p := fastping.NewPinger()
-	ipAddr, err := net.ResolveIPAddr("ip4:icmp", addr)
-	if err != nil {
+	if _, err := p.Network("udp"); err != nil {
 		return 0, err
 	}
-	p.AddIPAddr(ipAddr)
+
+	p.AddIP(addr)
 	p.MaxRTT = 10 * time.Second
 	p.OnRecv = func(addr *net.IPAddr, responseTime time.Duration) {
 		rtt = responseTime
@@ -291,7 +291,7 @@ func pingNode(addr string) (time.Duration, error) {
 	p.OnIdle = func() {
 		pingErr = fmt.Errorf("ping to %q timed out", addr)
 	}
-	err = p.Run()
+	err := p.Run()
 	if err != nil {
 		return 0, err
 	}
