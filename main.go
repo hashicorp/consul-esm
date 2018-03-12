@@ -44,7 +44,7 @@ func main() {
 	}
 
 	if isVersion {
-		fmt.Printf("%s\n", version.HumanVersion)
+		fmt.Printf("%s\n", version.GetHumanVersion())
 		os.Exit(ExitCodeOK)
 	}
 
