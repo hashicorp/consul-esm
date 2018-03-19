@@ -8,6 +8,10 @@ manage updating the coordinates of these external nodes, if enabled. See Consul'
 [External Services](https://www.consul.io/docs/guides/external.html) guide for some more information
 about external nodes.
 
+## Prerequisites
+
+Consul ESM requires at least version 1.0.1 of Consul.
+
 ## Installation
 
 1. Download a pre-compiled, released version from the [Consul ESM releases page][releases].
