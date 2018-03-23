@@ -21,6 +21,10 @@ var (
 	// and is also used when trying to give up leadership to another
 	// instance.
 	retryTime = 10 * time.Second
+
+	// deregisterTime is the time the TTL check must be in a failed state for
+	// the ESM service in consul to be deregistered.
+	deregisterTime = 30 * time.Minute
 )
 
 type Agent struct {
@@ -184,7 +188,7 @@ REGISTER:
 		AgentServiceCheck: api.AgentServiceCheck{
 			TTL:    agentTTL.String(),
 			Status: api.HealthPassing,
-			DeregisterCriticalServiceAfter: a.config.DeregisterAfter.String(),
+			DeregisterCriticalServiceAfter: deregisterTime.String(),
 		},
 	}
 	if err := a.client.Agent().CheckRegister(check); err != nil {
