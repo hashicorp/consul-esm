@@ -2,8 +2,9 @@
 
 IMPROVEMENTS:
 
-  * Correctly handle SIGTERM and other signals like SIGHUP/SIGQUIT. [GH-6]
+  * Correctly exit on SIGTERM as well as SIGINT.
   * Use a simpler UDP ping that doesn't require root privileges. [GH-5]
+  * Add a config option for setting the ping method (UDP or socket).
 
 BUG FIXES:
 
