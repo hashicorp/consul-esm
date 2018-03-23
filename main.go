@@ -49,9 +49,8 @@ func main() {
 		os.Exit(ExitCodeOK)
 	}
 
-	// Parse and merge the config.
-	config := DefaultConfig()
-	err = MergeConfigPaths(config, []string(configFiles))
+	// Build the config.
+	config, err := BuildConfig([]string(configFiles))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(ExitCodeError)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ ca_path = "ca/"
 cert_file = "cert.pem"
 key_file = "key.pem"
 tls_server_name = "example.io"
+ping_type = "socket"
 `)
 
 	expected := &Config{
@@ -45,6 +47,7 @@ tls_server_name = "example.io"
 		CertFile:      "cert.pem",
 		KeyFile:       "key.pem",
 		TLSServerName: "example.io",
+		PingType:      PingTypeSocket,
 	}
 
 	result := &Config{}
@@ -55,4 +58,45 @@ tls_server_name = "example.io"
 	MergeConfig(result, humanConfig)
 
 	verify.Values(t, "", result, expected)
+}
+
+func TestValidateConfig(t *testing.T) {
+	cases := []struct {
+		raw string
+		err string
+	}{
+		{
+			raw: `ping_type = "invalid"`,
+			err: `ping_type must be one of either "udp" or "socket"`,
+		},
+		{
+			raw: `ping_type = "socket"`,
+			err: "",
+		},
+	}
+
+	for _, tc := range cases {
+		buf := bytes.NewBufferString(tc.raw)
+
+		result := &Config{}
+		humanConfig, err := DecodeConfig(buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		MergeConfig(result, humanConfig)
+
+		err = ValidateConfig(result)
+		if err == nil && tc.err != "" {
+			t.Fatalf("got no error want %q", tc.err)
+		}
+		if err != nil && tc.err == "" {
+			t.Fatalf("got error %s want nil", err)
+		}
+		if err == nil && tc.err != "" {
+			t.Fatalf("got nil want error to contain %q", tc.err)
+		}
+		if err != nil && tc.err != "" && !strings.Contains(err.Error(), tc.err) {
+			t.Fatalf("error %q does not contain %q", err.Error(), tc.err)
+		}
+	}
 }

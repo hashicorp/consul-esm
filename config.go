@@ -15,6 +15,11 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const (
+	PingTypeUDP    = "udp"
+	PingTypeSocket = "socket"
+)
+
 type Config struct {
 	LogLevel       string
 	EnableSyslog   bool
@@ -38,6 +43,8 @@ type Config struct {
 	CertFile      string
 	KeyFile       string
 	TLSServerName string
+
+	PingType string
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -84,6 +91,7 @@ func DefaultConfig() *Config {
 		CheckUpdateInterval:      5 * time.Minute,
 		CoordinateUpdateInterval: 1 * time.Second,
 		NodeReconnectTimeout:     72 * time.Hour,
+		PingType:                 PingTypeUDP,
 	}
 }
 
@@ -92,8 +100,8 @@ type HumanConfig struct {
 	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
 	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
 
-	Service   flags.StringValue `mapstructure:"consul_service"`
-	LeaderKey flags.StringValue `mapstructure:"consul_leader_key"`
+	Service   flags.StringValue   `mapstructure:"consul_service"`
+	LeaderKey flags.StringValue   `mapstructure:"consul_leader_key"`
 	NodeMeta  []map[string]string `mapstructure:"external_node_meta"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
@@ -106,6 +114,8 @@ type HumanConfig struct {
 	CertFile      flags.StringValue `mapstructure:"cert_file"`
 	KeyFile       flags.StringValue `mapstructure:"key_file"`
 	TLSServerName flags.StringValue `mapstructure:"tls_server_name"`
+
+	PingType flags.StringValue `mapstructure:"ping_type"`
 }
 
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
@@ -150,6 +160,33 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 	}
 
 	return &config, nil
+}
+
+// BuildConfig builds a new Config object from the default configuration
+// and the list of config files given and returns it after validation.
+func BuildConfig(configFiles []string) (*Config, error) {
+	config := DefaultConfig()
+	if err := MergeConfigPaths(config, configFiles); err != nil {
+		return nil, fmt.Errorf("Error loading config: %v", err)
+	}
+
+	if err := ValidateConfig(config); err != nil {
+		return nil, fmt.Errorf("Error parsing config: %v", err)
+	}
+
+	return config, nil
+}
+
+// ValidateConfig verifies that the given Config object is valid.
+func ValidateConfig(conf *Config) error {
+	switch conf.PingType {
+	case PingTypeUDP, PingTypeSocket:
+		break
+	default:
+		return fmt.Errorf("ping_type must be one of either \"udp\" or \"socket\"")
+	}
+
+	return nil
 }
 
 // MergeConfigPaths takes a list of config files or config directories and
@@ -211,4 +248,5 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.CertFile.Merge(&dst.CertFile)
 	src.KeyFile.Merge(&dst.KeyFile)
 	src.TLSServerName.Merge(&dst.TLSServerName)
+	src.PingType.Merge(&dst.PingType)
 }

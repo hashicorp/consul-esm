@@ -45,6 +45,9 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 		if err != nil {
 			r.Fatal(err)
 		}
+		if len(coords) == 0 {
+			r.Fatalf("expected coords, got %v", coords)
+		}
 	})
 }
 

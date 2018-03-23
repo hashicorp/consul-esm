@@ -110,7 +110,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 			}
 
 			// Run an ICMP ping to the node.
-			rtt, err := pingNode(node.Address)
+			rtt, err := pingNode(node.Address, a.config.PingType)
 
 			// Update the node's health based on the results of the ping.
 			if err == nil {
@@ -274,16 +274,27 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 }
 
 // pingNode runs an ICMP ping against an address and returns the round-trip time.
-func pingNode(addr string) (time.Duration, error) {
+func pingNode(addr string, method string) (time.Duration, error) {
 	var rtt time.Duration
 	var pingErr error
 
 	p := fastping.NewPinger()
-	if _, err := p.Network("udp"); err != nil {
-		return 0, err
+	switch method {
+	case PingTypeUDP:
+		if _, err := p.Network("udp"); err != nil {
+			return 0, err
+		}
+		p.AddIP(addr)
+	case PingTypeSocket:
+		ipAddr, err := net.ResolveIPAddr("ip4:icmp", addr)
+		if err != nil {
+			return 0, err
+		}
+		p.AddIPAddr(ipAddr)
+	default:
+		return 0, fmt.Errorf("invalid ping type %q, should be impossible", method)
 	}
 
-	p.AddIP(addr)
 	p.MaxRTT = 10 * time.Second
 	p.OnRecv = func(addr *net.IPAddr, responseTime time.Duration) {
 		rtt = responseTime
