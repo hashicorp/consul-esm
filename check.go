@@ -244,13 +244,14 @@ func (c *CheckRunner) reapServicesInternal() {
 		}
 
 		timeout := check.Definition.DeregisterCriticalServiceAfter.Duration()
-		if timeout > 0 && timeout > time.Since(criticalTime) {
+		if timeout > 0 && timeout < time.Since(criticalTime) {
 			c.client.Catalog().Deregister(&api.CatalogDeregistration{
 				Node:      check.Node,
 				ServiceID: serviceID,
 			}, nil)
-			c.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long; deregistered service",
-				checkID, serviceID)
+			c.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long (%s | timeout: %s); deregistered service",
+				checkID, serviceID,
+				time.Since(criticalTime), timeout)
 			reaped[serviceID] = true
 		}
 	}
