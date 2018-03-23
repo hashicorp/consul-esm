@@ -105,12 +105,12 @@ func main() {
 
 func handleSignals(logger *log.Logger, signalCh chan os.Signal, agent *Agent) {
 	for sig := range signalCh {
+		logger.Printf("[INFO] Caught signal: %s", sig.String())
 		switch sig {
-		case syscall.SIGHUP, syscall.SIGPIPE:
-			continue
-		default:
-			logger.Printf("[INFO] Caught signal: %s, shutting down...", sig.String())
+		case syscall.SIGINT, syscall.SIGTERM:
+			logger.Printf("[INFO] Shutting down...")
 			agent.Shutdown()
+		default:
 		}
 	}
 }
