@@ -34,7 +34,7 @@ LD_FLAGS ?= \
 	-s \
 	-w \
 	-X ${PROJECT}/version.Name=${NAME} \
-	-X ${PROJECT}/version.GitCommit=${GIT_COMMIT}
+	-X ${PROJECT}/version.GitCommit=${GIT_COMMIT} \
 	-X ${PROJECT}/version.GitDescribe=${GIT_DESCRIBE}
 
 # Create a cross-compile target for every os-arch pairing. This will generate
@@ -96,7 +96,7 @@ ifndef GPG_KEY
 	@echo "           the GPG key to continue."
 	@exit 127
 else
-	@$(MAKE) -f "${MKFILE_PATH}" _cleanup
+	@$(MAKE) -f "${MKFILE_PATH}" _cleanup _tag
 	@$(MAKE) -f "${MKFILE_PATH}" -j4 build
 	@$(MAKE) -f "${MKFILE_PATH}" _compress _checksum _sign
 endif
@@ -107,6 +107,24 @@ _cleanup:
 	@rm -rf "${CURRENT_DIR}/pkg/"
 	@rm -rf "${CURRENT_DIR}/bin/"
 .PHONY: _cleanup
+
+# _tag creates the git tag for this release
+_tag:
+	@echo "==> Tagging..."
+	@git commit \
+		--allow-empty \
+		--gpg-sign="${GPG_KEY}" \
+		--message "Release v${VERSION}" \
+		--quiet \
+		--signoff
+	@git tag \
+		--annotate \
+		--create-reflog \
+		--local-user "${GPG_KEY}" \
+		--message "Version ${VERSION}" \
+		--sign \
+		"v${VERSION}" master
+.PHONY: _tag
 
 # _compress compresses all the binaries in pkg/* as tarball and zip.
 _compress:
@@ -142,19 +160,6 @@ _sign:
 	@gpg \
 		--default-key "${GPG_KEY}" \
 		--detach-sig "${CURRENT_DIR}/pkg/dist/${NAME}_${VERSION}_SHA256SUMS"
-	@git commit \
-		--allow-empty \
-		--gpg-sign="${GPG_KEY}" \
-		--message "Release v${VERSION}" \
-		--quiet \
-		--signoff
-	@git tag \
-		--annotate \
-		--create-reflog \
-		--local-user "${GPG_KEY}" \
-		--message "Version ${VERSION}" \
-		--sign \
-		"v${VERSION}" master
 	@echo "--> Do not forget to run:"
 	@echo ""
 	@echo "    git push && git push --tags"
