@@ -94,6 +94,11 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		default:
 		}
 
+		if len(nodes) == 0 {
+			a.logger.Printf("[DEBUG] No nodes to probe, will retry in %s", retryTime.String())
+			time.Sleep(retryTime)
+		}
+
 		for _, node := range nodes {
 			select {
 			case <-a.shutdownCh:
