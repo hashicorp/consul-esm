@@ -212,7 +212,7 @@ func (a *Agent) updateNodeCheck(node *api.Node, status, output string) error {
 	if err != nil {
 		return fmt.Errorf("could not update external node check for node %q: %v", node.Node, err)
 	}
-	a.logger.Printf("[INFO] Update node %q check to %s",
+	a.logger.Printf("[INFO] Update node %q check to %v",
 		node.Node, externalCheckName)
 
 	return nil
