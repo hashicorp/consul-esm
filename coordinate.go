@@ -183,6 +183,7 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 			if err != nil {
 				return fmt.Errorf("could not reap node %q: %v", node.Node, err)
 			}
+            a.logger.Printf("[INFO] reaping node %q", node.Node)
 
 			if _, err := kvClient.Delete(key, nil); err != nil {
 				return fmt.Errorf("could not delete critical timer key %q for reaped node: %v", key, err)
@@ -211,6 +212,8 @@ func (a *Agent) updateNodeCheck(node *api.Node, status, output string) error {
 	if err != nil {
 		return fmt.Errorf("could not update external node check for node %q: %v", node.Node, err)
 	}
+	a.logger.Printf("[INFO] Update node %q check to %s",
+		node.Node, externalCheckName)
 
 	return nil
 }
@@ -274,7 +277,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	if err != nil {
 		return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
 	}
-
+	a.logger.Printf("[INFO] Update node %q coordinate", coord.Node)
 	return nil
 }
 
