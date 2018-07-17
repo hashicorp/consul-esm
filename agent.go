@@ -134,7 +134,7 @@ func (a *Agent) register(serviceID string) error {
 	if err := a.client.Agent().ServiceRegister(service); err != nil {
 		return err
 	}
-	c.logger.Printf("[INFO] Registering in Consul")
+	a.logger.Printf("[INFO] Registering in Consul")
 
 	return nil
 }
