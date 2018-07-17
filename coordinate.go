@@ -113,6 +113,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 			if err != nil {
 				a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
 			}
+			a.logger.Printf("[WARN] Getting KV for key: %v", key)
 
 			// Run an ICMP ping to the node.
 			rtt, err := pingNode(node.Address, a.config.PingType)
@@ -145,6 +146,7 @@ func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, 
 		if _, err := kvClient.Delete(key, nil); err != nil {
 			return fmt.Errorf("could not delete critical timer key %q: %v", key, err)
 		}
+		a.logger.Printf("[WARN] Deleting KV for key: %v", key)
 	}
 
 	return a.updateNodeCheck(node, status, NodeAliveStatus)
@@ -165,6 +167,7 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 		if _, err := kvClient.Put(kvPair, nil); err != nil {
 			return fmt.Errorf("could not update critical time for node %q: %v", node.Node, err)
 		}
+		a.logger.Printf("[INFO] Putting in KV pair, the key: %s", key)
 	} else {
 		var criticalStart time.Time
 		err := criticalStart.GobDecode(kvPair.Value)
@@ -183,7 +186,7 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 			if err != nil {
 				return fmt.Errorf("could not reap node %q: %v", node.Node, err)
 			}
-            a.logger.Printf("[INFO] reaping node %q", node.Node)
+            a.logger.Printf("[INFO] deregistering node %q", node.Node)
 
 			if _, err := kvClient.Delete(key, nil); err != nil {
 				return fmt.Errorf("could not delete critical timer key %q for reaped node: %v", key, err)
