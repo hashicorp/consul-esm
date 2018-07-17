@@ -146,7 +146,7 @@ func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, 
 		if _, err := kvClient.Delete(key, nil); err != nil {
 			return fmt.Errorf("could not delete critical timer key %q: %v", key, err)
 		}
-		a.logger.Printf("[WARN] Deleting KV for key: %v", key)
+		a.logger.Printf("[WARN] Deleting KV for key: %q", key)
 	}
 
 	return a.updateNodeCheck(node, status, NodeAliveStatus)
