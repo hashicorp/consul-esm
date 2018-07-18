@@ -127,7 +127,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 					a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
 				}
 			} else {
-				a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err) 
+				a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
 				if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
 					a.logger.Printf("[WARN] error updating node: %v", err)
 				}
@@ -186,7 +186,7 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 			if err != nil {
 				return fmt.Errorf("could not reap node %q: %v", node.Node, err)
 			}
-            a.logger.Printf("[INFO] deregistering node %q", node.Node)
+                        a.logger.Printf("[INFO] deregistering node %q", node.Node)
 
 			if _, err := kvClient.Delete(key, nil); err != nil {
 				return fmt.Errorf("could not delete critical timer key %q for reaped node: %v", key, err)
