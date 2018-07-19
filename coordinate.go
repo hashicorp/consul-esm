@@ -280,7 +280,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	if err != nil {
 		return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
 	}
-	a.logger.Printf("[INFO] Update node %q coordinate", coord.Node)
+	a.logger.Printf("[INFO] Update node %q coordinate", node.Node)
 	return nil
 }
 
