@@ -141,6 +141,8 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	retry.Run(t, ensureDeregistered)
 }
 
+// shardWatcher provides a hook for intercepting the computeWatchedNodes updates
+// in order to check the value of them.
 type shardWatcher struct {
 	healthCh chan map[string]bool
 	pingCh   chan []*api.Node
@@ -274,6 +276,10 @@ func TestAgent_rebalanceHealthWatches(t *testing.T) {
 }
 
 func TestAgent_divideCoordinates(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.Skip("skip this test in Travis as pings aren't supported")
+	}
+
 	t.Parallel()
 	s, err := testutil.NewTestServer()
 	if err != nil {
@@ -285,6 +291,7 @@ func TestAgent_divideCoordinates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Register 2 external nodes with external-probe = true.
 	for _, nodeName := range []string{"node1", "node2"} {
 		meta := map[string]string{
@@ -329,7 +336,7 @@ func TestAgent_divideCoordinates(t *testing.T) {
 
 	// Wait for the nodes to get probed and set to healthy.
 	for _, node := range []string{"node1", "node2"} {
-		retry.RunWith(&retry.Timer{Timeout: 7 * time.Second, Wait: time.Second}, t, func(r *retry.R) {
+		retry.Run(t, func(r *retry.R) {
 			expected := api.HealthChecks{
 				{
 					Node:    node,
@@ -364,7 +371,7 @@ func TestAgent_divideCoordinates(t *testing.T) {
 	// Wait for node3 to get picked up and set to healthy.
 	agentWatcher1.verifyUpdates(t, []string{"node1", "node3"}, []string{"node1", "node3"})
 	agentWatcher2.verifyUpdates(t, []string{"node2"}, []string{"node2"})
-	retry.RunWith(&retry.Timer{Timeout: 7 * time.Second, Wait: time.Second}, t, func(r *retry.R) {
+	retry.Run(t, func(r *retry.R) {
 		expected := api.HealthChecks{
 			{
 				Node:    "node3",
