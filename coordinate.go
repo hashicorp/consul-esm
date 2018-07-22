@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -23,57 +22,6 @@ const (
 // getExternalNodes is a long running goroutine that polls for
 // nodes registered in the catalog with the identifying node metadata
 // and updates the coordinate runner when there is a change.
-func (a *Agent) getExternalNodes() {
-	opts := &api.QueryOptions{
-		NodeMeta: a.config.NodeMeta,
-	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts = opts.WithContext(ctx)
-
-	nodeCh := make(chan []*api.Node, 1)
-	go a.updateCoords(nodeCh)
-	go func() {
-		<-a.shutdownCh
-		cancelFunc()
-	}()
-
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
-	for {
-		select {
-		case <-a.shutdownCh:
-			return
-		case <-firstRun:
-			// Skip the wait on the first run.
-		case <-time.After(retryTime):
-		}
-
-		nodes, meta, err := a.client.Catalog().Nodes(opts)
-		if err != nil {
-			a.logger.Printf("[ERR] error getting external nodes: %v", err)
-			continue
-		}
-
-		var filtered []*api.Node
-		for _, node := range nodes {
-			if node.Meta == nil {
-				continue
-			}
-			if _, ok := node.Meta["external-probe"]; ok {
-				filtered = append(filtered, node)
-			}
-		}
-
-		// Don't block on sending the update
-		if opts.WaitIndex != meta.LastIndex {
-			select {
-			case nodeCh <- filtered:
-				opts.WaitIndex = meta.LastIndex
-			default:
-			}
-		}
-	}
-}
 
 // updateCoords is a long running goroutine that pings an external node
 // once per interval and updates its coordinates and virtual health check

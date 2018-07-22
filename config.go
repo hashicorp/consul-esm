@@ -25,8 +25,8 @@ type Config struct {
 	EnableSyslog   bool
 	SyslogFacility string
 
-	Service   string
-	LeaderKey string
+	Service string
+	Tag     string
 
 	NodeMeta                 map[string]string
 	Interval                 time.Duration
@@ -80,9 +80,8 @@ func (c *Config) ClientConfig() *api.Config {
 
 func DefaultConfig() *Config {
 	return &Config{
-		LogLevel:  "INFO",
-		Service:   "consul-esm",
-		LeaderKey: "consul-esm/lock",
+		LogLevel: "INFO",
+		Service:  "consul-esm",
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
@@ -235,7 +234,6 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 func MergeConfig(dst *Config, src *HumanConfig) {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.Service.Merge(&dst.Service)
-	src.LeaderKey.Merge(&dst.LeaderKey)
 	if len(src.NodeMeta) == 1 {
 		dst.NodeMeta = src.NodeMeta[0]
 	}

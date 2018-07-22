@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 	conf := DefaultConfig()
 	conf.HTTPAddr = s.HTTPAddr
+	conf.Tag = "test"
 	agent, err := NewAgent(conf, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -52,6 +54,9 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 			r.Fatalf("got %q, want %q", got, want)
 		}
 		if got, want := services[0].ServiceName, agent.config.Service; got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := services[0].ServiceTags, []string{"test"}; !reflect.DeepEqual(got, want) {
 			r.Fatalf("got %q, want %q", got, want)
 		}
 

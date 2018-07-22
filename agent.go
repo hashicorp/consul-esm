@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -83,7 +84,6 @@ func (a *Agent) Run() error {
 		return err
 	}
 
-	// todo: compress this once things are more finalized
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -97,12 +97,7 @@ func (a *Agent) Run() error {
 	}()
 	wg.Add(1)
 	go func() {
-		a.runHealthChecks()
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		a.getExternalNodes()
+		a.runHealthChecks(serviceID)
 		wg.Done()
 	}()
 
@@ -130,6 +125,9 @@ func (a *Agent) register(serviceID string) error {
 	service := &api.AgentServiceRegistration{
 		ID:   serviceID,
 		Name: a.config.Service,
+	}
+	if a.config.Tag != "" {
+		service.Tags = []string{a.config.Tag}
 	}
 	if err := a.client.Agent().ServiceRegister(service); err != nil {
 		return err
@@ -213,70 +211,38 @@ REGISTER:
 	}
 }
 
-func (a *Agent) runHealthChecks() {
-	// Arrange to give up any held lock any time we exit the goroutine so
-	// another agent can pick up without delay.
-	var lock *api.Lock
-	defer func() {
-		if lock != nil {
-			lock.Unlock()
-		}
-	}()
-
-LEADER_WAIT:
-	select {
-	case <-a.shutdownCh:
-		return
-	default:
-	}
-
-	// Wait to get the leader lock before running snapshots.
-	a.logger.Printf("[INFO] Waiting to obtain leadership...")
-	if lock == nil {
-		var err error
-		lock, err = a.client.LockKey(a.config.LeaderKey)
-		if err != nil {
-			a.logger.Printf("[ERR] Error trying to create leader lock (will retry): %v", err)
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
-		}
-	}
-
-	leaderCh, err := lock.Lock(a.shutdownCh)
-	if err != nil {
-		if err == api.ErrLockHeld {
-			a.logger.Printf("[ERR] Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry): %v", err)
-			lock.Unlock()
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
-		} else {
-			a.logger.Printf("[ERR] Error trying to get leader lock (will retry): %v", err)
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
-		}
-	}
-	if leaderCh == nil {
-		// This is how the Lock() call lets us know that it quit because
-		// we closed the shutdown channel.
-		return
-	}
-	a.logger.Printf("[INFO] Obtained leadership")
-
-	// Set up a watch for any health checks on external nodes.
+// runHealthChecks is the top-level goroutine responsible for running the
+// node and health check watches and using those updates to inform the health check runner
+// and node pinger.
+func (a *Agent) runHealthChecks(serviceID string) {
+	// Set up the update channels for the various goroutines.
+	healthNodeCh := make(chan map[string]bool, 1)
+	coordNodeCh := make(chan []*api.Node, 1)
 	updateCh := make(chan api.HealthChecks, 0)
+
+	// Start a goroutine to compute the nodes that this agent should be responsible for,
+	// based on the currently healthy ESM instances with the same service tag as this agent.
+	go a.computeWatchedNodes(serviceID, healthNodeCh, coordNodeCh)
+
+	// Start a goroutine to get health check updates from the catalog, filtering them using
+	// the results from computeWatchedNodes.
+	go a.watchHealthChecks(updateCh, healthNodeCh)
+
+	// Start a goroutine to run the pings used for coordinate and externalNodeHealth updates
+	// on the nodes returned from computeWatchedNodes.
+	go a.updateCoords(coordNodeCh)
+
+	// Start a check runner to track and run the health checks we're responsible for and call
+	// UpdateChecks when we get an update from watchHealthChecks.
 	checkRunner := NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
-	go a.watchHealthChecks(updateCh)
-	go checkRunner.reapServices(leaderCh)
+	go checkRunner.reapServices(a.shutdownCh)
+	defer checkRunner.Stop()
 
 	for {
 		// Wait for the next event.
 		select {
 		case checks := <-updateCh:
 			checkRunner.UpdateChecks(checks)
-		case <-leaderCh:
-			a.logger.Printf("[WARN] Lost leadership, stopping checks")
-			checkRunner.Stop()
-			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return
 		}
@@ -286,7 +252,112 @@ LEADER_WAIT:
 // watchHealthChecks does a blocking query to the Consul api to get
 // all health checks on nodes marked with the external node metadata
 // identifier and sends any updates through the given updateCh.
-func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks) {
+func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, nodeListCh chan map[string]bool) {
+	opts := &api.QueryOptions{
+		NodeMeta: a.config.NodeMeta,
+	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	opts = opts.WithContext(ctx)
+	go func() {
+		<-a.shutdownCh
+		cancelFunc()
+	}()
+
+	ourNodes := <-nodeListCh
+	firstRun := make(chan struct{}, 1)
+	firstRun <- struct{}{}
+	for {
+		select {
+		case <-a.shutdownCh:
+			return
+		case <-firstRun:
+			// Skip the wait on the first run.
+		case ourNodes = <-nodeListCh:
+			// Re-run if there's a change to the watched node list.
+		case <-time.After(retryTime):
+			// Sleep here to limit how much load we put on the Consul servers.
+		}
+
+		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+		if err != nil {
+			a.logger.Printf("[WARN] Error querying for health check info: %v", err)
+			continue
+		}
+
+		ourChecks := make(api.HealthChecks, 0)
+		for _, c := range checks {
+			if ourNodes[c.Node] {
+				ourChecks = append(ourChecks, c)
+			}
+		}
+
+		opts.WaitIndex = meta.LastIndex
+		updateCh <- checks
+	}
+}
+
+// computeWatchedNodes watches both the list of registered ESM instances and the list of
+// external nodes registered in Consul and decides which nodes the local agent should be
+// in charge of in a deterministic way.
+func (a *Agent) computeWatchedNodes(serviceID string, healthNodeCh chan map[string]bool, pingNodeCh chan []*api.Node) {
+	nodeCh := make(chan []*api.Node)
+	instanceCh := make(chan []*api.ServiceEntry)
+
+	go a.watchExternalNodes(nodeCh)
+	go a.watchServiceInstances(instanceCh)
+
+	externalNodes := <-nodeCh
+	healthyInstances := <-instanceCh
+
+	firstRun := make(chan struct{}, 1)
+	firstRun <- struct{}{}
+	for {
+		select {
+		case <-a.shutdownCh:
+			return
+		case externalNodes = <-nodeCh:
+		case healthyInstances = <-instanceCh:
+		case <-firstRun:
+			// Skip the wait on the first run.
+		}
+
+		// Get our "index" in the list of sorted service instances
+		ourIndex := -1
+		for i, instance := range healthyInstances {
+			if instance.Service.ID == serviceID {
+				ourIndex = i
+				break
+			}
+		}
+		if ourIndex == -1 {
+			a.logger.Printf("[WARN] Didn't register service with Consul yet, retrying...")
+			continue
+		}
+
+		healthCheckNodes := make(map[string]bool)
+		var pingNodes []*api.Node
+		for i := ourIndex; i < len(externalNodes); i += len(healthyInstances) {
+			node := externalNodes[i]
+			healthCheckNodes[node.Node] = true
+
+			if node.Meta == nil {
+				continue
+			}
+			if _, ok := node.Meta["external-probe"]; ok {
+				pingNodes = append(pingNodes, node)
+			}
+		}
+
+		a.logger.Printf("[DEBUG] Now watching %d external nodes", len(healthCheckNodes))
+
+		healthNodeCh <- healthCheckNodes
+		pingNodeCh <- pingNodes
+	}
+}
+
+// watchExternalNodes does a watch for external nodes and returns any updates
+// back through nodeCh as a sorted list.
+func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node) {
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
 	}
@@ -309,13 +380,54 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks) {
 			// Sleep here to limit how much load we put on the Consul servers.
 		}
 
-		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+		// Do a blocking query for any external node changes
+		externalNodes, meta, err := a.client.Catalog().Nodes(opts)
+		if err != nil {
+			a.logger.Printf("[WARN] Error getting external node list: %v", err)
+			continue
+		}
+		sort.Slice(externalNodes, func(a, b int) bool {
+			return externalNodes[a].Node < externalNodes[b].Node
+		})
+
+		opts.WaitIndex = meta.LastIndex
+
+		nodeCh <- externalNodes
+	}
+}
+
+// watchExternalNodes does a watch for any ESM instances with the same service tag as
+// this agent and sends any updates back through instanceCh as a sorted list.
+func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry) {
+	var opts *api.QueryOptions
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	opts = opts.WithContext(ctx)
+	go func() {
+		<-a.shutdownCh
+		cancelFunc()
+	}()
+
+	for {
+		select {
+		case <-a.shutdownCh:
+			return
+		case <-time.After(retryTime / 10):
+			// Sleep here to limit how much load we put on the Consul servers. We can
+			// wait a lot less than the normal retry time here because the ESM service instance
+			// list is small and cheap to query.
+		}
+
+		healthyInstances, meta, err := a.client.Health().Service(a.config.Service, a.config.Tag, true, opts)
 		if err != nil {
 			a.logger.Printf("[WARN] Error querying for health check info: %v", err)
 			continue
 		}
+		sort.Slice(healthyInstances, func(a, b int) bool {
+			return healthyInstances[a].Service.ID < healthyInstances[b].Service.ID
+		})
 
 		opts.WaitIndex = meta.LastIndex
-		updateCh <- checks
+
+		instanceCh <- healthyInstances
 	}
 }
