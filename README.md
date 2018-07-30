@@ -103,7 +103,7 @@ $ consul-esm -config-file=/path/to/config.hcl -config-dir /etc/consul-esm.d
 Consul ESM running!
             Datacenter: "dc1"
                Service: "consul-esm"
-            Leader Key: "consul-esm/lock"
+           Service Tag: ""
 Node Reconnect Timeout: "72h"
 
 Log data will now stream in as it occurs:
@@ -133,10 +133,14 @@ syslog_facility = ""
 // The service name for this agent to use when registering itself with Consul.
 consul_service = "consul-esm"
 
-// The path of the leader key that this agent will try to acquire before
-// stepping up as a leader for the local Consul cluster. Should be the same
-// across all Consul ESM agents in the datacenter.
-consul_leader_key = "consul-esm/lock"
+// The service tag for this agent to use when registering itself with Consul.
+// ESM instances that share a service name/tag combination will evenly divide 
+// the work of running health checks and pings for any external nodes in the 
+// catalog amongst themselves.
+consul_service_tag = ""
+
+// The directory in the Consul KV store to use for storing runtime data.
+consul_kv_path = "consul-esm/"
 
 // The node metadata values used for the ESM to qualify a node in the catalog
 // as an "external node".

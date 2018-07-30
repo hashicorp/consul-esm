@@ -27,6 +27,7 @@ type Config struct {
 
 	Service string
 	Tag     string
+	KVPath  string
 
 	NodeMeta                 map[string]string
 	Interval                 time.Duration
@@ -85,6 +86,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		LogLevel: "INFO",
 		Service:  "consul-esm",
+		KVPath:   "consul-esm/",
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
@@ -102,9 +104,10 @@ type HumanConfig struct {
 	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
 	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
 
-	Service   flags.StringValue   `mapstructure:"consul_service"`
-	LeaderKey flags.StringValue   `mapstructure:"consul_leader_key"`
-	NodeMeta  []map[string]string `mapstructure:"external_node_meta"`
+	Service  flags.StringValue   `mapstructure:"consul_service"`
+	Tag      flags.StringValue   `mapstructure:"consul_service_tag"`
+	KVPath   flags.StringValue   `mapstructure:"consul_kv_path"`
+	NodeMeta []map[string]string `mapstructure:"external_node_meta"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
 
@@ -237,6 +240,8 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 func MergeConfig(dst *Config, src *HumanConfig) {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.Service.Merge(&dst.Service)
+	src.Tag.Merge(&dst.Tag)
+	src.KVPath.Merge(&dst.KVPath)
 	if len(src.NodeMeta) == 1 {
 		dst.NodeMeta = src.NodeMeta[0]
 	}

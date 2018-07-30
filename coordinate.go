@@ -59,27 +59,23 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 
 		// Get the critical status of the node.
 		kvClient := a.client.KV()
-		key := fmt.Sprintf("%s/%s", a.config.Service, node.Node)
+		key := fmt.Sprintf("%s/%s", a.config.KVPath, node.Node)
 		kvPair, _, err := kvClient.Get(key, nil)
 		if err != nil {
 			a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
 		}
 
 		// Run an ICMP ping to the node.
-		a.logger.Printf("[DEBUG] pinging for node %s", node.Node)
-
 		rtt, err := pingNode(node.Address, a.config.PingType)
 
 		// Update the node's health based on the results of the ping.
 		if err == nil {
-			a.logger.Printf("[DEBUG] started updating health for node %s", node.Node)
 			if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
 				a.logger.Printf("[WARN] error updating node: %v", err)
 			}
 			if err := a.updateNodeCoordinate(node, rtt); err != nil {
 				a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
 			}
-			a.logger.Printf("[DEBUG] updated health for node %s", node.Node)
 		} else {
 			a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
 			if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {

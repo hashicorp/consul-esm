@@ -13,6 +13,8 @@ func TestDecodeMergeConfig(t *testing.T) {
 	raw := bytes.NewBufferString(`
 log_level = "INFO"
 consul_service = "service"
+consul_service_tag = "asdf"
+consul_kv_path = "custom-esm/"
 node_reconnect_timeout = "22s"
 external_node_meta {
 	a = "1"
@@ -32,6 +34,8 @@ ping_type = "socket"
 	expected := &Config{
 		LogLevel:             "INFO",
 		Service:              "service",
+		Tag:                  "asdf",
+		KVPath:               "custom-esm/",
 		NodeReconnectTimeout: 22 * time.Second,
 		NodeMeta: map[string]string{
 			"a": "1",

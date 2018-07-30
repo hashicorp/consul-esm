@@ -298,7 +298,7 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, nodeListCh cha
 		}
 
 		opts.WaitIndex = meta.LastIndex
-		updateCh <- checks
+		updateCh <- ourChecks
 	}
 }
 
@@ -317,6 +317,7 @@ func (a *Agent) computeWatchedNodes(serviceID string, healthNodeCh chan map[stri
 
 	firstRun := make(chan struct{}, 1)
 	firstRun <- struct{}{}
+	prevCount := -1
 	for {
 		select {
 		case <-a.shutdownCh:
@@ -356,7 +357,10 @@ func (a *Agent) computeWatchedNodes(serviceID string, healthNodeCh chan map[stri
 			}
 		}
 
-		a.logger.Printf("[DEBUG] Now watching %d external nodes", len(healthCheckNodes))
+		if len(healthCheckNodes) != prevCount {
+			prevCount = len(healthCheckNodes)
+			a.logger.Printf("[INFO] Now watching %d external nodes", prevCount)
+		}
 
 		if a.watchedNodeFunc != nil {
 			a.watchedNodeFunc(healthCheckNodes, pingNodes)
@@ -426,7 +430,7 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry) {
 		case <-time.After(retryTime / 10):
 			// Sleep here to limit how much load we put on the Consul servers. We can
 			// wait a lot less than the normal retry time here because the ESM service instance
-			// list is small and cheap to query.
+			// list is relatively small and cheap to query.
 		}
 
 		healthyInstances, meta, err := a.client.Health().Service(a.config.Service, a.config.Tag, true, opts)
