@@ -19,9 +19,10 @@ const (
 	NodeCriticalStatus = "Node not live or unreachable"
 )
 
-// getExternalNodes is a long running goroutine that polls for
-// nodes registered in the catalog with the identifying node metadata
-// and updates the coordinate runner when there is a change.
+var (
+	// The maximum time to wait for a ping to complete.
+	MaxRTT = 5 * time.Second
+)
 
 // updateCoords is a long running goroutine that pings an external node
 // once per interval and updates its coordinates and virtual health check
@@ -29,57 +30,70 @@ const (
 func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 	// Wait for the first node ordering
 	nodes := <-nodeCh
+	shuffleNodes(nodes)
 
-	// Shuffle the node ordering
-	for i := len(nodes) - 1; i >= 0; i-- {
-		j := rand.Intn(i + 1)
-		nodes[i], nodes[j] = nodes[j], nodes[i]
-	}
-
+	index := 0
 	for {
 		select {
+		// Shuffle the new slice of nodes when we get an update.
 		case nodes = <-nodeCh:
-		default:
+			shuffleNodes(nodes)
+			index = 0
+		case <-a.shutdownCh:
+			return
+		// Cycle through the nodes in shuffled order.
+		case <-time.After(a.config.CoordinateUpdateInterval):
+			index += 1
+			if index >= len(nodes) {
+				index = 0
+			}
 		}
 
 		if len(nodes) == 0 {
 			a.logger.Printf("[DEBUG] No nodes to probe, will retry in %s", retryTime.String())
 			time.Sleep(retryTime)
+			continue
 		}
 
-		for _, node := range nodes {
-			select {
-			case <-a.shutdownCh:
-				return
-			case <-time.After(a.config.CoordinateUpdateInterval):
+		node := nodes[index]
+
+		// Get the critical status of the node.
+		kvClient := a.client.KV()
+		key := fmt.Sprintf("%s/%s", a.config.Service, node.Node)
+		kvPair, _, err := kvClient.Get(key, nil)
+		if err != nil {
+			a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
+		}
+
+		// Run an ICMP ping to the node.
+		a.logger.Printf("[DEBUG] pinging for node %s", node.Node)
+
+		rtt, err := pingNode(node.Address, a.config.PingType)
+
+		// Update the node's health based on the results of the ping.
+		if err == nil {
+			a.logger.Printf("[DEBUG] started updating health for node %s", node.Node)
+			if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
+				a.logger.Printf("[WARN] error updating node: %v", err)
 			}
-
-			// Get the critical status of the node.
-			kvClient := a.client.KV()
-			key := fmt.Sprintf("%s/%s", a.config.Service, node.Node)
-			kvPair, _, err := kvClient.Get(key, nil)
-			if err != nil {
-				a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
+			if err := a.updateNodeCoordinate(node, rtt); err != nil {
+				a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
 			}
-
-			// Run an ICMP ping to the node.
-			rtt, err := pingNode(node.Address, a.config.PingType)
-
-			// Update the node's health based on the results of the ping.
-			if err == nil {
-				if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
-					a.logger.Printf("[WARN] error updating node: %v", err)
-				}
-				if err := a.updateNodeCoordinate(node, rtt); err != nil {
-					a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
-				}
-			} else {
-				a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
-				if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
-					a.logger.Printf("[WARN] error updating node: %v", err)
-				}
+			a.logger.Printf("[DEBUG] updated health for node %s", node.Node)
+		} else {
+			a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
+			if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
+				a.logger.Printf("[WARN] error updating node: %v", err)
 			}
 		}
+	}
+}
+
+// shuffleNodes randomizes the ordering of a slice of nodes.
+func shuffleNodes(nodes []*api.Node) {
+	for i := len(nodes) - 1; i >= 0; i-- {
+		j := rand.Intn(i + 1)
+		nodes[i], nodes[j] = nodes[j], nodes[i]
 	}
 }
 
@@ -248,7 +262,7 @@ func pingNode(addr string, method string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid ping type %q, should be impossible", method)
 	}
 
-	p.MaxRTT = 10 * time.Second
+	p.MaxRTT = MaxRTT
 	p.OnRecv = func(addr *net.IPAddr, responseTime time.Duration) {
 		rtt = responseTime
 	}

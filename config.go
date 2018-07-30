@@ -45,6 +45,9 @@ type Config struct {
 	TLSServerName string
 
 	PingType string
+
+	// Test-only fields.
+	id string
 }
 
 func (c *Config) ClientConfig() *api.Config {

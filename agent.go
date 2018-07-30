@@ -36,6 +36,9 @@ type Agent struct {
 
 	shutdownCh chan struct{}
 	shutdown   bool
+
+	// Custom func to hook into for testing.
+	watchedNodeFunc func(map[string]bool, []*api.Node)
 }
 
 func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
@@ -47,9 +50,12 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 
 	// Generate a unique ID for this agent so we can disambiguate different
 	// instances on the same host.
-	id, err := uuid.GenerateUUID()
-	if err != nil {
-		return nil, err
+	id := config.id
+	if id == "" {
+		id, err = uuid.GenerateUUID()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	agent := Agent{
@@ -334,6 +340,8 @@ func (a *Agent) computeWatchedNodes(serviceID string, healthNodeCh chan map[stri
 			continue
 		}
 
+		// Build a list of nodes this agent is responsible for the health checks of,
+		// as well as a filtered list of those nodes which have external-probe set.
 		healthCheckNodes := make(map[string]bool)
 		var pingNodes []*api.Node
 		for i := ourIndex; i < len(externalNodes); i += len(healthyInstances) {
@@ -349,6 +357,10 @@ func (a *Agent) computeWatchedNodes(serviceID string, healthNodeCh chan map[stri
 		}
 
 		a.logger.Printf("[DEBUG] Now watching %d external nodes", len(healthCheckNodes))
+
+		if a.watchedNodeFunc != nil {
+			a.watchedNodeFunc(healthCheckNodes, pingNodes)
+		}
 
 		healthNodeCh <- healthCheckNodes
 		pingNodeCh <- pingNodes
