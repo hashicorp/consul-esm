@@ -64,11 +64,10 @@ LEADER_WAIT:
 	}
 	a.logger.Printf("[INFO] Obtained leadership")
 
+	// Start a goroutine for computing the node watches.
 	go a.computeWatchedNodes(leaderCh)
 
-	// Set up watches for any external nodes and ESM service instances.
 	for {
-		// Wait for the next event.
 		select {
 		case <-leaderCh:
 			a.logger.Print("[WARN] Lost leadership")
@@ -95,17 +94,17 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	var prevHealthNodes map[string][]string
 	var prevPingNodes map[string][]string
 
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
+	firstRun := true
 	for {
-		select {
-		case <-stopCh:
-			return
-		case externalNodes = <-nodeCh:
-		case healthyInstances = <-instanceCh:
-		case <-firstRun:
-			// Skip the wait on the first run.
+		if !firstRun {
+			select {
+			case <-stopCh:
+				return
+			case externalNodes = <-nodeCh:
+			case healthyInstances = <-instanceCh:
+			}
 		}
+		firstRun = false
 
 		// Build a list of nodes each agent is responsible for.
 		healthNodes := make(map[string][]string)
@@ -148,8 +147,9 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 		if err != nil || !success {
 			a.logger.Printf("[ERR] Error writing state to KV store: %v, %v", err, results)
 			// Try again after the wait because we got an error.
-			firstRun <- struct{}{}
+			firstRun = true
 			time.Sleep(retryTime)
+			continue
 		}
 
 		// Log a message when the balancing changes.
@@ -174,17 +174,17 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 		cancelFunc()
 	}()
 
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
+	firstRun := true
 	for {
-		select {
-		case <-stopCh:
-			return
-		case <-firstRun:
-			// Skip the wait on the first run.
-		case <-time.After(retryTime):
-			// Sleep here to limit how much load we put on the Consul servers.
+		if !firstRun {
+			select {
+			case <-stopCh:
+				return
+			case <-time.After(retryTime):
+				// Sleep here to limit how much load we put on the Consul servers.
+			}
 		}
+		firstRun = false
 
 		// Do a blocking query for any external node changes
 		externalNodes, meta, err := a.client.Catalog().Nodes(opts)
@@ -202,7 +202,7 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 	}
 }
 
-// watchExternalNodes does a watch for any ESM instances with the same service tag as
+// watchServiceInstances does a watch for any ESM instances with the same service tag as
 // this agent and sends any updates back through instanceCh as a sorted list.
 func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopCh <-chan struct{}) {
 	var opts *api.QueryOptions

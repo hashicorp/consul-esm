@@ -255,16 +255,16 @@ func (a *Agent) watchNodeList() {
 		cancelFunc()
 	}()
 
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
+	firstRun := true
 	for {
-		select {
-		case <-a.shutdownCh:
-			return
-		case <-firstRun:
-			// Skip the wait on the first run.
-		case <-time.After(retryTime):
+		if !firstRun {
+			select {
+			case <-a.shutdownCh:
+				return
+			case <-time.After(retryTime):
+			}
 		}
+		firstRun = false
 
 		// Get the KV entry for this agent's node list.
 		kv, meta, err := a.client.KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
@@ -274,6 +274,7 @@ func (a *Agent) watchNodeList() {
 		}
 
 		if kv == nil {
+			opts.WaitIndex = meta.LastIndex
 			continue
 		}
 
@@ -340,19 +341,19 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 	defer checkRunner.Stop()
 
 	ourNodes := <-nodeListCh
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
+	firstRun := true
 	for {
-		select {
-		case <-a.shutdownCh:
-			return
-		case <-firstRun:
-			// Skip the wait on the first run.
-		case ourNodes = <-nodeListCh:
-			// Re-run if there's a change to the watched node list.
-		case <-time.After(retryTime):
-			// Sleep here to limit how much load we put on the Consul servers.
+		if !firstRun {
+			select {
+			case <-a.shutdownCh:
+				return
+			case ourNodes = <-nodeListCh:
+				// Re-run if there's a change to the watched node list.
+			case <-time.After(retryTime):
+				// Sleep here to limit how much load we put on the Consul servers.
+			}
 		}
+		firstRun = false
 
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {

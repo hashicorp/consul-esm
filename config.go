@@ -93,7 +93,7 @@ func DefaultConfig() *Config {
 		Interval:                 10 * time.Second,
 		DeregisterAfter:          72 * time.Hour,
 		CheckUpdateInterval:      5 * time.Minute,
-		CoordinateUpdateInterval: 1 * time.Second,
+		CoordinateUpdateInterval: 10 * time.Second,
 		NodeReconnectTimeout:     72 * time.Hour,
 		PingType:                 PingTypeUDP,
 	}
@@ -110,6 +110,7 @@ type HumanConfig struct {
 	NodeMeta []map[string]string `mapstructure:"external_node_meta"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
+	NodeProbeInterval    flags.DurationValue `mapstructure:"node_probe_interval"`
 
 	HTTPAddr      flags.StringValue `mapstructure:"http_addr"`
 	Token         flags.StringValue `mapstructure:"token"`
@@ -195,6 +196,10 @@ func ValidateConfig(conf *Config) error {
 		return fmt.Errorf("ping_type must be one of either \"udp\" or \"socket\"")
 	}
 
+	if conf.CoordinateUpdateInterval < time.Second {
+		return fmt.Errorf("node_probe_interval cannot be lower than 1 second.")
+	}
+
 	return nil
 }
 
@@ -250,6 +255,7 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 		dst.NodeMeta = src.NodeMeta[0]
 	}
 	src.NodeReconnectTimeout.Merge(&dst.NodeReconnectTimeout)
+	src.NodeProbeInterval.Merge(&dst.CoordinateUpdateInterval)
 	src.HTTPAddr.Merge(&dst.HTTPAddr)
 	src.Token.Merge(&dst.Token)
 	src.Datacenter.Merge(&dst.Datacenter)

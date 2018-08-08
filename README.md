@@ -153,6 +153,11 @@ external_node_meta {
 // pings.
 node_reconnect_timeout = "72h"
 
+// The interval to ping and update coordinates for external nodes that have
+// 'external-probe' set to true. By default, ESM will attempt to ping and
+// update the coordinates for all nodes it is watching every 10 seconds.
+node_probe_interval = "10s"
+
 // The address of the local Consul agent. Can also be provided through the
 // CONSUL_HTTP_ADDR environment variable.
 http_addr = "localhost:8500"

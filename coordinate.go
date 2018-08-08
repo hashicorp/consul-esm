@@ -34,6 +34,12 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 
 	index := 0
 	for {
+		// Cycle through all nodes every CoordinateUpdateInterval.
+		waitTime := a.config.CoordinateUpdateInterval
+		if len(nodes) > 0 {
+			waitTime = a.config.CoordinateUpdateInterval / time.Duration(len(nodes))
+		}
+
 		select {
 		// Shuffle the new slice of nodes when we get an update.
 		case nodes = <-nodeCh:
@@ -42,7 +48,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		case <-a.shutdownCh:
 			return
 		// Cycle through the nodes in shuffled order.
-		case <-time.After(a.config.CoordinateUpdateInterval):
+		case <-time.After(waitTime):
 			index += 1
 			if index >= len(nodes) {
 				index = 0
