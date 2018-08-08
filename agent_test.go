@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,17 +12,17 @@ import (
 	"github.com/hashicorp/consul/testutil/retry"
 )
 
-func TestAgent_registerServiceAndCheck(t *testing.T) {
-	t.Parallel()
-	s, err := testutil.NewTestServer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Stop()
-
+func testAgent(t *testing.T, cb func(*Config)) *Agent {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 	conf := DefaultConfig()
-	conf.HTTPAddr = s.HTTPAddr
+	conf.CoordinateUpdateInterval = 200 * time.Millisecond
+	if cb != nil {
+		cb(conf)
+	}
+
+	MaxRTT = 500 * time.Millisecond
+	retryTime = 200 * time.Millisecond
+
 	agent, err := NewAgent(conf, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +33,22 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	return agent
+}
+
+func TestAgent_registerServiceAndCheck(t *testing.T) {
+	t.Parallel()
+	s, err := testutil.NewTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	agent := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.Tag = "test"
+	})
 	defer agent.Shutdown()
 
 	// Lower these retry intervals
@@ -52,6 +69,9 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 			r.Fatalf("got %q, want %q", got, want)
 		}
 		if got, want := services[0].ServiceName, agent.config.Service; got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := services[0].ServiceTags, []string{"test"}; !reflect.DeepEqual(got, want) {
 			r.Fatalf("got %q, want %q", got, want)
 		}
 

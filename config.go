@@ -25,8 +25,9 @@ type Config struct {
 	EnableSyslog   bool
 	SyslogFacility string
 
-	Service   string
-	LeaderKey string
+	Service string
+	Tag     string
+	KVPath  string
 
 	NodeMeta                 map[string]string
 	Interval                 time.Duration
@@ -45,6 +46,9 @@ type Config struct {
 	TLSServerName string
 
 	PingType string
+
+	// Test-only fields.
+	id string
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -80,16 +84,16 @@ func (c *Config) ClientConfig() *api.Config {
 
 func DefaultConfig() *Config {
 	return &Config{
-		LogLevel:  "INFO",
-		Service:   "consul-esm",
-		LeaderKey: "consul-esm/lock",
+		LogLevel: "INFO",
+		Service:  "consul-esm",
+		KVPath:   "consul-esm/",
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
 		Interval:                 10 * time.Second,
 		DeregisterAfter:          72 * time.Hour,
 		CheckUpdateInterval:      5 * time.Minute,
-		CoordinateUpdateInterval: 1 * time.Second,
+		CoordinateUpdateInterval: 10 * time.Second,
 		NodeReconnectTimeout:     72 * time.Hour,
 		PingType:                 PingTypeUDP,
 	}
@@ -100,11 +104,13 @@ type HumanConfig struct {
 	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
 	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
 
-	Service   flags.StringValue   `mapstructure:"consul_service"`
-	LeaderKey flags.StringValue   `mapstructure:"consul_leader_key"`
-	NodeMeta  []map[string]string `mapstructure:"external_node_meta"`
+	Service  flags.StringValue   `mapstructure:"consul_service"`
+	Tag      flags.StringValue   `mapstructure:"consul_service_tag"`
+	KVPath   flags.StringValue   `mapstructure:"consul_kv_path"`
+	NodeMeta []map[string]string `mapstructure:"external_node_meta"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
+	NodeProbeInterval    flags.DurationValue `mapstructure:"node_probe_interval"`
 
 	HTTPAddr      flags.StringValue `mapstructure:"http_addr"`
 	Token         flags.StringValue `mapstructure:"token"`
@@ -170,6 +176,10 @@ func BuildConfig(configFiles []string) (*Config, error) {
 		return nil, fmt.Errorf("Error loading config: %v", err)
 	}
 
+	if !strings.HasSuffix(config.KVPath, "/") {
+		config.KVPath = config.KVPath + "/"
+	}
+
 	if err := ValidateConfig(config); err != nil {
 		return nil, fmt.Errorf("Error parsing config: %v", err)
 	}
@@ -184,6 +194,10 @@ func ValidateConfig(conf *Config) error {
 		break
 	default:
 		return fmt.Errorf("ping_type must be one of either \"udp\" or \"socket\"")
+	}
+
+	if conf.CoordinateUpdateInterval < time.Second {
+		return fmt.Errorf("node_probe_interval cannot be lower than 1 second.")
 	}
 
 	return nil
@@ -235,11 +249,13 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 func MergeConfig(dst *Config, src *HumanConfig) {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.Service.Merge(&dst.Service)
-	src.LeaderKey.Merge(&dst.LeaderKey)
+	src.Tag.Merge(&dst.Tag)
+	src.KVPath.Merge(&dst.KVPath)
 	if len(src.NodeMeta) == 1 {
 		dst.NodeMeta = src.NodeMeta[0]
 	}
 	src.NodeReconnectTimeout.Merge(&dst.NodeReconnectTimeout)
+	src.NodeProbeInterval.Merge(&dst.CoordinateUpdateInterval)
 	src.HTTPAddr.Merge(&dst.HTTPAddr)
 	src.Token.Merge(&dst.Token)
 	src.Datacenter.Merge(&dst.Datacenter)
