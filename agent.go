@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-uuid"
 )
+
+const LeaderKey = "leader"
 
 var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
@@ -85,25 +87,29 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 
 func (a *Agent) Run() error {
 	// Do the initial service registration.
-	serviceID := fmt.Sprintf("%s:%s", a.config.Service, a.id)
-	if err := a.register(serviceID); err != nil {
+	if err := a.register(); err != nil {
 		return err
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		a.runRegister(serviceID)
+		a.runRegister()
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		a.runTTL(serviceID)
+		a.runTTL()
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		a.runHealthChecks(serviceID)
+		a.watchNodeList()
+		wg.Done()
+	}()
+	wg.Add(1)
+	go func() {
+		a.runLeaderLoop()
 		wg.Done()
 	}()
 
@@ -112,8 +118,8 @@ func (a *Agent) Run() error {
 	wg.Wait()
 
 	// Clean up.
-	if err := a.client.Agent().ServiceDeregister(serviceID); err != nil {
-		return err
+	if err := a.client.Agent().ServiceDeregister(a.serviceID()); err != nil {
+		a.logger.Printf("[WARN] Failed to deregister service: %v", err)
 	}
 
 	return nil
@@ -126,10 +132,14 @@ func (a *Agent) Shutdown() {
 	}
 }
 
+func (a *Agent) serviceID() string {
+	return fmt.Sprintf("%s:%s", a.config.Service, a.id)
+}
+
 // register is used to register this agent with Consul service discovery.
-func (a *Agent) register(serviceID string) error {
+func (a *Agent) register() error {
 	service := &api.AgentServiceRegistration{
-		ID:   serviceID,
+		ID:   a.serviceID(),
 		Name: a.config.Service,
 	}
 	if a.config.Tag != "" {
@@ -144,7 +154,8 @@ func (a *Agent) register(serviceID string) error {
 
 // runRegister is a long-running goroutine that ensures this agent is registered
 // with Consul's service discovery. It will run until the shutdownCh is closed.
-func (a *Agent) runRegister(serviceID string) {
+func (a *Agent) runRegister() {
+	serviceID := a.serviceID()
 	for {
 	REGISTER_CHECK:
 		select {
@@ -161,7 +172,7 @@ func (a *Agent) runRegister(serviceID string) {
 
 			if _, ok := services[serviceID]; !ok {
 				a.logger.Printf("[WARN] Service registration was lost, reregistering")
-				if err := a.register(serviceID); err != nil {
+				if err := a.register(); err != nil {
 					a.logger.Printf("[ERR] Failed to reregister service (will retry): %v", err)
 					time.Sleep(retryTime)
 					goto REGISTER_CHECK
@@ -173,7 +184,8 @@ func (a *Agent) runRegister(serviceID string) {
 
 // runTTL is a long-running goroutine that registers an "agent alive" TTL health
 // check and services it periodically. It will run until the shutdownCh is closed.
-func (a *Agent) runTTL(serviceID string) {
+func (a *Agent) runTTL() {
+	serviceID := a.serviceID()
 	ttlID := fmt.Sprintf("%s:agent-ttl", serviceID)
 
 REGISTER:
@@ -217,48 +229,100 @@ REGISTER:
 	}
 }
 
-// runHealthChecks is the top-level goroutine responsible for running the
-// node and health check watches and using those updates to inform the health check runner
+// watchNodeList is the top-level goroutine responsible for watching this agent's
+// node list in the KV store and using those updates to inform the health check runner
 // and node pinger.
-func (a *Agent) runHealthChecks(serviceID string) {
+func (a *Agent) watchNodeList() {
 	// Set up the update channels for the various goroutines.
 	healthNodeCh := make(chan map[string]bool, 1)
 	coordNodeCh := make(chan []*api.Node, 1)
-	updateCh := make(chan api.HealthChecks, 0)
-
-	// Start a goroutine to compute the nodes that this agent should be responsible for,
-	// based on the currently healthy ESM instances with the same service tag as this agent.
-	go a.computeWatchedNodes(serviceID, healthNodeCh, coordNodeCh)
 
 	// Start a goroutine to get health check updates from the catalog, filtering them using
 	// the results from computeWatchedNodes.
-	go a.watchHealthChecks(updateCh, healthNodeCh)
+	go a.watchHealthChecks(healthNodeCh)
 
 	// Start a goroutine to run the pings used for coordinate and externalNodeHealth updates
 	// on the nodes returned from computeWatchedNodes.
 	go a.updateCoords(coordNodeCh)
 
-	// Start a check runner to track and run the health checks we're responsible for and call
-	// UpdateChecks when we get an update from watchHealthChecks.
-	checkRunner := NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
-	go checkRunner.reapServices(a.shutdownCh)
-	defer checkRunner.Stop()
+	// Watch the node list at the KV path for our service ID. This will return the list
+	// of external nodes that this agent is responsible for as decided by the leader.
+	var opts *api.QueryOptions
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	opts = opts.WithContext(ctx)
+	go func() {
+		<-a.shutdownCh
+		cancelFunc()
+	}()
 
+	firstRun := make(chan struct{}, 1)
+	firstRun <- struct{}{}
 	for {
-		// Wait for the next event.
 		select {
-		case checks := <-updateCh:
-			checkRunner.UpdateChecks(checks)
 		case <-a.shutdownCh:
 			return
+		case <-firstRun:
+			// Skip the wait on the first run.
+		case <-time.After(retryTime):
 		}
+
+		// Get the KV entry for this agent's node list.
+		kv, meta, err := a.client.KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
+		if err != nil {
+			a.logger.Printf("[WARN] Error querying for node watch list: %v", err)
+			continue
+		}
+
+		if kv == nil {
+			continue
+		}
+
+		var nodeList NodeWatchList
+		if err := json.Unmarshal(kv.Value, &nodeList); err != nil {
+			a.logger.Printf("[WARN] Error deserializing node list: %v", err)
+		}
+
+		// Format the node lists for the health check/ping runners.
+		healthNodes := make(map[string]bool)
+		pingNodes := make(map[string]bool)
+		for _, node := range nodeList.Nodes {
+			healthNodes[node] = true
+		}
+		for _, node := range nodeList.Probes {
+			healthNodes[node] = true
+			pingNodes[node] = true
+		}
+
+		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{NodeMeta: a.config.NodeMeta})
+		if err != nil {
+			a.logger.Printf("[WARN] Error querying for node list: %v", err)
+			continue
+		}
+
+		var pingList []*api.Node
+		for _, node := range nodes {
+			if pingNodes[node.Node] {
+				pingList = append(pingList, node)
+			}
+		}
+
+		healthNodeCh <- healthNodes
+		coordNodeCh <- pingList
+
+		opts.WaitIndex = meta.LastIndex
 	}
+}
+
+// kvNodeListPath returns the path to the KV directory where the list of nodes
+// for each agent to watch are written.
+func (a *Agent) kvNodeListPath() string {
+	return a.config.KVPath + "agents/"
 }
 
 // watchHealthChecks does a blocking query to the Consul api to get
 // all health checks on nodes marked with the external node metadata
 // identifier and sends any updates through the given updateCh.
-func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, nodeListCh chan map[string]bool) {
+func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
 	}
@@ -268,6 +332,12 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, nodeListCh cha
 		<-a.shutdownCh
 		cancelFunc()
 	}()
+
+	// Start a check runner to track and run the health checks we're responsible for and call
+	// UpdateChecks when we get an update from watchHealthChecks.
+	checkRunner := NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
+	go checkRunner.reapServices(a.shutdownCh)
+	defer checkRunner.Stop()
 
 	ourNodes := <-nodeListCh
 	firstRun := make(chan struct{}, 1)
@@ -298,152 +368,6 @@ func (a *Agent) watchHealthChecks(updateCh chan api.HealthChecks, nodeListCh cha
 		}
 
 		opts.WaitIndex = meta.LastIndex
-		updateCh <- ourChecks
-	}
-}
-
-// computeWatchedNodes watches both the list of registered ESM instances and the list of
-// external nodes registered in Consul and decides which nodes the local agent should be
-// in charge of in a deterministic way.
-func (a *Agent) computeWatchedNodes(serviceID string, healthNodeCh chan map[string]bool, pingNodeCh chan []*api.Node) {
-	nodeCh := make(chan []*api.Node)
-	instanceCh := make(chan []*api.ServiceEntry)
-
-	go a.watchExternalNodes(nodeCh)
-	go a.watchServiceInstances(instanceCh)
-
-	externalNodes := <-nodeCh
-	healthyInstances := <-instanceCh
-
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
-	prevCount := -1
-	for {
-		select {
-		case <-a.shutdownCh:
-			return
-		case externalNodes = <-nodeCh:
-		case healthyInstances = <-instanceCh:
-		case <-firstRun:
-			// Skip the wait on the first run.
-		}
-
-		// Get our "index" in the list of sorted service instances
-		ourIndex := -1
-		for i, instance := range healthyInstances {
-			if instance.Service.ID == serviceID {
-				ourIndex = i
-				break
-			}
-		}
-		if ourIndex == -1 {
-			a.logger.Printf("[WARN] Didn't register service with Consul yet, retrying...")
-			continue
-		}
-
-		// Build a list of nodes this agent is responsible for the health checks of,
-		// as well as a filtered list of those nodes which have external-probe set.
-		healthCheckNodes := make(map[string]bool)
-		var pingNodes []*api.Node
-		for i := ourIndex; i < len(externalNodes); i += len(healthyInstances) {
-			node := externalNodes[i]
-			healthCheckNodes[node.Node] = true
-
-			if node.Meta == nil {
-				continue
-			}
-			if _, ok := node.Meta["external-probe"]; ok {
-				pingNodes = append(pingNodes, node)
-			}
-		}
-
-		if len(healthCheckNodes) != prevCount {
-			prevCount = len(healthCheckNodes)
-			a.logger.Printf("[INFO] Now watching %d external nodes", prevCount)
-		}
-
-		if a.watchedNodeFunc != nil {
-			a.watchedNodeFunc(healthCheckNodes, pingNodes)
-		}
-
-		healthNodeCh <- healthCheckNodes
-		pingNodeCh <- pingNodes
-	}
-}
-
-// watchExternalNodes does a watch for external nodes and returns any updates
-// back through nodeCh as a sorted list.
-func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node) {
-	opts := &api.QueryOptions{
-		NodeMeta: a.config.NodeMeta,
-	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts = opts.WithContext(ctx)
-	go func() {
-		<-a.shutdownCh
-		cancelFunc()
-	}()
-
-	firstRun := make(chan struct{}, 1)
-	firstRun <- struct{}{}
-	for {
-		select {
-		case <-a.shutdownCh:
-			return
-		case <-firstRun:
-			// Skip the wait on the first run.
-		case <-time.After(retryTime):
-			// Sleep here to limit how much load we put on the Consul servers.
-		}
-
-		// Do a blocking query for any external node changes
-		externalNodes, meta, err := a.client.Catalog().Nodes(opts)
-		if err != nil {
-			a.logger.Printf("[WARN] Error getting external node list: %v", err)
-			continue
-		}
-		sort.Slice(externalNodes, func(a, b int) bool {
-			return externalNodes[a].Node < externalNodes[b].Node
-		})
-
-		opts.WaitIndex = meta.LastIndex
-
-		nodeCh <- externalNodes
-	}
-}
-
-// watchExternalNodes does a watch for any ESM instances with the same service tag as
-// this agent and sends any updates back through instanceCh as a sorted list.
-func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry) {
-	var opts *api.QueryOptions
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts = opts.WithContext(ctx)
-	go func() {
-		<-a.shutdownCh
-		cancelFunc()
-	}()
-
-	for {
-		select {
-		case <-a.shutdownCh:
-			return
-		case <-time.After(retryTime / 10):
-			// Sleep here to limit how much load we put on the Consul servers. We can
-			// wait a lot less than the normal retry time here because the ESM service instance
-			// list is relatively small and cheap to query.
-		}
-
-		healthyInstances, meta, err := a.client.Health().Service(a.config.Service, a.config.Tag, true, opts)
-		if err != nil {
-			a.logger.Printf("[WARN] Error querying for health check info: %v", err)
-			continue
-		}
-		sort.Slice(healthyInstances, func(a, b int) bool {
-			return healthyInstances[a].Service.ID < healthyInstances[b].Service.ID
-		})
-
-		opts.WaitIndex = meta.LastIndex
-
-		instanceCh <- healthyInstances
+		checkRunner.UpdateChecks(checks)
 	}
 }

@@ -88,6 +88,7 @@ func main() {
 	}
 	ui.Info(fmt.Sprintf("               Service: %q", config.Service))
 	ui.Info(fmt.Sprintf("           Service Tag: %q", config.Tag))
+	ui.Info(fmt.Sprintf("            Service ID: %q", agent.serviceID()))
 	ui.Info(fmt.Sprintf("Node Reconnect Timeout: %q", config.NodeReconnectTimeout.String()))
 
 	ui.Info("")

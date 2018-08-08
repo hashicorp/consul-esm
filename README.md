@@ -104,6 +104,7 @@ Consul ESM running!
             Datacenter: "dc1"
                Service: "consul-esm"
            Service Tag: ""
+            Service ID: "consul-esm:5a6411b3-1c41-f272-b719-99b4f958fa97"
 Node Reconnect Timeout: "72h"
 
 Log data will now stream in as it occurs:
@@ -134,9 +135,9 @@ syslog_facility = ""
 consul_service = "consul-esm"
 
 // The service tag for this agent to use when registering itself with Consul.
-// ESM instances that share a service name/tag combination will evenly divide 
-// the work of running health checks and pings for any external nodes in the 
-// catalog amongst themselves.
+// ESM instances that share a service name/tag combination will have the work
+// of running health checks and pings for any external nodes in the catalog 
+// divided evenly amongst themselves.
 consul_service_tag = ""
 
 // The directory in the Consul KV store to use for storing runtime data.

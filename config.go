@@ -175,6 +175,10 @@ func BuildConfig(configFiles []string) (*Config, error) {
 		return nil, fmt.Errorf("Error loading config: %v", err)
 	}
 
+	if !strings.HasSuffix(config.KVPath, "/") {
+		config.KVPath = config.KVPath + "/"
+	}
+
 	if err := ValidateConfig(config); err != nil {
 		return nil, fmt.Errorf("Error parsing config: %v", err)
 	}
