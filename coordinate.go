@@ -162,7 +162,16 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 
 // updateNodeCheck updates the node's externalNodeHealth check with the given status/output.
 func (a *Agent) updateNodeCheck(node *api.Node, status, output string) error {
-	_, err := a.client.Catalog().Register(&api.CatalogRegistration{
+	// Exit early if the node's been deregistered since we started the probe.
+	existing, _, err := a.client.Catalog().Node(node.Node, nil)
+	if err != nil {
+		return fmt.Errorf("error retrieving existing node entry: %v", err)
+	}
+	if existing == nil {
+		return nil
+	}
+
+	_, err = a.client.Catalog().Register(&api.CatalogRegistration{
 		Node: node.Node,
 		Check: &api.AgentCheck{
 			CheckID: externalCheckName,

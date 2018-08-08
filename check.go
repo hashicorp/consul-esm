@@ -183,6 +183,16 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 // handleCheckUpdate writes a check's status to the catalog and updates the local check state.
 // Should only be called when the lock is held.
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
+	// Exit early if the node's been deregistered.
+	existing, _, err := c.client.Catalog().Node(check.Node, nil)
+	if err != nil {
+		c.logger.Printf("[WARN] error retrieving existing node entry: %v", err)
+		return
+	}
+	if existing == nil {
+		return
+	}
+
 	reg := &api.CatalogRegistration{
 		Node: check.Node,
 		Check: &api.AgentCheck{
@@ -197,7 +207,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		},
 		SkipNodeUpdate: true,
 	}
-	_, err := c.client.Catalog().Register(reg, nil)
+	_, err = c.client.Catalog().Register(reg, nil)
 	if err != nil {
 		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)
 		return
