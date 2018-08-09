@@ -134,7 +134,7 @@ func (a *Agent) register(serviceID string) error {
 	if err := a.client.Agent().ServiceRegister(service); err != nil {
 		return err
 	}
-	a.logger.Printf("[DEBUG] Registering in Consul")
+	a.logger.Printf("[DEBUG] Registered ESM service with Consul")
 
 	return nil
 }
