@@ -1,8 +1,9 @@
-## v0.3.0
+## v0.3.0 (August 9, 2018)
 
 IMPROVEMENTS:
 
   * The work of health checking and node probing will now be divided up amongst all ESM agents that share a `consul_service`/`consul_service_tag`/`consul_kv_path` combination. This is done by the leader using the KV store for coordination. The `consul_leader_key` field has been replaced by `consul_kv_path`, which is a path to a KV directory for a coordinating set of ESM nodes to share.
+  * Added the `node_probe_interval` config field for controlling how often ESM will attempt to probe each external node.
   * Check definitions can now be updated in-place. [GH-17]
 
 BUG FIXES:
