@@ -13,8 +13,10 @@ func TestDecodeMergeConfig(t *testing.T) {
 	raw := bytes.NewBufferString(`
 log_level = "INFO"
 consul_service = "service"
-consul_leader_key = "key"
+consul_service_tag = "asdf"
+consul_kv_path = "custom-esm/"
 node_reconnect_timeout = "22s"
+node_probe_interval = "12s"
 external_node_meta {
 	a = "1"
 	b = "2"
@@ -31,10 +33,12 @@ ping_type = "socket"
 `)
 
 	expected := &Config{
-		LogLevel:             "INFO",
-		Service:              "service",
-		LeaderKey:            "key",
-		NodeReconnectTimeout: 22 * time.Second,
+		LogLevel:                 "INFO",
+		Service:                  "service",
+		Tag:                      "asdf",
+		KVPath:                   "custom-esm/",
+		NodeReconnectTimeout:     22 * time.Second,
+		CoordinateUpdateInterval: 12 * time.Second,
 		NodeMeta: map[string]string{
 			"a": "1",
 			"b": "2",
@@ -73,12 +77,16 @@ func TestValidateConfig(t *testing.T) {
 			raw: `ping_type = "socket"`,
 			err: "",
 		},
+		{
+			raw: `node_probe_interval = "500ms"`,
+			err: "node_probe_interval cannot be lower than 1 second",
+		},
 	}
 
 	for _, tc := range cases {
 		buf := bytes.NewBufferString(tc.raw)
 
-		result := &Config{}
+		result := DefaultConfig()
 		humanConfig, err := DecodeConfig(buf)
 		if err != nil {
 			t.Fatal(err)

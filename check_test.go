@@ -115,6 +115,9 @@ func TestTCPCheck(t *testing.T) {
 	// Make sure the health has been updated to passing
 	retry.Run(t, func(r *retry.R) {
 		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+		if err != nil {
+			r.Fatal(err)
+		}
 		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
 			r.Fatalf("bad: %v", checks[0])
 		}

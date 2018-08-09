@@ -8,7 +8,7 @@ GOARCH=$(shell go env GOARCH)
 GOPATH=$(shell go env GOPATH)
 
 # Project information
-GOVERSION := 1.9.2
+GOVERSION := 1.10
 PROJECT := $(CURRENT_DIR:$(GOPATH)/src/%=%)
 NAME := $(notdir $(PROJECT))
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
@@ -75,7 +75,7 @@ $(foreach goarch,$(XC_ARCH),$(foreach goos,$(XC_OS),$(eval $(call make-xc-target
 
 # dev builds and installs the project locally.
 dev:
-	@echo "==> Installing consul-esm for ${GOOS}/${GOARCH}"
+	@echo "==> Installing ${NAME} for ${GOOS}/${GOARCH}"
 	@rm -f "${GOPATH}/pkg/${GOOS}_${GOARCH}/${PROJECT}/version.a"
 	mkdir -p pkg/$(GOOS)_$(GOARCH)/ bin/
 	go install -ldflags '$(LD_FLAGS)' -tags '$(GOTAGS)'
