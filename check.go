@@ -97,7 +97,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					data.Timeout == http.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
 					continue
 				}
-				c.logger.Printf("[INFO] Update HTTP check %q", checkHash)
+				c.logger.Printf("[INFO] Updating HTTP check %q", checkHash)
 				if c.checks[checkHash].Definition.HTTP != "" {
 					httpCheck := c.checksHTTP[checkHash]
 					httpCheck.Stop()
@@ -129,7 +129,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					data.Timeout == tcp.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
 					continue
 				}
-				c.logger.Printf("[INFO] Update TCP check %q", checkHash)
+				c.logger.Printf("[INFO] Updating TCP check %q", checkHash)
 				if c.checks[checkHash].Definition.TCP != "" {
 					tcpCheck := c.checksTCP[checkHash]
 					tcpCheck.Stop()
@@ -308,5 +308,8 @@ func (c *CheckRunner) reapServicesInternal() {
 }
 
 func checkHash(check *api.HealthCheck) types.CheckID {
+	if check.ServiceID != "" {
+		return types.CheckID(fmt.Sprintf("%s/%s/%s", check.Node, check.ServiceID, check.CheckID))
+	}
 	return types.CheckID(fmt.Sprintf("%s/%s", check.Node, check.CheckID))
 }
