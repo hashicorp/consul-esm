@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -74,9 +75,6 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 		checkHash := checkHash(check)
 		found[checkHash] = struct{}{}
-		if _, ok := c.checks[checkHash]; ok {
-			continue
-		}
 
 		definition := check.Definition
 		if definition.HTTP != "" {
@@ -92,6 +90,27 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Logger:        c.logger,
 			}
 
+			if _, ok := c.checks[checkHash]; ok {
+				if data, ok := c.checksHTTP[checkHash]; ok && data.HTTP == http.HTTP &&
+					reflect.DeepEqual(data.Header, http.Header) && data.Method == http.Method &&
+					data.TLSSkipVerify == http.TLSSkipVerify && data.Interval == http.Interval &&
+					data.Timeout == http.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+					continue
+				}
+				c.logger.Printf("[INFO] Update HTTP check %q", checkHash)
+				if c.checks[checkHash].Definition.HTTP != "" {
+					httpCheck := c.checksHTTP[checkHash]
+					httpCheck.Stop()
+				} else {
+					if _, ok := c.checksTCP[checkHash]; !ok {
+						c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
+						continue
+					}
+					tcpCheck := c.checksTCP[checkHash]
+					tcpCheck.Stop()
+					delete(c.checksTCP, checkHash)
+				}
+			}
 			http.Start()
 			c.checksHTTP[checkHash] = http
 		} else if definition.TCP != "" {
@@ -104,6 +123,26 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Logger:   c.logger,
 			}
 
+			if _, ok := c.checks[checkHash]; ok {
+				if data, ok := c.checksTCP[checkHash]; ok &&
+					data.TCP == tcp.TCP && data.Interval == tcp.Interval &&
+					data.Timeout == tcp.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+					continue
+				}
+				c.logger.Printf("[INFO] Update TCP check %q", checkHash)
+				if c.checks[checkHash].Definition.TCP != "" {
+					tcpCheck := c.checksTCP[checkHash]
+					tcpCheck.Stop()
+				} else {
+					if _, ok := c.checksHTTP[checkHash]; !ok {
+						c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
+						continue
+					}
+					httpCheck := c.checksHTTP[checkHash]
+					httpCheck.Stop()
+					delete(c.checksHTTP, checkHash)
+				}
+			}
 			tcp.Start()
 			c.checksTCP[checkHash] = tcp
 		} else {
