@@ -70,7 +70,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		if err != nil {
 			a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
 		}
-    a.logger.Printf("[TRACE] Getting KV entry for key: %s", key)
+		a.logger.Printf("[TRACE] Getting KV entry for key: %s", key)
 
 		// Run an ICMP ping to the node.
 		rtt, err := pingNode(node.Address, a.config.PingType)
@@ -253,6 +253,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 		return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
 	}
 	a.logger.Printf("[TRACE] Updated coordinates for node %q", node.Node)
+
 	return nil
 }
 

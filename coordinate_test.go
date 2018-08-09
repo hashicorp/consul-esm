@@ -36,7 +36,7 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent := &Agent{client: client}
+	agent := &Agent{client: client, logger: log.New(os.Stdout, "", log.LstdFlags)}
 	agent.updateNodeCoordinate(&api.Node{Node: "external"}, 1*time.Second)
 
 	var coords []*api.CoordinateEntry
@@ -75,7 +75,7 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent := &Agent{client: client}
+	agent := &Agent{client: client, logger: log.New(os.Stdout, "", log.LstdFlags)}
 	if err := agent.updateFailedNode(&api.Node{Node: "external"}, client.KV(), "testkey", nil); err != nil {
 		t.Fatal(err)
 	}

@@ -85,7 +85,7 @@ dev:
 
 test:
 	@echo "==> Testing ${NAME}"
-	@go test -timeout=30s -parallel=20 -tags="${GOTAGS}" ${GOFILES} ${TESTARGS}
+	@go test -timeout=30s -tags="${GOTAGS}" ${GOFILES} ${TESTARGS}
 .PHONY: test
 
 # dist builds the binaries and then signs and packages them for distribution
