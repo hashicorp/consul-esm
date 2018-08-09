@@ -370,6 +370,6 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 		}
 
 		opts.WaitIndex = meta.LastIndex
-		checkRunner.UpdateChecks(checks)
+		checkRunner.UpdateChecks(ourChecks)
 	}
 }
