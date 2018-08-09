@@ -33,10 +33,42 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 
 		verify.Values(r, "", nodeList.Nodes, expectedHealthNodes)
 		verify.Values(r, "", nodeList.Probes, expectedProbeNodes)
+
+		// Now ensure the check runner is watching the correct checks.
+		checks, _, err := a.client.Health().State(api.HealthAny, nil)
+		if err != nil {
+			r.Fatalf("error querying for health check info: %v", err)
+		}
+
+		// Combine the node lists.
+		ourChecks := make(api.HealthChecks, 0)
+		ourNodes := make(map[string]bool)
+		for _, node := range append(expectedHealthNodes, expectedProbeNodes...) {
+			ourNodes[node] = true
+		}
+		for _, c := range checks {
+			if ourNodes[c.Node] && c.CheckID != externalCheckName {
+				ourChecks = append(ourChecks, c)
+			}
+		}
+
+		// Make sure the check runner is watching all the health checks on the
+		// expected nodes and nothing else.
+		a.checkRunner.RLock()
+		defer a.checkRunner.RUnlock()
+		for _, check := range ourChecks {
+			hash := checkHash(check)
+			if _, ok := a.checkRunner.checks[hash]; !ok {
+				r.Fatalf("missing check %v", hash)
+			}
+		}
+		if len(ourChecks) != len(a.checkRunner.checks) {
+			r.Fatalf("checks do not match: %+v, %+v", ourChecks, a.checkRunner.checks)
+		}
 	})
 }
 
-func TestAgent_rebalanceHealthWatches(t *testing.T) {
+func TestLeader_rebalanceHealthWatches(t *testing.T) {
 	t.Parallel()
 	s, err := testutil.NewTestServer()
 	if err != nil {
@@ -122,7 +154,7 @@ func TestAgent_rebalanceHealthWatches(t *testing.T) {
 	agent3.verifyUpdates(t, []string{"node4"}, []string{"node2"})
 }
 
-func TestAgent_divideCoordinates(t *testing.T) {
+func TestLeader_divideCoordinates(t *testing.T) {
 	if os.Getenv("TRAVIS") == "true" {
 		t.Skip("skip this test in Travis as pings aren't supported")
 	}
@@ -230,7 +262,7 @@ func TestAgent_divideCoordinates(t *testing.T) {
 	})
 }
 
-func TestAgent_divideHealthChecks(t *testing.T) {
+func TestLeader_divideHealthChecks(t *testing.T) {
 	t.Parallel()
 	s, err := testutil.NewTestServer()
 	if err != nil {

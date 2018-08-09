@@ -31,10 +31,11 @@ var (
 )
 
 type Agent struct {
-	config *Config
-	client *api.Client
-	logger *log.Logger
-	id     string
+	config      *Config
+	client      *api.Client
+	logger      *log.Logger
+	checkRunner *CheckRunner
+	id          string
 
 	shutdownCh chan struct{}
 	shutdown   bool
@@ -265,7 +266,6 @@ func (a *Agent) watchNodeList() {
 			case <-time.After(retryTime):
 			}
 		}
-		firstRun = false
 
 		// Get the KV entry for this agent's node list.
 		kv, meta, err := a.client.KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
@@ -274,10 +274,13 @@ func (a *Agent) watchNodeList() {
 			continue
 		}
 
+		// If the KV entry wasn't created yet, retry immediately (without setting
+		// firstRun = false) so that we can get an update as soon as it's created.
 		if kv == nil {
 			opts.WaitIndex = meta.LastIndex
 			continue
 		}
+		firstRun = false
 
 		var nodeList NodeWatchList
 		if err := json.Unmarshal(kv.Value, &nodeList); err != nil {
@@ -337,11 +340,12 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	checkRunner := NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
-	go checkRunner.reapServices(a.shutdownCh)
-	defer checkRunner.Stop()
+	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
+	go a.checkRunner.reapServices(a.shutdownCh)
+	defer a.checkRunner.Stop()
 
 	ourNodes := <-nodeListCh
+	checkCount := 0
 	firstRun := true
 	for {
 		if !firstRun {
@@ -364,12 +368,17 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 		ourChecks := make(api.HealthChecks, 0)
 		for _, c := range checks {
-			if ourNodes[c.Node] {
+			if ourNodes[c.Node] && c.CheckID != externalCheckName {
 				ourChecks = append(ourChecks, c)
 			}
 		}
 
 		opts.WaitIndex = meta.LastIndex
-		checkRunner.UpdateChecks(ourChecks)
+		a.checkRunner.UpdateChecks(ourChecks)
+
+		if checkCount != len(ourChecks) {
+			checkCount = len(ourChecks)
+			a.logger.Printf("[INFO] Now managing %d health checks across %d nodes", checkCount, len(ourNodes))
+		}
 	}
 }

@@ -33,6 +33,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 	shuffleNodes(nodes)
 
 	index := 0
+	nodeCount := 0
 	for {
 		// Cycle through all nodes every CoordinateUpdateInterval.
 		waitTime := a.config.CoordinateUpdateInterval
@@ -53,6 +54,11 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 			if index >= len(nodes) {
 				index = 0
 			}
+		}
+
+		if nodeCount != len(nodes) {
+			nodeCount = len(nodes)
+			a.logger.Printf("[INFO] Now running probes for %d external nodes", nodeCount)
 		}
 
 		if len(nodes) == 0 {
