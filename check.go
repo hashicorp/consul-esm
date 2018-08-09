@@ -212,6 +212,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)
 		return
 	}
+	c.logger.Printf("[TRACE] Registered check status to the catalog with ID %v", strings.TrimPrefix(string(check.CheckID), check.Node+"/"))
 
 	// Only update the local check state if we successfully updated the catalog
 	check.Status = status
