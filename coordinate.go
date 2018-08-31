@@ -71,7 +71,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 
 		// Get the critical status of the node.
 		kvClient := a.client.KV()
-		key := fmt.Sprintf("%s/%s", a.config.KVPath, node.Node)
+		key := fmt.Sprintf("%sprobes/%s", a.config.KVPath, node.Node)
 		kvPair, _, err := kvClient.Get(key, nil)
 		if err != nil {
 			a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
