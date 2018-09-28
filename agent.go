@@ -204,8 +204,8 @@ REGISTER:
 		Notes:     "This check is periodically updated as long as the agent is alive.",
 		ServiceID: serviceID,
 		AgentServiceCheck: api.AgentServiceCheck{
-			TTL:    agentTTL.String(),
-			Status: api.HealthPassing,
+			TTL:                            agentTTL.String(),
+			Status:                         api.HealthPassing,
 			DeregisterCriticalServiceAfter: deregisterTime.String(),
 		},
 	}
@@ -354,6 +354,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 				return
 			case ourNodes = <-nodeListCh:
 				// Re-run if there's a change to the watched node list.
+				opts.WaitIndex = 0
 			case <-time.After(retryTime):
 				// Sleep here to limit how much load we put on the Consul servers.
 			}

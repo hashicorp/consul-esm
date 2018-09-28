@@ -15,7 +15,7 @@ import (
 
 func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNodes []string) {
 	serviceID := fmt.Sprintf("%s:%s", a.config.Service, a.id)
-	retry.Run(t, func(r *retry.R) {
+	retry.RunWith(&retry.Timer{Timeout: 5 * time.Second, Wait: time.Second}, t, func(r *retry.R) {
 		// Get the KV entry for this agent's node list.
 		kv, _, err := a.client.KV().Get(a.kvNodeListPath()+serviceID, nil)
 		if err != nil {
