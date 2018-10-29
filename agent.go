@@ -40,6 +40,9 @@ type Agent struct {
 	shutdownCh chan struct{}
 	shutdown   bool
 
+	inflightPings map[string]struct{}
+	inflightLock  sync.Mutex
+
 	// Custom func to hook into for testing.
 	watchedNodeFunc func(map[string]bool, []*api.Node)
 }
@@ -62,11 +65,12 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 	}
 
 	agent := Agent{
-		config:     config,
-		client:     client,
-		id:         id,
-		logger:     logger,
-		shutdownCh: make(chan struct{}),
+		config:        config,
+		client:        client,
+		id:            id,
+		logger:        logger,
+		shutdownCh:    make(chan struct{}),
+		inflightPings: make(map[string]struct{}),
 	}
 
 	logger.Printf("[INFO] Connecting to Consul on %s...", clientConf.Address)

@@ -24,26 +24,26 @@ var (
 	MaxRTT = 5 * time.Second
 )
 
-// updateCoords is a long running goroutine that pings an external node
-// once per interval and updates its coordinates and virtual health check
-// in the catalog.
+// updateCoords is a long running goroutine that attempts to ping all external nodes
+// once per CoordinateUpdateInterval and update their statuses in Consul.
 func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 	// Wait for the first node ordering
 	nodes := <-nodeCh
 	shuffleNodes(nodes)
 
+	// Start a ticker to help time the pings based on the watched node count.
+	ticker := a.nodeTicker(len(nodes))
+	defer ticker.Stop()
+
 	index := 0
 	for {
-		// Cycle through all nodes every CoordinateUpdateInterval.
-		waitTime := a.config.CoordinateUpdateInterval
-		if len(nodes) > 0 {
-			waitTime = a.config.CoordinateUpdateInterval / time.Duration(len(nodes))
-		}
 
 		select {
-		// Shuffle the new slice of nodes when we get an update.
+		// Shuffle the new slice of nodes and update the ticker when we get an update.
 		case newNodes := <-nodeCh:
 			if len(newNodes) != len(nodes) {
+				ticker.Stop()
+				ticker = a.nodeTicker(len(nodes))
 				a.logger.Printf("[INFO] Now running probes for %d external nodes", len(newNodes))
 			}
 			nodes = newNodes
@@ -52,7 +52,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		case <-a.shutdownCh:
 			return
 		// Cycle through the nodes in shuffled order.
-		case <-time.After(waitTime):
+		case <-ticker.C:
 			index += 1
 			if index >= len(nodes) {
 				index = 0
@@ -65,35 +65,51 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 			continue
 		}
 
+		// Start a new ping for the node if there isn't one already in-flight.
 		node := nodes[index]
-
-		// Get the critical status of the node.
-		kvClient := a.client.KV()
-		key := fmt.Sprintf("%sprobes/%s", a.config.KVPath, node.Node)
-		kvPair, _, err := kvClient.Get(key, nil)
-		if err != nil {
-			a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
-		}
-		a.logger.Printf("[TRACE] Getting KV entry for key: %s", key)
-
-		// Run an ICMP ping to the node.
-		rtt, err := pingNode(node.Address, a.config.PingType)
-
-		// Update the node's health based on the results of the ping.
-		if err == nil {
-			if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
-				a.logger.Printf("[WARN] error updating node: %v", err)
-			}
-			if err := a.updateNodeCoordinate(node, rtt); err != nil {
-				a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
-			}
+		a.inflightLock.Lock()
+		if _, ok := a.inflightPings[node.ID]; ok {
+			a.logger.Printf("[WARN] Error pinging node %q: last request still outstanding", node.Node)
 		} else {
-			a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
-			if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
-				a.logger.Printf("[WARN] error updating node: %v", err)
-			}
+			a.inflightPings[node.ID] = struct{}{}
+			go a.runNodePing(node)
+		}
+		a.inflightLock.Unlock()
+	}
+}
+
+// runNodePing pings a node and updates its status in Consul accordingly.
+func (a *Agent) runNodePing(node *api.Node) {
+	// Get the critical status of the node.
+	kvClient := a.client.KV()
+	key := fmt.Sprintf("%sprobes/%s", a.config.KVPath, node.Node)
+	kvPair, _, err := kvClient.Get(key, nil)
+	if err != nil {
+		a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
+	}
+	a.logger.Printf("[TRACE] Getting KV entry for key: %s", key)
+
+	// Run an ICMP ping to the node.
+	rtt, err := pingNode(node.Address, a.config.PingType)
+
+	// Update the node's health based on the results of the ping.
+	if err == nil {
+		if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
+			a.logger.Printf("[WARN] error updating node: %v", err)
+		}
+		if err := a.updateNodeCoordinate(node, rtt); err != nil {
+			a.logger.Printf("[WARN] could not update coordinate for node %q: %v", node.Node, err)
+		}
+	} else {
+		a.logger.Printf("[WARN] could not ping node %q: %v", node.Node, err)
+		if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
+			a.logger.Printf("[WARN] error updating node: %v", err)
 		}
 	}
+
+	a.inflightLock.Lock()
+	delete(a.inflightPings, node.ID)
+	a.inflightLock.Unlock()
 }
 
 // shuffleNodes randomizes the ordering of a slice of nodes.
@@ -102,6 +118,16 @@ func shuffleNodes(nodes []*api.Node) {
 		j := rand.Intn(i + 1)
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	}
+}
+
+// nodeTicker returns a time.Ticker to cycle through all nodes once
+// every CoordinateUpdateInterval.
+func (a *Agent) nodeTicker(numNodes int) *time.Ticker {
+	waitTime := a.config.CoordinateUpdateInterval
+	if numNodes > 0 {
+		waitTime = a.config.CoordinateUpdateInterval / time.Duration(numNodes)
+	}
+	return time.NewTicker(waitTime)
 }
 
 // updateHealthyNode updates the node's health check and clears any kv
