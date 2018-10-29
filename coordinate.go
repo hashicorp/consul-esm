@@ -43,7 +43,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		case newNodes := <-nodeCh:
 			if len(newNodes) != len(nodes) {
 				ticker.Stop()
-				ticker = a.nodeTicker(len(nodes))
+				ticker = a.nodeTicker(len(newNodes))
 				a.logger.Printf("[INFO] Now running probes for %d external nodes", len(newNodes))
 			}
 			nodes = newNodes
@@ -127,6 +127,7 @@ func (a *Agent) nodeTicker(numNodes int) *time.Ticker {
 	if numNodes > 0 {
 		waitTime = a.config.CoordinateUpdateInterval / time.Duration(numNodes)
 	}
+	a.logger.Printf("[DEBUG] Now waiting %s between node pings", waitTime.String())
 	return time.NewTicker(waitTime)
 }
 
