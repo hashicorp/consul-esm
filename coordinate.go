@@ -37,9 +37,8 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 
 	index := 0
 	for {
-
+		// Shuffle the new slice of nodes and update the ticker if there's a node update.
 		select {
-		// Shuffle the new slice of nodes and update the ticker when we get an update.
 		case newNodes := <-nodeCh:
 			if len(newNodes) != len(nodes) {
 				ticker.Stop()
@@ -49,14 +48,20 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 			nodes = newNodes
 			shuffleNodes(nodes)
 			index = 0
-		case <-a.shutdownCh:
-			return
-		// Cycle through the nodes in shuffled order.
+		default:
+		}
+
+		// Wait for the next tick before performing another ping. Using the ticker this way
+		// ensures that we evenly space out the pings over the CoordinateUpdateInterval.
+		select {
 		case <-ticker.C:
+			// Cycle through the nodes in shuffled order.
 			index += 1
 			if index >= len(nodes) {
 				index = 0
 			}
+		case <-a.shutdownCh:
+			return
 		}
 
 		if len(nodes) == 0 {
@@ -68,10 +73,10 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		// Start a new ping for the node if there isn't one already in-flight.
 		node := nodes[index]
 		a.inflightLock.Lock()
-		if _, ok := a.inflightPings[node.ID]; ok {
-			a.logger.Printf("[WARN] Error pinging node %q: last request still outstanding", node.Node)
+		if _, ok := a.inflightPings[node.Node]; ok {
+			a.logger.Printf("[WARN] Error pinging node %q (ID: %s): last request still outstanding", node.Node, node.ID)
 		} else {
-			a.inflightPings[node.ID] = struct{}{}
+			a.inflightPings[node.Node] = struct{}{}
 			go a.runNodePing(node)
 		}
 		a.inflightLock.Unlock()
@@ -87,7 +92,6 @@ func (a *Agent) runNodePing(node *api.Node) {
 	if err != nil {
 		a.logger.Printf("[ERR] could not get critical status for node %q: %v", node.Node, err)
 	}
-	a.logger.Printf("[TRACE] Getting KV entry for key: %s", key)
 
 	// Run an ICMP ping to the node.
 	rtt, err := pingNode(node.Address, a.config.PingType)
@@ -108,7 +112,7 @@ func (a *Agent) runNodePing(node *api.Node) {
 	}
 
 	a.inflightLock.Lock()
-	delete(a.inflightPings, node.ID)
+	delete(a.inflightPings, node.Node)
 	a.inflightLock.Unlock()
 }
 
