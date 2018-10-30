@@ -215,3 +215,66 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 		t.Fatalf("bad: %v", kvPair)
 	}
 }
+
+func TestCoordinate_parallelPings(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.Skip("skip this test in Travis as pings aren't supported")
+	}
+
+	t.Parallel()
+	s, err := testutil.NewTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Register 5 external nodes to be pinged.
+	nodes := []string{"node1", "node2", "node3", "node4", "node5"}
+	for _, nodeName := range nodes {
+		meta := map[string]string{
+			"external-node":  "true",
+			"external-probe": "true",
+		}
+		_, err := client.Catalog().Register(&api.CatalogRegistration{
+			Node:       nodeName,
+			Address:    "127.0.0.1",
+			Datacenter: "dc1",
+			NodeMeta:   meta,
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Register an ESM agent.
+	agent1 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.CoordinateUpdateInterval = 500 * time.Millisecond
+	})
+	defer agent1.Shutdown()
+
+	// Wait twice CoordinateUpdateInterval then verify the nodes
+	// all have the external health check set to healthy.
+	time.Sleep(2 * agent1.config.CoordinateUpdateInterval)
+	for _, node := range nodes {
+		expected := api.HealthChecks{
+			{
+				Node:    node,
+				CheckID: externalCheckName,
+				Name:    "External Node Status",
+				Status:  api.HealthPassing,
+				Output:  NodeAliveStatus,
+			},
+		}
+		checks, _, err := client.Health().Node(node, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		verify.Values(t, node, checks, expected)
+	}
+}
