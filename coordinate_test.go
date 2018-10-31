@@ -254,7 +254,7 @@ func TestCoordinate_parallelPings(t *testing.T) {
 	// Register an ESM agent.
 	agent1 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.CoordinateUpdateInterval = 500 * time.Millisecond
+		c.CoordinateUpdateInterval = 1 * time.Second
 	})
 	defer agent1.Shutdown()
 
