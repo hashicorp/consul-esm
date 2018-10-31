@@ -1,4 +1,10 @@
-## v0.3.1 (UNRELEASED)
+## v0.3.2 (UNRELEASED)
+
+IMPROVEMENTS:
+
+BUG FIXES:
+
+## v0.3.1 (Octover 31, 2018)
 
 IMPROVEMENTS:
 
