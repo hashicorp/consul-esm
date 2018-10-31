@@ -2,7 +2,11 @@
 
 IMPROVEMENTS:
 
+  * Pings to external nodes now run in parallel over the `node_probe_interval` instead of serially.
+
 BUG FIXES:
+
+  * Fixed an issue where the wrong KV path was used for node health.
 
 ## v0.3.0 (August 9, 2018)
 
