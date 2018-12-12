@@ -291,7 +291,7 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 				Status:  api.HealthCritical,
 				Definition: api.HealthCheckDefinition{
 					TCP:      s.HTTPAddr,
-					Interval: api.ReadableDuration(time.Second),
+					Interval: time.Second,
 				},
 			},
 		}, nil)
@@ -347,7 +347,7 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
 				TCP:      s.HTTPAddr,
-				Interval: api.ReadableDuration(time.Second),
+				Interval: time.Second,
 			},
 		},
 	}, nil)
