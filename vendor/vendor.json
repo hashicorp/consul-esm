@@ -69,10 +69,10 @@
 			"revisionTime": "2018-01-12T02:16:33Z"
 		},
 		{
-			"checksumSHA1": "IXEz3ZV6kHZxRnHF0MOjH5wdX3s=",
+			"checksumSHA1": "hEDqLV+w0669ByFd6E386X0tgsg=",
 			"path": "github.com/hashicorp/consul/api",
-			"revision": "df5e3fb18aa7f0103c23e1be6391185b7735d611",
-			"revisionTime": "2017-11-01T22:39:06Z"
+			"revision": "67bac7a8150394e7acafed6689e7bcb79277dd41",
+			"revisionTime": "2018-12-12T17:14:02Z"
 		},
 		{
 			"checksumSHA1": "XTQIYV+DPUVRKpVp0+y/78bWH3I=",
