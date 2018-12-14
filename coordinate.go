@@ -168,10 +168,6 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 	var ops api.TxnOps
 	if kvPair == nil {
 		bytes, _ := time.Now().UTC().GobEncode()
-		kvPair = &api.KVPair{
-			Key:   key,
-			Value: bytes,
-		}
 		ops = append(ops, &api.TxnOp{
 			KV: &api.KVTxnOp{
 				Verb:  api.KVSet,
@@ -191,18 +187,8 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 		if time.Since(criticalStart) > a.config.NodeReconnectTimeout {
 			a.logger.Printf("[INFO] reaping node %q that has been failed for more then %s",
 				node.Node, a.config.NodeReconnectTimeout.String())
-			ops = append(ops, &api.TxnOp{
-				Node: &api.NodeTxnOp{
-					Verb: api.NodeDeleteCAS,
-					Node: api.Node{
-						ID:         node.ID,
-						Node:       node.Node,
-						Datacenter: node.Datacenter,
-					},
-				},
-			})
-			a.logger.Printf("[DEBUG] Deregistering node %q", node.Node)
 
+			// Clear the KV entry.
 			ops = append(ops, &api.TxnOp{
 				KV: &api.KVTxnOp{
 					Verb:  api.KVDeleteCAS,
@@ -210,10 +196,29 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 					Index: kvPair.ModifyIndex,
 				},
 			})
-		}
 
-		// Run the transaction as-is to deregister the node and delete the KV entry.
-		return a.runClientTxn(ops)
+			// If the node still exists in the catalog, add an atomic delete on the node to
+			// the list of operations to run.
+			existing, _, err := a.client.Catalog().Node(node.Node, nil)
+			if err != nil {
+				return fmt.Errorf("could not fetch existing node %q: %v", node.Node, err)
+			}
+			if existing != nil && existing.Node != nil {
+				ops = append(ops, &api.TxnOp{
+					Node: &api.NodeTxnOp{
+						Verb: api.NodeDeleteCAS,
+						Node: api.Node{
+							Node:        node.Node,
+							ModifyIndex: existing.Node.ModifyIndex,
+						},
+					},
+				})
+				a.logger.Printf("[DEBUG] Deregistering node %q", node.Node)
+			}
+
+			// Run the transaction as-is to deregister the node and delete the KV entry.
+			return a.runClientTxn(ops)
+		}
 	}
 
 	// Batch our KV update tracking the critical time with the external health check update.
@@ -222,24 +227,6 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 
 // updateNodeCheck updates the node's externalNodeHealth check with the given status/output.
 func (a *Agent) updateNodeCheck(node *api.Node, ops api.TxnOps, status, output string) error {
-	// Exit early if the node has been deregistered.
-	existing, _, err := a.client.Catalog().Node(node.Node, nil)
-	if err != nil {
-		return err
-	}
-	if existing == nil || existing.Node == nil {
-		return nil
-	}
-
-	// Add a no-op CAS operation so that the check update will fail if the node has been
-	// updated or deleted in the meantime.
-	ops = append(ops, &api.TxnOp{
-		Node: &api.NodeTxnOp{
-			Verb: api.NodeCAS,
-			Node: *existing.Node,
-		},
-	})
-
 	// Update the external health check status.
 	ops = append(ops, &api.TxnOp{
 		Check: &api.CheckTxnOp{
@@ -274,7 +261,7 @@ func (a *Agent) runClientTxn(ops api.TxnOps) error {
 		return errs
 	}
 	if !ok {
-		return fmt.Errorf("Failed to atomically update check status in Consul")
+		return fmt.Errorf("Failed to atomically write updates Consul")
 	}
 
 	return nil
