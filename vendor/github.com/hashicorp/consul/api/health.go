@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -36,6 +38,9 @@ type HealthCheck struct {
 	ServiceTags []string
 
 	Definition HealthCheckDefinition
+
+	CreateIndex uint64
+	ModifyIndex uint64
 }
 
 // HealthCheckDefinition is used to store the details about
@@ -46,9 +51,56 @@ type HealthCheckDefinition struct {
 	Method                         string
 	TLSSkipVerify                  bool
 	TCP                            string
-	Interval                       ReadableDuration
-	Timeout                        ReadableDuration
-	DeregisterCriticalServiceAfter ReadableDuration
+	Interval                       time.Duration
+	Timeout                        time.Duration
+	DeregisterCriticalServiceAfter time.Duration
+}
+
+func (d *HealthCheckDefinition) MarshalJSON() ([]byte, error) {
+	type Alias HealthCheckDefinition
+	return json.Marshal(&struct {
+		Interval                       string
+		Timeout                        string
+		DeregisterCriticalServiceAfter string
+		*Alias
+	}{
+		Interval:                       d.Interval.String(),
+		Timeout:                        d.Timeout.String(),
+		DeregisterCriticalServiceAfter: d.DeregisterCriticalServiceAfter.String(),
+		Alias:                          (*Alias)(d),
+	})
+}
+
+func (d *HealthCheckDefinition) UnmarshalJSON(data []byte) error {
+	type Alias HealthCheckDefinition
+	aux := &struct {
+		Interval                       string
+		Timeout                        string
+		DeregisterCriticalServiceAfter string
+		*Alias
+	}{
+		Alias: (*Alias)(d),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	var err error
+	if aux.Interval != "" {
+		if d.Interval, err = time.ParseDuration(aux.Interval); err != nil {
+			return err
+		}
+	}
+	if aux.Timeout != "" {
+		if d.Timeout, err = time.ParseDuration(aux.Timeout); err != nil {
+			return err
+		}
+	}
+	if aux.DeregisterCriticalServiceAfter != "" {
+		if d.DeregisterCriticalServiceAfter, err = time.ParseDuration(aux.DeregisterCriticalServiceAfter); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // HealthChecks is a collection of HealthCheck structs.
@@ -159,10 +211,45 @@ func (h *Health) Checks(service string, q *QueryOptions) (HealthChecks, *QueryMe
 // for a given service. It can optionally do server-side filtering on a tag
 // or nodes with passing health checks only.
 func (h *Health) Service(service, tag string, passingOnly bool, q *QueryOptions) ([]*ServiceEntry, *QueryMeta, error) {
-	r := h.c.newRequest("GET", "/v1/health/service/"+service)
-	r.setQueryOptions(q)
+	var tags []string
 	if tag != "" {
-		r.params.Set("tag", tag)
+		tags = []string{tag}
+	}
+	return h.service(service, tags, passingOnly, q, false)
+}
+
+func (h *Health) ServiceMultipleTags(service string, tags []string, passingOnly bool, q *QueryOptions) ([]*ServiceEntry, *QueryMeta, error) {
+	return h.service(service, tags, passingOnly, q, false)
+}
+
+// Connect is equivalent to Service except that it will only return services
+// which are Connect-enabled and will returns the connection address for Connect
+// client's to use which may be a proxy in front of the named service. If
+// passingOnly is true only instances where both the service and any proxy are
+// healthy will be returned.
+func (h *Health) Connect(service, tag string, passingOnly bool, q *QueryOptions) ([]*ServiceEntry, *QueryMeta, error) {
+	var tags []string
+	if tag != "" {
+		tags = []string{tag}
+	}
+	return h.service(service, tags, passingOnly, q, true)
+}
+
+func (h *Health) ConnectMultipleTags(service string, tags []string, passingOnly bool, q *QueryOptions) ([]*ServiceEntry, *QueryMeta, error) {
+	return h.service(service, tags, passingOnly, q, true)
+}
+
+func (h *Health) service(service string, tags []string, passingOnly bool, q *QueryOptions, connect bool) ([]*ServiceEntry, *QueryMeta, error) {
+	path := "/v1/health/service/" + service
+	if connect {
+		path = "/v1/health/connect/" + service
+	}
+	r := h.c.newRequest("GET", path)
+	r.setQueryOptions(q)
+	if len(tags) > 0 {
+		for _, tag := range tags {
+			r.params.Add("tag", tag)
+		}
 	}
 	if passingOnly {
 		r.params.Set(HealthPassing, "1")

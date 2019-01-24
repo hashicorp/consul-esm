@@ -42,7 +42,7 @@ func TestCheck_HTTP(t *testing.T) {
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
 				HTTP:     "http://" + s.HTTPAddr + "/v1/status/leader",
-				Interval: api.ReadableDuration(50 * time.Millisecond),
+				Interval: 50 * time.Millisecond,
 			},
 		},
 	}
@@ -121,7 +121,7 @@ func TestCheck_TCP(t *testing.T) {
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
 				TCP:      s.HTTPAddr,
-				Interval: api.ReadableDuration(50 * time.Millisecond),
+				Interval: 50 * time.Millisecond,
 			},
 		},
 	}

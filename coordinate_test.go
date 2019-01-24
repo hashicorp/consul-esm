@@ -100,11 +100,13 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	}
 	expected := api.HealthChecks{
 		{
-			Node:    "external",
-			CheckID: externalCheckName,
-			Name:    "External Node Status",
-			Status:  api.HealthCritical,
-			Output:  NodeCriticalStatus,
+			Node:        "external",
+			CheckID:     externalCheckName,
+			Name:        "External Node Status",
+			Status:      api.HealthCritical,
+			Output:      NodeCriticalStatus,
+			CreateIndex: 8,
+			ModifyIndex: 8,
 		},
 	}
 	verify.Values(t, "", checks, expected)
@@ -126,6 +128,7 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	// Verify the health status has been updated
 	expected[0].Status = api.HealthPassing
 	expected[0].Output = NodeAliveStatus
+	expected[0].ModifyIndex = 9
 	checks, _, err = client.Health().Node("external", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -175,12 +178,14 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := api.HealthChecks{
-		{
-			Node:    "external",
-			CheckID: externalCheckName,
-			Name:    "External Node Status",
-			Status:  api.HealthCritical,
-			Output:  NodeCriticalStatus,
+		&api.HealthCheck{
+			Node:        "external",
+			CheckID:     externalCheckName,
+			Name:        "External Node Status",
+			Status:      api.HealthCritical,
+			Output:      NodeCriticalStatus,
+			CreateIndex: checks[0].CreateIndex,
+			ModifyIndex: checks[0].ModifyIndex,
 		},
 	}
 	verify.Values(t, "", checks, expected)
@@ -258,22 +263,24 @@ func TestCoordinate_parallelPings(t *testing.T) {
 	})
 	defer agent1.Shutdown()
 
-	// Wait twice CoordinateUpdateInterval then verify the nodes
+	// Wait twice the CoordinateUpdateInterval then verify the nodes
 	// all have the external health check set to healthy.
 	time.Sleep(2 * agent1.config.CoordinateUpdateInterval)
 	for _, node := range nodes {
-		expected := api.HealthChecks{
-			{
-				Node:    node,
-				CheckID: externalCheckName,
-				Name:    "External Node Status",
-				Status:  api.HealthPassing,
-				Output:  NodeAliveStatus,
-			},
-		}
 		checks, _, err := client.Health().Node(node, nil)
 		if err != nil {
 			t.Fatal(err)
+		}
+		expected := api.HealthChecks{
+			&api.HealthCheck{
+				Node:        node,
+				CheckID:     externalCheckName,
+				Name:        "External Node Status",
+				Status:      api.HealthPassing,
+				Output:      NodeAliveStatus,
+				CreateIndex: checks[0].CreateIndex,
+				ModifyIndex: checks[0].ModifyIndex,
+			},
 		}
 		verify.Values(t, node, checks, expected)
 	}

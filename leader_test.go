@@ -210,18 +210,20 @@ func TestLeader_divideCoordinates(t *testing.T) {
 	// Wait for the nodes to get probed and set to healthy.
 	for _, node := range []string{"node1", "node2"} {
 		retry.Run(t, func(r *retry.R) {
-			expected := api.HealthChecks{
-				{
-					Node:    node,
-					CheckID: externalCheckName,
-					Name:    "External Node Status",
-					Status:  api.HealthPassing,
-					Output:  NodeAliveStatus,
-				},
-			}
 			checks, _, err := client.Health().Node(node, nil)
 			if err != nil {
 				r.Fatal(err)
+			}
+			expected := api.HealthChecks{
+				&api.HealthCheck{
+					Node:        node,
+					CheckID:     externalCheckName,
+					Name:        "External Node Status",
+					Status:      api.HealthPassing,
+					Output:      NodeAliveStatus,
+					CreateIndex: checks[0].CreateIndex,
+					ModifyIndex: checks[0].ModifyIndex,
+				},
 			}
 			verify.Values(r, "", checks, expected)
 		})
@@ -245,18 +247,20 @@ func TestLeader_divideCoordinates(t *testing.T) {
 	agent1.verifyUpdates(t, []string{}, []string{"node1", "node3"})
 	agent2.verifyUpdates(t, []string{}, []string{"node2"})
 	retry.Run(t, func(r *retry.R) {
-		expected := api.HealthChecks{
-			{
-				Node:    "node3",
-				CheckID: externalCheckName,
-				Name:    "External Node Status",
-				Status:  api.HealthPassing,
-				Output:  NodeAliveStatus,
-			},
-		}
 		checks, _, err := client.Health().Node("node3", nil)
 		if err != nil {
 			r.Fatal(err)
+		}
+		expected := api.HealthChecks{
+			&api.HealthCheck{
+				Node:        "node3",
+				CheckID:     externalCheckName,
+				Name:        "External Node Status",
+				Status:      api.HealthPassing,
+				Output:      NodeAliveStatus,
+				CreateIndex: checks[0].CreateIndex,
+				ModifyIndex: checks[0].ModifyIndex,
+			},
 		}
 		verify.Values(r, "", checks, expected)
 	})
@@ -291,7 +295,7 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 				Status:  api.HealthCritical,
 				Definition: api.HealthCheckDefinition{
 					TCP:      s.HTTPAddr,
-					Interval: api.ReadableDuration(time.Second),
+					Interval: time.Second,
 				},
 			},
 		}, nil)
@@ -347,7 +351,7 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
 				TCP:      s.HTTPAddr,
-				Interval: api.ReadableDuration(time.Second),
+				Interval: time.Second,
 			},
 		},
 	}, nil)

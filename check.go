@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/types"
+	"github.com/hashicorp/go-multierror"
 )
 
 const externalCheckName = "externalNodeHealth"
@@ -85,8 +87,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Header:        definition.Header,
 				Method:        definition.Method,
 				TLSSkipVerify: definition.TLSSkipVerify,
-				Interval:      definition.Interval.Duration(),
-				Timeout:       definition.Timeout.Duration(),
+				Interval:      definition.Interval,
+				Timeout:       definition.Timeout,
 				Logger:        c.logger,
 			}
 
@@ -118,8 +120,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Notify:   c,
 				CheckID:  checkHash,
 				TCP:      definition.TCP,
-				Interval: definition.Interval.Duration(),
-				Timeout:  definition.Timeout.Duration(),
+				Interval: definition.Interval,
+				Timeout:  definition.Timeout,
 				Logger:   c.logger,
 			}
 
@@ -222,35 +224,52 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 // handleCheckUpdate writes a check's status to the catalog and updates the local check state.
 // Should only be called when the lock is held.
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
-	// Exit early if the node's been deregistered.
-	existing, _, err := c.client.Catalog().Node(check.Node, nil)
+	// Exit early if the check or node have been deregistered.
+	checks, _, err := c.client.Health().Node(check.Node, nil)
 	if err != nil {
 		c.logger.Printf("[WARN] error retrieving existing node entry: %v", err)
 		return
+	}
+	var existing *api.HealthCheck
+	checkID := strings.TrimPrefix(string(check.CheckID), check.Node+"/")
+	for _, c := range checks {
+		if c.CheckID == checkID {
+			existing = c
+			break
+		}
 	}
 	if existing == nil {
 		return
 	}
 
-	reg := &api.CatalogRegistration{
-		Node: check.Node,
-		Check: &api.AgentCheck{
-			CheckID:     strings.TrimPrefix(string(check.CheckID), check.Node+"/"),
-			Name:        check.Name,
-			Status:      status,
-			Notes:       check.Notes,
-			Output:      output,
-			ServiceID:   check.ServiceID,
-			ServiceName: check.ServiceName,
-			Definition:  check.Definition,
+	existing.Status = status
+	existing.Output = output
+	ops := api.TxnOps{
+		&api.TxnOp{
+			Check: &api.CheckTxnOp{
+				Verb:  api.CheckCAS,
+				Check: *existing,
+			},
 		},
-		SkipNodeUpdate: true,
 	}
-	_, err = c.client.Catalog().Register(reg, nil)
+	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
 	if err != nil {
 		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)
 		return
 	}
+	if len(resp.Errors) > 0 {
+		var errs error
+		for _, e := range resp.Errors {
+			errs = multierror.Append(errs, errors.New(e.What))
+		}
+		c.logger.Printf("[WARN] Error updating check status in Consul: %v", errs)
+		return
+	}
+	if !ok {
+		c.logger.Printf("[WARN] Failed to atomically update check status in Consul")
+		return
+	}
+
 	c.logger.Printf("[TRACE] Registered check status to the catalog with ID %v", strings.TrimPrefix(string(check.CheckID), check.Node+"/"))
 
 	// Only update the local check state if we successfully updated the catalog
@@ -293,7 +312,7 @@ func (c *CheckRunner) reapServicesInternal() {
 			continue
 		}
 
-		timeout := check.Definition.DeregisterCriticalServiceAfter.Duration()
+		timeout := check.Definition.DeregisterCriticalServiceAfter
 		if timeout > 0 && timeout < time.Since(criticalTime) {
 			c.client.Catalog().Deregister(&api.CatalogDeregistration{
 				Node:      check.Node,
