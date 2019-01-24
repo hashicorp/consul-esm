@@ -1,10 +1,10 @@
-## v0.3.2 (UNRELEASED)
-
-IMPROVEMENTS:
+## v0.3.2 (January 23, 2019)
 
 BUG FIXES:
 
-## v0.3.1 (Octover 31, 2018)
+  * Fixed an issue where updates to external nodes or their health by the user could be overwritten by Consul-ESM. Now uses the transaction API in Consul for catalog operations.
+
+## v0.3.1 (October 31, 2018)
 
 IMPROVEMENTS:
 
