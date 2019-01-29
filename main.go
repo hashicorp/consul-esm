@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/consul/logger"
+	"github.com/hashicorp/consul/service_os"
 	"github.com/mitchellh/cli"
 )
 
@@ -104,7 +105,14 @@ func main() {
 }
 
 func handleSignals(logger *log.Logger, signalCh chan os.Signal, agent *Agent) {
-	for sig := range signalCh {
+	for {
+		var sig os.Signal
+		select {
+		case s := <-signalCh:
+			sig = s
+		case <-service_os.Shutdown_Channel():
+			sig = os.Interrupt
+		}
 		logger.Printf("[INFO] Caught signal: %s", sig.String())
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:

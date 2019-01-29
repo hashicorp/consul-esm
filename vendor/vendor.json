@@ -105,6 +105,12 @@
 			"revisionTime": "2018-01-12T02:16:33Z"
 		},
 		{
+			"checksumSHA1": "vLhzkTlJrIWqB89xDGUHWaH4VBo=",
+			"path": "github.com/hashicorp/consul/service_os",
+			"revision": "7302285321adb43f068ac8e11a6d4bfbe7d88024",
+			"revisionTime": "2019-01-28T22:26:18Z"
+		},
+		{
 			"checksumSHA1": "gjN5oVYQR1K7hCbUq2ED4KBWuys=",
 			"path": "github.com/hashicorp/consul/testutil",
 			"revision": "cd09cafffe68bf2345a4493d11888e96af5696ec",
@@ -439,6 +445,12 @@
 			"path": "golang.org/x/sys/windows",
 			"revision": "e82597366816b6fa799040628e95490bbf6e6b2b",
 			"revisionTime": "2017-10-24T07:53:40Z"
+		},
+		{
+			"checksumSHA1": "1TSbUa/il1mt6ZWJJymLmCxADbU=",
+			"path": "golang.org/x/sys/windows/svc",
+			"revision": "302c3dd5f1cc82baae8e44d9c3178e89b6e2b345",
+			"revisionTime": "2019-01-29T07:41:26Z"
 		}
 	],
 	"rootPath": "github.com/hashicorp/consul-esm"
