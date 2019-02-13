@@ -266,22 +266,24 @@ func TestCoordinate_parallelPings(t *testing.T) {
 	// Wait twice the CoordinateUpdateInterval then verify the nodes
 	// all have the external health check set to healthy.
 	time.Sleep(2 * agent1.config.CoordinateUpdateInterval)
-	for _, node := range nodes {
-		checks, _, err := client.Health().Node(node, nil)
-		if err != nil {
-			t.Fatal(err)
+	retry.Run(t, func(r *retry.R) {
+		for _, node := range nodes {
+			checks, _, err := client.Health().Node(node, nil)
+			if err != nil {
+				r.Fatal(err)
+			}
+			expected := api.HealthChecks{
+				&api.HealthCheck{
+					Node:        node,
+					CheckID:     externalCheckName,
+					Name:        "External Node Status",
+					Status:      api.HealthPassing,
+					Output:      NodeAliveStatus,
+					CreateIndex: checks[0].CreateIndex,
+					ModifyIndex: checks[0].ModifyIndex,
+				},
+			}
+			verify.Values(r, node, checks, expected)
 		}
-		expected := api.HealthChecks{
-			&api.HealthCheck{
-				Node:        node,
-				CheckID:     externalCheckName,
-				Name:        "External Node Status",
-				Status:      api.HealthPassing,
-				Output:      NodeAliveStatus,
-				CreateIndex: checks[0].CreateIndex,
-				ModifyIndex: checks[0].ModifyIndex,
-			},
-		}
-		verify.Values(t, node, checks, expected)
-	}
+	})
 }
