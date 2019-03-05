@@ -15,7 +15,7 @@ Consul ESM requires at least version 1.4.1 of Consul.
 | ESM version | Consul version required |
 |-------------|-------------------------|
 | 0.3.2 | 1.4.1+ |
-| 0.3.1 and lower | 1.0.1+ |
+| 0.3.1 and lower | 1.0.1-1.4.0 |
 
 ## Installation
 
