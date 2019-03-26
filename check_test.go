@@ -41,8 +41,8 @@ func TestCheck_HTTP(t *testing.T) {
 			Name:    "http-test",
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
-				HTTP:     "http://" + s.HTTPAddr + "/v1/status/leader",
-				Interval: 50 * time.Millisecond,
+				HTTP:             "http://" + s.HTTPAddr + "/v1/status/leader",
+				IntervalDuration: 50 * time.Millisecond,
 			},
 		},
 	}
@@ -120,8 +120,8 @@ func TestCheck_TCP(t *testing.T) {
 			Name:    "tcp-test",
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
-				TCP:      s.HTTPAddr,
-				Interval: 50 * time.Millisecond,
+				TCP:              s.HTTPAddr,
+				IntervalDuration: 50 * time.Millisecond,
 			},
 		},
 	}

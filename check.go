@@ -87,8 +87,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Header:        definition.Header,
 				Method:        definition.Method,
 				TLSSkipVerify: definition.TLSSkipVerify,
-				Interval:      definition.Interval,
-				Timeout:       definition.Timeout,
+				Interval:      definition.IntervalDuration,
+				Timeout:       definition.TimeoutDuration,
 				Logger:        c.logger,
 			}
 
@@ -120,8 +120,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				Notify:   c,
 				CheckID:  checkHash,
 				TCP:      definition.TCP,
-				Interval: definition.Interval,
-				Timeout:  definition.Timeout,
+				Interval: definition.IntervalDuration,
+				Timeout:  definition.TimeoutDuration,
 				Logger:   c.logger,
 			}
 
@@ -312,7 +312,7 @@ func (c *CheckRunner) reapServicesInternal() {
 			continue
 		}
 
-		timeout := check.Definition.DeregisterCriticalServiceAfter
+		timeout := check.Definition.DeregisterCriticalServiceAfterDuration
 		if timeout > 0 && timeout < time.Since(criticalTime) {
 			c.client.Catalog().Deregister(&api.CatalogDeregistration{
 				Node:      check.Node,

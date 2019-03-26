@@ -294,8 +294,8 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 				Name:    "tcp-test",
 				Status:  api.HealthCritical,
 				Definition: api.HealthCheckDefinition{
-					TCP:      s.HTTPAddr,
-					Interval: time.Second,
+					TCP:              s.HTTPAddr,
+					IntervalDuration: time.Second,
 				},
 			},
 		}, nil)
@@ -350,8 +350,8 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 			Name:    "tcp-test",
 			Status:  api.HealthCritical,
 			Definition: api.HealthCheckDefinition{
-				TCP:      s.HTTPAddr,
-				Interval: time.Second,
+				TCP:              s.HTTPAddr,
+				IntervalDuration: time.Second,
 			},
 		},
 	}, nil)
