@@ -62,7 +62,30 @@ func TestCheck_HTTP(t *testing.T) {
 	retry.Run(t, func(r *retry.R) {
 		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
 		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
-			r.Fatalf("bad: %v", checks[0])
+			r.Fatalf("expected: %v, got: %v", api.HealthPassing, checks[0].Status)
+		}
+	})
+
+	// Re-register the check as critical initially
+	// The catalog should eventually show the check as passing
+	nodeRegistration.SkipNodeUpdate = true
+	nodeRegistration.Check.Status = api.HealthCritical
+	_, err = client.Catalog().Register(nodeRegistration, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.UpdateChecks(checks)
+
+	retry.Run(t, func(r *retry.R) {
+		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
+			r.Fatalf("expected: %v, got: %v", api.HealthPassing, checks[0].Status)
 		}
 	})
 
@@ -85,7 +108,7 @@ func TestCheck_HTTP(t *testing.T) {
 	retry.Run(t, func(r *retry.R) {
 		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
 		if len(checks) != 1 || checks[0].Status != api.HealthCritical {
-			r.Fatalf("bad: %v", checks[0])
+			r.Fatalf("expected: %v, got: %v", api.HealthCritical, checks[0].Status)
 		}
 	})
 }
@@ -144,7 +167,34 @@ func TestCheck_TCP(t *testing.T) {
 			r.Fatal(err)
 		}
 		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
-			r.Fatalf("bad: %v", checks[0])
+			r.Fatalf("expected: %v, got: %v", api.HealthPassing, checks[0].Status)
+		}
+	})
+
+	// Re-register the check as critical initially
+	// The catalog should eventually show the check as passing
+	nodeRegistration.SkipNodeUpdate = true
+	nodeRegistration.Check.Status = api.HealthCritical
+	_, err = client.Catalog().Register(nodeRegistration, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.UpdateChecks(checks)
+
+	// Make sure the health has been updated to passing
+	retry.Run(t, func(r *retry.R) {
+		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+		if err != nil {
+			r.Fatal(err)
+		}
+		if len(checks) != 1 || checks[0].Status != api.HealthPassing {
+			r.Fatalf("expected: %v, got: %v", api.HealthPassing, checks[0].Status)
 		}
 	})
 
@@ -167,7 +217,7 @@ func TestCheck_TCP(t *testing.T) {
 	retry.Run(t, func(r *retry.R) {
 		checks, _, err = client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
 		if len(checks) != 1 || checks[0].Status != api.HealthCritical {
-			r.Fatalf("bad: %v", checks[0])
+			r.Fatalf("expected: %v, got: %v", api.HealthCritical, checks[0].Status)
 		}
 	})
 }
