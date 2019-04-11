@@ -18,6 +18,11 @@ import (
 
 const externalCheckName = "externalNodeHealth"
 
+var (
+	// defaultInterval is the check interval to use if one is not set.
+	defaultInterval = 30 * time.Second
+)
+
 type CheckRunner struct {
 	sync.RWMutex
 
@@ -79,6 +84,9 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		found[checkHash] = struct{}{}
 
 		definition := check.Definition
+		if definition.IntervalDuration == 0 {
+			definition.IntervalDuration = defaultInterval
+		}
 		if definition.HTTP != "" {
 			http := &consulchecks.CheckHTTP{
 				Notify:        c,
