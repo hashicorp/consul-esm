@@ -1,3 +1,9 @@
+## UNRELEASED
+
+BUG FIXES:
+
+ * Fixed an issue where the catalog would not be updated despite a change in a health probe result.[[GH-36](https://github.com/hashicorp/consul-esm/issues/36)]
+
 ## v0.3.2 (January 23, 2019)
 
 BUG FIXES:
