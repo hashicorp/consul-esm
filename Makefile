@@ -8,7 +8,7 @@ GOARCH=$(shell go env GOARCH)
 GOPATH=$(shell go env GOPATH)
 
 # Project information
-GOVERSION := 1.11
+GOVERSION := 1.12.3
 PROJECT := $(CURRENT_DIR:$(GOPATH)/src/%=%)
 NAME := $(notdir $(PROJECT))
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)

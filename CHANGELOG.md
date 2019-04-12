@@ -1,4 +1,4 @@
-## UNRELEASED
+## v0.3.3 (April 12, 2019)
 
 BUG FIXES:
 
