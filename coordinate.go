@@ -331,7 +331,9 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	return nil
 }
 
-// pingNode runs an ICMP ping against an address and returns the round-trip time.
+// pingNode runs an ICMP or UDP ping against an address.
+// It will returns the round-trip time with ICMP but not with UDP.
+// For `socket: permission denied` see the Contributing section in README.md.
 func pingNode(addr string, method string) (time.Duration, error) {
 	var rtt time.Duration
 	var pingErr error

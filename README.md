@@ -204,6 +204,12 @@ ping_type = "udp"
 
 ## Contributing
 
+**Note** if you run Linux and see `socket: permission denied` errors with UDP
+ping, you probably need to modify system permissions to allow for non-root
+access to the ports. Running `sudo sysctl -w net.ipv4.ping_group_range="0
+65535"` should fix the problem (until you reboot, see sysctl man page for how
+to persist).
+
 To build and install Consul ESM locally, you will need to install the
 Docker engine:
 
