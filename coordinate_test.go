@@ -7,14 +7,13 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/testutil"
 	"github.com/hashicorp/consul/testutil/retry"
 	"github.com/pascaldekloe/goe/verify"
 )
 
 func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +35,7 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent := &Agent{client: client, logger: log.New(os.Stdout, "", log.LstdFlags)}
+	agent := &Agent{client: client, logger: log.New(LOGOUT, "", log.LstdFlags)}
 	agent.updateNodeCoordinate(&api.Node{Node: "external"}, 1*time.Second)
 
 	var coords []*api.CoordinateEntry
@@ -53,7 +52,7 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 
 func TestCoordinate_updateNodeCheck(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +74,7 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent := &Agent{client: client, logger: log.New(os.Stdout, "", log.LstdFlags)}
+	agent := &Agent{client: client, logger: log.New(LOGOUT, "", log.LstdFlags)}
 	if err := agent.updateFailedNode(&api.Node{Node: "external"}, client.KV(), "testkey", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +137,7 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 
 func TestCoordinate_reapFailedNode(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +162,7 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 	agent := &Agent{
 		client: client,
 		config: DefaultConfig(),
-		logger: log.New(os.Stdout, "", log.LstdFlags),
+		logger: log.New(LOGOUT, "", log.LstdFlags),
 	}
 	agent.config.NodeReconnectTimeout = 200 * time.Millisecond
 
@@ -227,7 +226,7 @@ func TestCoordinate_parallelPings(t *testing.T) {
 	}
 
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}

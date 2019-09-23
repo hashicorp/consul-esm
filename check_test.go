@@ -2,18 +2,16 @@ package main
 
 import (
 	"log"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/testutil"
 	"github.com/hashicorp/consul/testutil/retry"
 )
 
 func TestCheck_HTTP(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +22,7 @@ func TestCheck_HTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := log.New(os.Stdout, "", 0)
+	logger := log.New(LOGOUT, "", 0)
 	runner := NewCheckRunner(logger, client, 0)
 	defer runner.Stop()
 
@@ -115,7 +113,7 @@ func TestCheck_HTTP(t *testing.T) {
 
 func TestCheck_TCP(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +124,7 @@ func TestCheck_TCP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := log.New(os.Stdout, "", 0)
+	logger := log.New(LOGOUT, "", 0)
 	runner := NewCheckRunner(logger, client, 0)
 	defer runner.Stop()
 

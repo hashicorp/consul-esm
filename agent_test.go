@@ -3,17 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/hashicorp/consul/testutil"
 	"github.com/hashicorp/consul/testutil/retry"
 )
 
 func testAgent(t *testing.T, cb func(*Config)) *Agent {
-	logger := log.New(os.Stdout, "", log.LstdFlags)
+	logger := log.New(LOGOUT, "", log.LstdFlags)
 	conf := DefaultConfig()
 	conf.CoordinateUpdateInterval = 200 * time.Millisecond
 	if cb != nil {
@@ -39,7 +37,7 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 
 func TestAgent_registerServiceAndCheck(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/testutil"
 	"github.com/hashicorp/consul/testutil/retry"
 	"github.com/pascaldekloe/goe/verify"
 )
@@ -70,7 +69,7 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 
 func TestLeader_rebalanceHealthWatches(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +159,7 @@ func TestLeader_divideCoordinates(t *testing.T) {
 	}
 
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +267,7 @@ func TestLeader_divideCoordinates(t *testing.T) {
 
 func TestLeader_divideHealthChecks(t *testing.T) {
 	t.Parallel()
-	s, err := testutil.NewTestServer()
+	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
 	}
