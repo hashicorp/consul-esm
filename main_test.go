@@ -10,9 +10,10 @@ import (
 )
 
 // Change as needed to see log/consul-agent output
-var LOGOUT = ioutil.Discard
-var STDOUT = ioutil.Discard
-var STDERR = ioutil.Discard
+var output = ioutil.Discard
+var LOGOUT = output
+var STDOUT = output
+var STDERR = output
 
 func TestMain(m *testing.M) {
 	log.SetOutput(LOGOUT)
