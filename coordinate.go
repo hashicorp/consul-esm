@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"net"
 	"strings"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/serf/coordinate"
 	"github.com/mitchellh/mapstructure"
-	"github.com/tatsushid/go-fastping"
+	"github.com/sparrc/go-ping"
 )
 
 const (
@@ -338,34 +337,27 @@ func pingNode(addr string, method string) (time.Duration, error) {
 	var rtt time.Duration
 	var pingErr error
 
-	p := fastping.NewPinger()
-	switch method {
-	case PingTypeUDP:
-		if _, err := p.Network("udp"); err != nil {
-			return 0, err
-		}
-		p.AddIP(addr)
-	case PingTypeSocket:
-		ipAddr, err := net.ResolveIPAddr("ip4:icmp", addr)
-		if err != nil {
-			return 0, err
-		}
-		p.AddIPAddr(ipAddr)
-	default:
-		return 0, fmt.Errorf("invalid ping type %q, should be impossible", method)
-	}
-
-	p.MaxRTT = MaxRTT
-	p.OnRecv = func(addr *net.IPAddr, responseTime time.Duration) {
-		rtt = responseTime
-	}
-	p.OnIdle = func() {
-		pingErr = fmt.Errorf("ping to %q timed out", addr)
-	}
-	err := p.Run()
+	p, err := ping.NewPinger(addr)
 	if err != nil {
 		return 0, err
 	}
+
+	switch method {
+	case PingTypeUDP: // p's default
+	case PingTypeSocket:
+		p.SetPrivileged(true)
+	default:
+		return 0, fmt.Errorf("invalid ping type %q", method)
+	}
+
+	p.Timeout = MaxRTT
+	p.OnRecv = func(pkt *ping.Packet) {
+		rtt = pkt.Rtt
+	}
+	p.OnFinish = func(*ping.Statistics) {
+		pingErr = fmt.Errorf("ping to %q timed out", addr)
+	}
+	p.Run()
 
 	if rtt != 0 {
 		return rtt, nil

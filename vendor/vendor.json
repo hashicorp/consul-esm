@@ -363,10 +363,10 @@
 			"revisionTime": "2017-03-13T16:33:22Z"
 		},
 		{
-			"checksumSHA1": "DpsruMRlfaXitPiELMUatEOMh1k=",
-			"path": "github.com/tatsushid/go-fastping",
-			"revision": "d7bb493dee3e090e2ffb6914adddf17c1e7c026c",
-			"revisionTime": "2016-01-08T17:53:29Z"
+			"checksumSHA1": "oK0bJkEgq+zNzGEdU4j9AQcPbEs=",
+			"path": "github.com/sparrc/go-ping",
+			"revision": "4e5b6552494c8005c60de6c60b50ebaefc69e592",
+			"revisionTime": "2019-06-05T20:23:35Z"
 		},
 		{
 			"checksumSHA1": "t24KnvC9jRxiANVhpw2pqFpmEu8=",
