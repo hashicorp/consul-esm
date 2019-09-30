@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
-	"github.com/pascaldekloe/goe/verify"
 )
 
 func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNodes []string) {
@@ -30,8 +30,18 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 			r.Fatalf("error deserializing node list: %v", err)
 		}
 
-		verify.Values(r, "", nodeList.Nodes, expectedHealthNodes)
-		verify.Values(r, "", nodeList.Probes, expectedProbeNodes)
+		bothEmpty := nodeList.Nodes == nil && len(expectedHealthNodes) == 0
+		equal := reflect.DeepEqual(nodeList.Nodes, expectedHealthNodes)
+		if !(bothEmpty || equal) {
+			r.Fatalf("Nodes unequal: want(%v) got(%v)",
+				expectedHealthNodes, nodeList.Nodes)
+		}
+		bothEmpty = nodeList.Probes == nil && len(expectedProbeNodes) == 0
+		equal = reflect.DeepEqual(nodeList.Probes, expectedProbeNodes)
+		if !(bothEmpty || equal) {
+			r.Fatalf("Probes unequal: want(%v) got(%v)",
+				expectedProbeNodes, nodeList.Probes)
+		}
 
 		// Now ensure the check runner is watching the correct checks.
 		checks, _, err := a.client.Health().State(api.HealthAny, nil)
@@ -213,18 +223,19 @@ func TestLeader_divideCoordinates(t *testing.T) {
 			if err != nil {
 				r.Fatal(err)
 			}
-			expected := api.HealthChecks{
-				&api.HealthCheck{
-					Node:        node,
-					CheckID:     externalCheckName,
-					Name:        "External Node Status",
-					Status:      api.HealthPassing,
-					Output:      NodeAliveStatus,
-					CreateIndex: checks[0].CreateIndex,
-					ModifyIndex: checks[0].ModifyIndex,
-				},
+			expected := &api.HealthCheck{
+				Node:    node,
+				CheckID: externalCheckName,
+				Name:    "External Node Status",
+				Status:  api.HealthPassing,
+				Output:  NodeAliveStatus,
 			}
-			verify.Values(r, "", checks, expected)
+			if len(checks) != 1 {
+				r.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+			}
+			if err := compareHealthCheck(checks[0], expected); err != nil {
+				r.Fatal(err)
+			}
 		})
 	}
 
@@ -250,18 +261,19 @@ func TestLeader_divideCoordinates(t *testing.T) {
 		if err != nil {
 			r.Fatal(err)
 		}
-		expected := api.HealthChecks{
-			&api.HealthCheck{
-				Node:        "node3",
-				CheckID:     externalCheckName,
-				Name:        "External Node Status",
-				Status:      api.HealthPassing,
-				Output:      NodeAliveStatus,
-				CreateIndex: checks[0].CreateIndex,
-				ModifyIndex: checks[0].ModifyIndex,
-			},
+		expected := &api.HealthCheck{
+			Node:    "node3",
+			CheckID: externalCheckName,
+			Name:    "External Node Status",
+			Status:  api.HealthPassing,
+			Output:  NodeAliveStatus,
 		}
-		verify.Values(r, "", checks, expected)
+		if len(checks) != 1 {
+			r.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+		}
+		if err := compareHealthCheck(checks[0], expected); err != nil {
+			r.Fatal(err)
+		}
 	})
 }
 

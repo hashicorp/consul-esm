@@ -12,6 +12,5 @@ require (
 	github.com/hashicorp/serf v0.8.4
 	github.com/mitchellh/cli v1.0.0
 	github.com/mitchellh/mapstructure v1.1.2
-	github.com/pascaldekloe/goe v0.1.0
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
 )

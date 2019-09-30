@@ -2,11 +2,10 @@ package main
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/pascaldekloe/goe/verify"
 )
 
 func TestDecodeMergeConfig(t *testing.T) {
@@ -61,7 +60,10 @@ ping_type = "socket"
 	}
 	MergeConfig(result, humanConfig)
 
-	verify.Values(t, "", result, expected)
+	if !reflect.DeepEqual(result, expected) {
+		t.Fatal("Parsed config doesn't match expected:",
+			structDiff(result, expected))
+	}
 }
 
 func TestValidateConfig(t *testing.T) {
