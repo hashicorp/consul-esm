@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -89,22 +90,28 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		}
 		if definition.HTTP != "" {
 			http := &consulchecks.CheckHTTP{
-				Notify:        c,
-				CheckID:       checkHash,
-				HTTP:          definition.HTTP,
-				Header:        definition.Header,
-				Method:        definition.Method,
-				TLSSkipVerify: definition.TLSSkipVerify,
-				Interval:      definition.IntervalDuration,
-				Timeout:       definition.TimeoutDuration,
-				Logger:        c.logger,
+				Notify:   c,
+				CheckID:  checkHash,
+				HTTP:     definition.HTTP,
+				Header:   definition.Header,
+				Method:   definition.Method,
+				Interval: definition.IntervalDuration,
+				Timeout:  definition.TimeoutDuration,
+				Logger:   c.logger,
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: definition.TLSSkipVerify},
 			}
 
 			if _, ok := c.checks[checkHash]; ok {
 				if data, ok := c.checksHTTP[checkHash]; ok &&
 					c.checks[checkHash].Status == check.Status &&
-					data.HTTP == http.HTTP && reflect.DeepEqual(data.Header, http.Header) && data.Method == http.Method &&
-					data.TLSSkipVerify == http.TLSSkipVerify && data.Interval == http.Interval && data.Timeout == http.Timeout &&
+					data.HTTP == http.HTTP &&
+					reflect.DeepEqual(data.Header, http.Header) &&
+					data.Method == http.Method &&
+					data.TLSClientConfig.InsecureSkipVerify ==
+						http.TLSClientConfig.InsecureSkipVerify &&
+					data.Interval == http.Interval &&
+					data.Timeout == http.Timeout &&
 					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
 					continue
 				}
@@ -137,8 +144,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			if _, ok := c.checks[checkHash]; ok {
 				if data, ok := c.checksTCP[checkHash]; ok &&
 					c.checks[checkHash].Status == check.Status &&
-					data.TCP == tcp.TCP && data.Interval == tcp.Interval &&
-					data.Timeout == tcp.Timeout && c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+					data.TCP == tcp.TCP &&
+					data.Interval == tcp.Interval &&
+					data.Timeout == tcp.Timeout &&
+					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
 					continue
 				}
 				c.logger.Printf("[INFO] Updating TCP check %q", checkHash)

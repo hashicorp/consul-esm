@@ -6,7 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/consul/testutil"
+	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/sdk/testutil"
 )
 
 // Change as needed to see log/consul-agent output
