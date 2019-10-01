@@ -87,8 +87,13 @@ dev:
 
 test:
 	@echo "==> Testing ${NAME}"
-	@go test -timeout=30s -race -tags="${GOTAGS}" ${TESTARGS} ./...
+	@go test -timeout=30s -tags="${GOTAGS}" ${TESTARGS} ./...
 .PHONY: test
+
+test-race:
+	@echo "==> Testing ${NAME}"
+	@go test -race -timeout=30s -tags="${GOTAGS}" ${TESTARGS} ./...
+.PHONY: test-race
 
 # dist builds the binaries and then signs and packages them for distribution
 dist:
