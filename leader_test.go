@@ -383,3 +383,39 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 		}
 	})
 }
+
+func TestLeader_nodeLists(t *testing.T) {
+	nodes := []*api.Node{
+		{
+			Node: "node1",
+			Meta: map[string]string{"external-probe": "true"},
+		},
+		{
+			Node: "node2",
+			Meta: map[string]string{"external-probe": "false"},
+		},
+		{
+			Node: "node3",
+			Meta: map[string]string{"external-probe": "false"},
+		},
+	}
+	insts := []*api.ServiceEntry{
+		{Service: &api.AgentService{ID: "service1"}},
+		{Service: &api.AgentService{ID: "service2"}},
+	}
+	// base test
+	health, ping := nodeLists(nodes, insts)
+	if len(health) != 2 {
+		t.Fatalf("wrong # healthy nodes returned; want 2, got %d", len(health))
+	}
+	if len(ping) != 1 {
+		t.Fatalf("wrong # ping nodes returned; want 1, got %d", len(ping))
+	}
+	// divide-by-0 test (GH-43)
+	insts = []*api.ServiceEntry{}
+	health, ping = nodeLists(nodes, insts)
+	if len(health) != 0 || len(ping) != 0 {
+		t.Fatalf("wrong # nodes returned; want 0, got %d (health), %d (ping)",
+			len(health), len(ping))
+	}
+}
