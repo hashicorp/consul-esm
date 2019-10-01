@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/testutil/retry"
-	"github.com/pascaldekloe/goe/verify"
+	"github.com/hashicorp/consul/sdk/testutil/retry"
 )
 
 func TestCoordinate_updateNodeCoordinate(t *testing.T) {
@@ -97,18 +96,19 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := api.HealthChecks{
-		{
-			Node:        "external",
-			CheckID:     externalCheckName,
-			Name:        "External Node Status",
-			Status:      api.HealthCritical,
-			Output:      NodeCriticalStatus,
-			CreateIndex: 8,
-			ModifyIndex: 8,
-		},
+	expected := &api.HealthCheck{
+		Node:    "external",
+		CheckID: externalCheckName,
+		Name:    "External Node Status",
+		Status:  api.HealthCritical,
+		Output:  NodeCriticalStatus,
 	}
-	verify.Values(t, "", checks, expected)
+	if len(checks) != 1 {
+		t.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+	}
+	if err := compareHealthCheck(checks[0], expected); err != nil {
+		t.Fatal(err)
+	}
 
 	// Call updateHealthyNode to reset the node's health
 	if err := agent.updateHealthyNode(&api.Node{Node: "external"}, client.KV(), "testkey", kvPair); err != nil {
@@ -125,14 +125,18 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	}
 
 	// Verify the health status has been updated
-	expected[0].Status = api.HealthPassing
-	expected[0].Output = NodeAliveStatus
-	expected[0].ModifyIndex = 9
+	expected.Status = api.HealthPassing
+	expected.Output = NodeAliveStatus
 	checks, _, err = client.Health().Node("external", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	verify.Values(t, "", checks, expected)
+	if len(checks) != 1 {
+		t.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+	}
+	if err := compareHealthCheck(checks[0], expected); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCoordinate_reapFailedNode(t *testing.T) {
@@ -176,18 +180,21 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := api.HealthChecks{
-		&api.HealthCheck{
-			Node:        "external",
-			CheckID:     externalCheckName,
-			Name:        "External Node Status",
-			Status:      api.HealthCritical,
-			Output:      NodeCriticalStatus,
-			CreateIndex: checks[0].CreateIndex,
-			ModifyIndex: checks[0].ModifyIndex,
-		},
+	expected := &api.HealthCheck{
+		Node:        "external",
+		CheckID:     externalCheckName,
+		Name:        "External Node Status",
+		Status:      api.HealthCritical,
+		Output:      NodeCriticalStatus,
+		CreateIndex: checks[0].CreateIndex,
+		ModifyIndex: checks[0].ModifyIndex,
 	}
-	verify.Values(t, "", checks, expected)
+	if len(checks) != 1 {
+		t.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+	}
+	if err := compareHealthCheck(checks[0], expected); err != nil {
+		t.Fatal(err)
+	}
 
 	time.Sleep(agent.config.NodeReconnectTimeout)
 
@@ -271,18 +278,21 @@ func TestCoordinate_parallelPings(t *testing.T) {
 			if err != nil {
 				r.Fatal(err)
 			}
-			expected := api.HealthChecks{
-				&api.HealthCheck{
-					Node:        node,
-					CheckID:     externalCheckName,
-					Name:        "External Node Status",
-					Status:      api.HealthPassing,
-					Output:      NodeAliveStatus,
-					CreateIndex: checks[0].CreateIndex,
-					ModifyIndex: checks[0].ModifyIndex,
-				},
+			expected := &api.HealthCheck{
+				Node:        node,
+				CheckID:     externalCheckName,
+				Name:        "External Node Status",
+				Status:      api.HealthPassing,
+				Output:      NodeAliveStatus,
+				CreateIndex: checks[0].CreateIndex,
+				ModifyIndex: checks[0].ModifyIndex,
 			}
-			verify.Values(r, node, checks, expected)
+			if len(checks) != 1 {
+				r.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+			}
+			if err := compareHealthCheck(checks[0], expected); err != nil {
+				r.Fatal(err)
+			}
 		}
 	})
 }
