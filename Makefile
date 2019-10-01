@@ -6,6 +6,7 @@ CURRENT_DIR := $(patsubst %/,%,$(dir $(realpath $(MKFILE_PATH))))
 GOOS=$(shell go env GOOS)
 GOARCH=$(shell go env GOARCH)
 GOPATH=$(shell go env GOPATH)
+GOPATH := $(lastword $(subst :, ,${GOPATH})) # use last GOPATH entry
 
 # Project information
 GOVERSION := 1.12.3
@@ -20,9 +21,6 @@ GOTAGS ?=
 
 # Number of procs to use
 GOMAXPROCS ?= 4
-
-# List all our actual files, excluding vendor
-GOFILES ?= $(shell go list ./... | grep -v /vendor/)
 
 # Default os-arch combination to build
 XC_OS ?= darwin freebsd linux netbsd openbsd solaris windows
@@ -46,22 +44,15 @@ define make-xc-target
 		@printf "%s%20s %s\n" "-->" "${1}/${2}:" "${PROJECT} (excluded)"
   else
 		@printf "%s%20s %s\n" "-->" "${1}/${2}:" "${PROJECT}"
-		@docker run \
-			--interactive \
-			--rm \
-			--dns="8.8.8.8" \
-			--volume="${CURRENT_DIR}:/go/src/${PROJECT}" \
-			--workdir="/go/src/${PROJECT}" \
-			"golang:${GOVERSION}" \
-			env \
-				CGO_ENABLED="0" \
-				GOOS="${1}" \
-				GOARCH="${2}" \
-				go build \
-				  -a \
-					-o="pkg/${1}_${2}/${NAME}${3}" \
-					-ldflags "${LD_FLAGS}" \
-					-tags "${GOTAGS}"
+		@env \
+			CGO_ENABLED="0" \
+			GOOS="${1}" \
+			GOARCH="${2}" \
+			go build \
+				-a \
+				-o="pkg/${1}_${2}/${NAME}${3}" \
+				-ldflags "${LD_FLAGS}" \
+				-tags "${GOTAGS}"
   endif
   .PHONY: $1/$2
 
@@ -73,40 +64,55 @@ define make-xc-target
 endef
 $(foreach goarch,$(XC_ARCH),$(foreach goos,$(XC_OS),$(eval $(call make-xc-target,$(goos),$(goarch),$(if $(findstring windows,$(goos)),.exe,)))))
 
+pristine:
+	@docker run \
+		--interactive \
+		--user $$(id -u):$$(id -g) \
+		--rm \
+		--dns="8.8.8.8" \
+		--volume="${CURRENT_DIR}:/go/src/${PROJECT}" \
+		--volume="${GOPATH}/pkg/mod:/go/pkg/mod" \
+		--workdir="/go/src/${PROJECT}" \
+		--env=CGO_ENABLED="0" \
+		--env=GO111MODULE=on \
+		"golang:${GOVERSION}" env GOCACHE=/tmp make -j4 build
+
 # dev builds and installs the project locally.
 dev:
 	@echo "==> Installing ${NAME} for ${GOOS}/${GOARCH}"
 	@rm -f "${GOPATH}/pkg/${GOOS}_${GOARCH}/${PROJECT}/version.a"
 	mkdir -p pkg/$(GOOS)_$(GOARCH)/ bin/
 	go install -ldflags '$(LD_FLAGS)' -tags '$(GOTAGS)'
-	cp $(GOPATH)/bin/consul bin/
-	cp $(GOPATH)/bin/consul pkg/$(GOOS)_$(GOARCH)
 .PHONY: dev
 
 test:
 	@echo "==> Testing ${NAME}"
-	@go test -timeout=30s -tags="${GOTAGS}" ${GOFILES} ${TESTARGS}
+	@go test -timeout=30s -race -tags="${GOTAGS}" ${TESTARGS} ./...
 .PHONY: test
 
 # dist builds the binaries and then signs and packages them for distribution
 dist:
+	@$(MAKE) -f "${MKFILE_PATH}" clean _tag
+	@$(MAKE) -f "${MKFILE_PATH}" -j4 build
+	@$(MAKE) -f "${MKFILE_PATH}" _compress _checksum _sign
+.PHONY: dist
+
+release: dist
 ifndef GPG_KEY
 	@echo "==> ERROR: No GPG key specified! Without a GPG key, this release cannot"
 	@echo "           be signed. Set the environment variable GPG_KEY to the ID of"
 	@echo "           the GPG key to continue."
 	@exit 127
 else
-	@$(MAKE) -f "${MKFILE_PATH}" _cleanup _tag
-	@$(MAKE) -f "${MKFILE_PATH}" -j4 build
-	@$(MAKE) -f "${MKFILE_PATH}" _compress _checksum _sign
+	@$(MAKE) -f "${MKFILE_PATH}" _sign
 endif
-.PHONY: dist
+.PHONY: release
 
-# _cleanup removes any previous binaries
-_cleanup:
+# clean removes any previous binaries
+clean:
 	@rm -rf "${CURRENT_DIR}/pkg/"
 	@rm -rf "${CURRENT_DIR}/bin/"
-.PHONY: _cleanup
+.PHONY: clean
 
 # _tag creates the git tag for this release
 _tag:
