@@ -18,9 +18,6 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 		cb(conf)
 	}
 
-	MaxRTT = 500 * time.Millisecond
-	retryTime = 200 * time.Millisecond
-
 	agent, err := NewAgent(conf, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +47,6 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	defer agent.Shutdown()
 
 	// Lower these retry intervals
-	agentTTL = 100 * time.Millisecond
-	retryTime = 100 * time.Millisecond
 	serviceID := fmt.Sprintf("%s:%s", agent.config.Service, agent.id)
 
 	// Make sure the ESM service and TTL check are registered

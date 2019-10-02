@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil"
@@ -21,6 +22,11 @@ var STDERR = output
 
 func TestMain(m *testing.M) {
 	log.SetOutput(LOGOUT)
+
+	MaxRTT = 500 * time.Millisecond
+	retryTime = 200 * time.Millisecond
+	agentTTL = 100 * time.Millisecond
+
 	os.Exit(m.Run())
 }
 

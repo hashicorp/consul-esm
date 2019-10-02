@@ -198,8 +198,6 @@ func TestLeader_divideCoordinates(t *testing.T) {
 	}
 
 	// Register two ESM agents.
-	MaxRTT = 500 * time.Millisecond
-	retryTime = 200 * time.Millisecond
 	agent1 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
 		c.id = "agent1"
