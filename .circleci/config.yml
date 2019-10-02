@@ -6,7 +6,7 @@ jobs:
       CONSUL_VERSION: 1.6.1
     docker:
       - image: circleci/golang:latest
-    working_directory: /go/src/github.com/hashicorp/consul-template
+    working_directory: /go/src/github.com/hashicorp/consul-esm
     steps:
       - checkout
       - restore_cache:
