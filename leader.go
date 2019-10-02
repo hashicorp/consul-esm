@@ -78,9 +78,34 @@ LEADER_WAIT:
 	}
 }
 
-// computeWatchedNodes watches both the list of registered ESM instances and the list of
-// external nodes registered in Consul and decides which nodes each ESM instance should be
-// in charge of, writing the output to the KV store.
+// nodesLists builds lists of nodes each agent is responsible for.
+func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
+) (map[string][]string, map[string][]string) {
+	healthNodes := make(map[string][]string)
+	pingNodes := make(map[string][]string)
+	if len(insts) == 0 {
+		return healthNodes, pingNodes
+	}
+	for i, node := range nodes {
+		idx := i % len(insts)
+		agentID := insts[idx].Service.ID
+
+		// If it's a node to probe, add it to the ping list. Otherwise just add
+		// it to the list of nodes to be health checked.
+		if node.Meta != nil {
+			if v, ok := node.Meta["external-probe"]; ok && v == "true" {
+				pingNodes[agentID] = append(pingNodes[agentID], node.Node)
+				continue
+			}
+		}
+		healthNodes[agentID] = append(healthNodes[agentID], node.Node)
+	}
+	return healthNodes, pingNodes
+}
+
+// computeWatchedNodes watches both the list of registered ESM instances and
+// the list of external nodes registered in Consul and decides which nodes each
+// ESM instance should be in charge of, writing the output to the KV store.
 func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	nodeCh := make(chan []*api.Node)
 	instanceCh := make(chan []*api.ServiceEntry)
@@ -106,23 +131,7 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 		}
 		firstRun = false
 
-		// Build a list of nodes each agent is responsible for.
-		healthNodes := make(map[string][]string)
-		pingNodes := make(map[string][]string)
-		for i, node := range externalNodes {
-			idx := i % len(healthyInstances)
-			agentID := healthyInstances[idx].Service.ID
-
-			// If it's a node to probe, add it to the ping list. Otherwise just add it
-			// to the list of nodes to be health checked.
-			if node.Meta != nil {
-				if v, ok := node.Meta["external-probe"]; ok && v == "true" {
-					pingNodes[agentID] = append(pingNodes[agentID], node.Node)
-					continue
-				}
-			}
-			healthNodes[agentID] = append(healthNodes[agentID], node.Node)
-		}
+		healthNodes, pingNodes := nodeLists(externalNodes, healthyInstances)
 
 		// Write the KV update as a transaction.
 		ops := api.KVTxnOps{
@@ -145,7 +154,8 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 		}
 		success, results, _, err := a.client.KV().Txn(ops, nil)
 		if err != nil || !success {
-			a.logger.Printf("[ERR] Error writing state to KV store: %v, %v", err, results)
+			a.logger.Printf("[ERR] Error writing state to KV store: %v, %v",
+				err, results)
 			// Try again after the wait because we got an error.
 			firstRun = true
 			time.Sleep(retryTime)
