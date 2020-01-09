@@ -100,6 +100,14 @@ continually watch Consul for updates to the catalog and perform health checks de
 external nodes it discovers. This allows externally registered services and checks to access
 the same features as if they were registered locally on Consul agents.
 
+Each ESM registers a health check for itself with the agent with
+`"DeregisterCriticalServiceAfter": "30m"`, which is currently not configurable. This means after
+failing its health check, the ESM will switch from passing status to critical status. If the ESM
+remains in critical status for 30 minutes, then the agent will attempt to deregister the ESM. During
+critical status, the ESM’s assigned external health checks will be reassigned to another ESM with
+passing status to monitor. Note: this is separate from the example JSON above for registering an
+external health check which has a `DeregisterCriticalServiceAfter` of 30 seconds.
+
 ### Command Line
 To run the daemon, pass the `-config-file` or `-config-dir` flag, giving the location of a config file
 or a directory containing .json or .hcl files.
