@@ -104,7 +104,7 @@ Each ESM registers a health check for itself with the agent with
 `"DeregisterCriticalServiceAfter": "30m"`, which is currently not configurable. This means after
 failing its health check, the ESM will switch from passing status to critical status. If the ESM
 remains in critical status for 30 minutes, then the agent will attempt to deregister the ESM. During
-critical status, the ESM’s assigned external health checks will be reassigned to another ESM with
+critical status the ESM’s assigned external health checks will be reassigned to another ESM with
 passing status to monitor. Note: this is separate from the example JSON above for registering an
 external health check which has a `DeregisterCriticalServiceAfter` of 30 seconds.
 
