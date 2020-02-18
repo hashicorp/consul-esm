@@ -8,7 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/go-uuid"
 )
 
@@ -28,7 +30,23 @@ var (
 	// deregisterTime is the time the TTL check must be in a failed state for
 	// the ESM service in consul to be deregistered.
 	deregisterTime = 30 * time.Minute
+
+	// Specifies a minimum interval that check's can run on
+	minimumInterval = 1 * time.Second
+
+	// Specifies the maximum transaction size for kv store ops
+	maximumTransactionSize = 64
 )
+
+type lastKnownStatus struct {
+	status string
+	time   time.Time
+}
+
+func (s lastKnownStatus) isExpired(ttl time.Duration) bool {
+	statusAge := time.Now().Sub(s.time)
+	return statusAge >= ttl
+}
 
 type Agent struct {
 	config      *Config
@@ -44,7 +62,11 @@ type Agent struct {
 	inflightLock  sync.Mutex
 
 	// Custom func to hook into for testing.
-	watchedNodeFunc func(map[string]bool, []*api.Node)
+	watchedNodeFunc       func(map[string]bool, []*api.Node)
+	knownNodeStatuses     map[string]lastKnownStatus
+	knwonNodeStatusesLock sync.Mutex
+
+	memSink *metrics.InmemSink
 }
 
 func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
@@ -64,13 +86,20 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 		}
 	}
 
+	memSink, err := lib.InitTelemetry(config.Telemetry)
+	if err != nil {
+		return nil, err
+	}
+
 	agent := Agent{
-		config:        config,
-		client:        client,
-		id:            id,
-		logger:        logger,
-		shutdownCh:    make(chan struct{}),
-		inflightPings: make(map[string]struct{}),
+		config:            config,
+		client:            client,
+		id:                id,
+		logger:            logger,
+		shutdownCh:        make(chan struct{}),
+		inflightPings:     make(map[string]struct{}),
+		knownNodeStatuses: make(map[string]lastKnownStatus),
+		memSink:           memSink,
 	}
 
 	logger.Printf("[INFO] Connecting to Consul on %s...", clientConf.Address)
@@ -308,6 +337,8 @@ func (a *Agent) watchNodeList() {
 			continue
 		}
 
+		a.logger.Printf("[INFO] Fetched %d nodes from catalog", len(nodes))
+
 		var pingList []*api.Node
 		for _, node := range nodes {
 			if pingNodes[node.Node] {
@@ -344,7 +375,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval)
+	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval, minimumInterval)
 	go a.checkRunner.reapServices(a.shutdownCh)
 	defer a.checkRunner.Stop()
 
@@ -386,4 +417,24 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 			a.logger.Printf("[INFO] Now managing %d health checks across %d nodes", checkCount, len(ourNodes))
 		}
 	}
+}
+
+// Check last visible node status.
+// Returns true, if status is changed since last update and false otherwise.
+func (a *Agent) shouldUpdateNodeStatus(node string, newStatus string) bool {
+	a.knwonNodeStatusesLock.Lock()
+	defer a.knwonNodeStatusesLock.Unlock()
+	ttl := a.config.NodeHealthRefreshInterval
+	lastStatus, exists := a.knownNodeStatuses[node]
+	if !exists || lastStatus.isExpired(ttl) {
+		return true
+	}
+	return newStatus != lastStatus.status
+}
+
+// Update last visible node status.
+func (a *Agent) updateLastKnownNodeStatus(node string, newStatus string) {
+	a.knwonNodeStatusesLock.Lock()
+	defer a.knwonNodeStatusesLock.Unlock()
+	a.knownNodeStatuses[node] = lastKnownStatus{newStatus, time.Now()}
 }

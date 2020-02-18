@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
@@ -136,11 +137,30 @@ func (a *Agent) nodeTicker(numNodes int) *time.Ticker {
 	return time.NewTicker(waitTime)
 }
 
-// updateHealthyNode updates the node's health check and clears any kv
-// critical tracking associated with it.
+// updateHealthyNode updates the node's health check, additionally it debounces repeated updates
 func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	status := api.HealthPassing
 
+	isChanged := a.shouldUpdateNodeStatus(node.Node, status)
+	if !isChanged {
+		a.logger.Printf("[TRACE] Debounce: skipping healthy node status update for node %s", node.Node)
+		return nil
+	} else {
+		a.logger.Printf("[TRACE] Debounce: healthy node status update. Node %s, status %s", node.Node, status)
+	}
+
+	err := a.updateHealthyNodeTxn(node, kvClient, key, kvPair)
+	if err == nil {
+		// only if the transaction succeed, record a node status update otherwise we should retry
+		a.updateLastKnownNodeStatus(node.Node, status)
+	}
+
+	return err
+}
+
+// updateHealthyNode updates the node's health check and clears any kv
+// critical tracking associated with it.
+func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	// If a critical node went back to passing, delete the KV entry for it.
 	var ops api.TxnOps
 	if kvPair != nil {
@@ -155,14 +175,33 @@ func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, 
 	}
 
 	// Batch the possible KV deletion operation with the external health check update.
-	return a.updateNodeCheck(node, ops, status, NodeAliveStatus)
+	return a.updateNodeCheck(node, ops, api.HealthPassing, NodeAliveStatus)
 }
 
-// updateFailedNode sets the node's health check to critical and checks whether
-// the node has exceeded its timeout an needs to be reaped.
+// updateFailedNode sets the node's health check to critical, additionally it debounces repeated updates
 func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	status := api.HealthCritical
 
+	isChanged := a.shouldUpdateNodeStatus(node.Node, status)
+	if !isChanged {
+		a.logger.Printf("[TRACE] Debounce: skipping failed node status update for node %s", node.Node)
+		return nil
+	} else {
+		a.logger.Printf("[TRACE] Debounce: failed node status update. Node %s, status %s", node.Node, status)
+	}
+
+	err := a.updateFailedNodeTxn(node, kvClient, key, kvPair)
+	if err == nil {
+		// only if the transaction succeed, record a node status update otherwise we should retry
+		a.updateLastKnownNodeStatus(node.Node, status)
+	}
+
+	return err
+}
+
+// updateFailedNodeTxn sets the node's health check to critical and checks whether
+// the node has exceeded its timeout an needs to be reaped.
+func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	// If there's no existing key tracking how long the node has been critical, create one.
 	var ops api.TxnOps
 	if kvPair == nil {
@@ -221,11 +260,12 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 	}
 
 	// Batch our KV update tracking the critical time with the external health check update.
-	return a.updateNodeCheck(node, ops, status, NodeCriticalStatus)
+	return a.updateNodeCheck(node, ops, api.HealthCritical, NodeCriticalStatus)
 }
 
 // updateNodeCheck updates the node's externalNodeHealth check with the given status/output.
 func (a *Agent) updateNodeCheck(node *api.Node, ops api.TxnOps, status, output string) error {
+	metrics.IncrCounter([]string{"coord", "txn"}, 1)
 	// Update the external health check status.
 	ops = append(ops, &api.TxnOp{
 		Check: &api.CheckTxnOp{
@@ -269,6 +309,11 @@ func (a *Agent) runClientTxn(ops api.TxnOps) error {
 // updateNodeCoordinate updates the node's coordinate entry based on the
 // given RTT from a ping
 func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
+	if a.config.DisableCooridnateUpdates {
+		a.logger.Printf("[TRACE] Debounce: skipping coordinate update for node %s", node.Node)
+		return nil
+	}
+
 	// Get coordinate info for the node.
 	coords, _, err := a.client.Coordinate().Node(node.Node, nil)
 	if err != nil && !strings.Contains(err.Error(), "Unexpected response code: 404") {
@@ -315,17 +360,23 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 		return fmt.Errorf("error updating coordinate for node %q: %v", node.Node, err)
 	}
 
-	// Update the coordinate in the catalog.
-	_, err = a.client.Coordinate().Update(&api.CoordinateEntry{
-		Node:    coord.Node,
-		Segment: coord.Segment,
-		Coord:   newCoord,
-	}, nil)
+	// Update the coordinate in the catalog
+	// - if there is a significant change
+	// - if there isn't a coordinate already there
+	if len(coords) == 0 || coord.Coord.DistanceTo(newCoord) > time.Millisecond {
+		_, err = a.client.Coordinate().Update(&api.CoordinateEntry{
+			Node:    coord.Node,
+			Segment: coord.Segment,
+			Coord:   newCoord,
+		}, nil)
 
-	if err != nil {
-		return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
+		if err != nil {
+			return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
+		}
+		a.logger.Printf("[INFO] Updated coordinates for node %q with distance %q from previous", node.Node, coord.Coord.DistanceTo(newCoord))
+	} else {
+		a.logger.Printf("[TRACE] Skipped update for coordinates, node %q change %q not significant", node.Node, coord.Coord.DistanceTo(newCoord))
 	}
-	a.logger.Printf("[TRACE] Updated coordinates for node %q", node.Node)
 
 	return nil
 }

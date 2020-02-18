@@ -103,6 +103,16 @@ func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
 	return healthNodes, pingNodes
 }
 
+func (a *Agent) commitOps(ops api.KVTxnOps) bool {
+	success, results, _, err := a.client.KV().Txn(ops, nil)
+	if err != nil || !success {
+		a.logger.Printf("[ERR] Error writing state to KV store: %v, %v", err, results)
+		// Try again after the wait because we got an error.
+		return false
+	}
+	return true
+}
+
 // computeWatchedNodes watches both the list of registered ESM instances and
 // the list of external nodes registered in Consul and decides which nodes each
 // ESM instance should be in charge of, writing the output to the KV store.
@@ -119,17 +129,26 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	var prevHealthNodes map[string][]string
 	var prevPingNodes map[string][]string
 
-	firstRun := true
+	// Avoid blocking on first pass
+	retryTimer := time.After(0)
+
 	for {
-		if !firstRun {
-			select {
-			case <-stopCh:
-				return
-			case externalNodes = <-nodeCh:
-			case healthyInstances = <-instanceCh:
-			}
+		select {
+		case <-stopCh:
+			return
+		case externalNodes = <-nodeCh:
+		case healthyInstances = <-instanceCh:
+		case <-retryTimer:
 		}
-		firstRun = false
+
+		// Next time through block until either nodes or instances are updated
+		retryTimer = nil
+
+		// Wait for some instances to become available, if there are none, then there isn't anything we can do
+		if len(healthyInstances) == 0 {
+			retryTimer = time.After(retryTime)
+			continue
+		}
 
 		healthNodes, pingNodes := nodeLists(externalNodes, healthyInstances)
 
@@ -151,14 +170,20 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 				Value: bytes,
 			}
 			ops = append(ops, op)
+
+			// Flush any ops if we're nearing a transaction limit
+			if len(ops) >= maximumTransactionSize {
+				if !a.commitOps(ops) {
+					retryTimer = time.After(retryTime)
+					continue
+				}
+				ops = api.KVTxnOps{}
+			}
 		}
-		success, results, _, err := a.client.KV().Txn(ops, nil)
-		if err != nil || !success {
-			a.logger.Printf("[ERR] Error writing state to KV store: %v, %v",
-				err, results)
-			// Try again after the wait because we got an error.
-			firstRun = true
-			time.Sleep(retryTime)
+
+		// Final flush for ops
+		if !a.commitOps(ops) {
+			retryTimer = time.After(retryTime)
 			continue
 		}
 
@@ -207,6 +232,8 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 		})
 
 		opts.WaitIndex = meta.LastIndex
+
+		a.logger.Printf("[INFO] Updating external node list, set to %d items", len(externalNodes))
 
 		nodeCh <- externalNodes
 	}

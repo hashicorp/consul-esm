@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/flags"
+	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
@@ -29,12 +30,13 @@ type Config struct {
 	Tag     string
 	KVPath  string
 
-	NodeMeta                 map[string]string
-	Interval                 time.Duration
-	DeregisterAfter          time.Duration
-	CheckUpdateInterval      time.Duration
-	CoordinateUpdateInterval time.Duration
-	NodeReconnectTimeout     time.Duration
+	NodeMeta                  map[string]string
+	Interval                  time.Duration
+	DeregisterAfter           time.Duration
+	CheckUpdateInterval       time.Duration
+	CoordinateUpdateInterval  time.Duration
+	NodeHealthRefreshInterval time.Duration
+	NodeReconnectTimeout      time.Duration
 
 	HTTPAddr      string
 	Token         string
@@ -46,6 +48,11 @@ type Config struct {
 	TLSServerName string
 
 	PingType string
+
+	DisableRedundantStatusUpdates bool
+	DisableCooridnateUpdates      bool
+
+	Telemetry lib.TelemetryConfig
 
 	// Test-only fields.
 	id string
@@ -90,13 +97,39 @@ func DefaultConfig() *Config {
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
-		Interval:                 10 * time.Second,
-		DeregisterAfter:          72 * time.Hour,
-		CheckUpdateInterval:      5 * time.Minute,
-		CoordinateUpdateInterval: 10 * time.Second,
-		NodeReconnectTimeout:     72 * time.Hour,
-		PingType:                 PingTypeUDP,
+		Interval:                  10 * time.Second,
+		DeregisterAfter:           72 * time.Hour,
+		CheckUpdateInterval:       5 * time.Minute,
+		CoordinateUpdateInterval:  10 * time.Second,
+		NodeHealthRefreshInterval: 1 * time.Hour,
+		NodeReconnectTimeout:      72 * time.Hour,
+		PingType:                  PingTypeUDP,
 	}
+}
+
+type Telemetry struct {
+	CirconusAPIApp                     *string  `mapstructure:"circonus_api_app"`
+	CirconusAPIToken                   *string  `mapstructure:"circonus_api_token"`
+	CirconusAPIURL                     *string  `mapstructure:"circonus_api_url"`
+	CirconusBrokerID                   *string  `mapstructure:"circonus_broker_id"`
+	CirconusBrokerSelectTag            *string  `mapstructure:"circonus_broker_select_tag"`
+	CirconusCheckDisplayName           *string  `mapstructure:"circonus_check_display_name"`
+	CirconusCheckForceMetricActivation *string  `mapstructure:"circonus_check_force_metric_activation"`
+	CirconusCheckID                    *string  `mapstructure:"circonus_check_id"`
+	CirconusCheckInstanceID            *string  `mapstructure:"circonus_check_instance_id"`
+	CirconusCheckSearchTag             *string  `mapstructure:"circonus_check_search_tag"`
+	CirconusCheckTags                  *string  `mapstructure:"circonus_check_tags"`
+	CirconusSubmissionInterval         *string  `mapstructure:"circonus_submission_interval"`
+	CirconusSubmissionURL              *string  `mapstructure:"circonus_submission_url"`
+	DisableHostname                    *bool    `mapstructure:"disable_hostname"`
+	DogstatsdAddr                      *string  `mapstructure:"dogstatsd_addr"`
+	DogstatsdTags                      []string `mapstructure:"dogstatsd_tags"`
+	FilterDefault                      *bool    `mapstructure:"filter_default"`
+	PrefixFilter                       []string `mapstructure:"prefix_filter"`
+	MetricsPrefix                      *string  `mapstructure:"metrics_prefix"`
+	PrometheusRetentionTime            *string  `mapstructure:"prometheus_retention_time"`
+	StatsdAddr                         *string  `mapstructure:"statsd_address"`
+	StatsiteAddr                       *string  `mapstructure:"statsite_address"`
 }
 
 type HumanConfig struct {
@@ -122,6 +155,11 @@ type HumanConfig struct {
 	TLSServerName flags.StringValue `mapstructure:"tls_server_name"`
 
 	PingType flags.StringValue `mapstructure:"ping_type"`
+
+	DisableRedundantStatusUpdates flags.BoolValue `mapstructure:"disable_redundant_status_updates"`
+	DisableCooridnateUpdates      flags.BoolValue `mapstructure:"disable_cooridinate_updates"`
+
+	Telemetry []Telemetry `mapstructure:"telemetry"`
 }
 
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
@@ -146,6 +184,11 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 	nodeMeta := list.Filter("external_node_meta")
 	if len(nodeMeta.Elem().Items) > 1 {
 		return nil, fmt.Errorf("only one node_meta block allowed")
+	}
+
+	telemetry := list.Filter("telemetry")
+	if len(telemetry.Elem().Items) > 1 {
+		return nil, fmt.Errorf("only one telemetry block allowed")
 	}
 
 	// Decode the full thing into a map[string]interface for ease of use
@@ -232,9 +275,8 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 		if err != nil {
 			return err
 		}
-		MergeConfig(dst, src)
 
-		return nil
+		return MergeConfig(dst, src)
 	}
 
 	for _, path := range paths {
@@ -246,7 +288,22 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 	return nil
 }
 
-func MergeConfig(dst *Config, src *HumanConfig) {
+func stringVal(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func boolVal(v *bool) bool {
+	if v == nil {
+		return false
+	}
+
+	return *v
+}
+
+func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.Service.Merge(&dst.Service)
 	src.Tag.Merge(&dst.Tag)
@@ -265,4 +322,65 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.KeyFile.Merge(&dst.KeyFile)
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
+	src.DisableRedundantStatusUpdates.Merge(&dst.DisableRedundantStatusUpdates)
+	src.DisableCooridnateUpdates.Merge(&dst.DisableCooridnateUpdates)
+
+	// We check on parse time that there is at most one
+	if len(src.Telemetry) != 0 {
+		telemetry := src.Telemetry[0]
+		// Parse the metric filters
+		var telemetryAllowedPrefixes, telemetryBlockedPrefixes []string
+		for _, rule := range telemetry.PrefixFilter {
+			if rule == "" {
+				fmt.Println("[WARN] Cannot have empty filter rule in prefix_filter")
+				continue
+			}
+			switch rule[0] {
+			case '+':
+				telemetryAllowedPrefixes = append(telemetryAllowedPrefixes, rule[1:])
+			case '-':
+				telemetryBlockedPrefixes = append(telemetryBlockedPrefixes, rule[1:])
+			default:
+				fmt.Printf("[WARN] Filter rule must begin with either '+' or '-': %q\n", rule)
+			}
+		}
+
+		var prometheusRetentionTime time.Duration
+		if telemetry.PrometheusRetentionTime != nil {
+			d, err := time.ParseDuration(*telemetry.PrometheusRetentionTime)
+			if err != nil {
+				return fmt.Errorf("prometheus_retention_time: invalid duration: %q: %s", *telemetry.PrometheusRetentionTime, err)
+			}
+
+			prometheusRetentionTime = d
+		}
+
+		dst.Telemetry = lib.TelemetryConfig{
+			CirconusAPIApp:                     stringVal(telemetry.CirconusAPIApp),
+			CirconusAPIToken:                   stringVal(telemetry.CirconusAPIToken),
+			CirconusAPIURL:                     stringVal(telemetry.CirconusAPIURL),
+			CirconusBrokerID:                   stringVal(telemetry.CirconusBrokerID),
+			CirconusBrokerSelectTag:            stringVal(telemetry.CirconusBrokerSelectTag),
+			CirconusCheckDisplayName:           stringVal(telemetry.CirconusCheckDisplayName),
+			CirconusCheckForceMetricActivation: stringVal(telemetry.CirconusCheckForceMetricActivation),
+			CirconusCheckID:                    stringVal(telemetry.CirconusCheckID),
+			CirconusCheckInstanceID:            stringVal(telemetry.CirconusCheckInstanceID),
+			CirconusCheckSearchTag:             stringVal(telemetry.CirconusCheckSearchTag),
+			CirconusCheckTags:                  stringVal(telemetry.CirconusCheckTags),
+			CirconusSubmissionInterval:         stringVal(telemetry.CirconusSubmissionInterval),
+			CirconusSubmissionURL:              stringVal(telemetry.CirconusSubmissionURL),
+			DisableHostname:                    boolVal(telemetry.DisableHostname),
+			DogstatsdAddr:                      stringVal(telemetry.DogstatsdAddr),
+			DogstatsdTags:                      telemetry.DogstatsdTags,
+			PrometheusRetentionTime:            prometheusRetentionTime,
+			FilterDefault:                      boolVal(telemetry.FilterDefault),
+			AllowedPrefixes:                    telemetryAllowedPrefixes,
+			BlockedPrefixes:                    telemetryBlockedPrefixes,
+			MetricsPrefix:                      stringVal(telemetry.MetricsPrefix),
+			StatsdAddr:                         stringVal(telemetry.StatsdAddr),
+			StatsiteAddr:                       stringVal(telemetry.StatsiteAddr),
+		}
+	}
+
+	return nil
 }
