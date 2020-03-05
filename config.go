@@ -47,6 +47,8 @@ type Config struct {
 
 	PingType string
 
+	EnableLocalScriptChecks bool
+
 	// Test-only fields.
 	id string
 }
@@ -122,6 +124,8 @@ type HumanConfig struct {
 	TLSServerName flags.StringValue `mapstructure:"tls_server_name"`
 
 	PingType flags.StringValue `mapstructure:"ping_type"`
+
+	EnableLocalScriptChecks flags.BoolValue `mapstructure:"enable_local_script_checks"`
 }
 
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
@@ -265,4 +269,5 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.KeyFile.Merge(&dst.KeyFile)
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
+	src.EnableLocalScriptChecks.Merge(&dst.EnableLocalScriptChecks)
 }

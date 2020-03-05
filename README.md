@@ -207,6 +207,11 @@ tls_server_name = ""
 // The method to use for pinging external nodes. Defaults to "udp" but can
 // also be set to "socket" to use ICMP (which requires root privileges).
 ping_type = "udp"
+
+// Controls whether to enable running checks that are scripts. These script
+// checks must be imported into catalog through local config file.
+// Defaults to false
+enable_local_script_checks = false
 ```
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"

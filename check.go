@@ -40,6 +40,9 @@ type CheckRunner struct {
 	deferCheck map[types.CheckID]*time.Timer
 
 	CheckUpdateInterval time.Duration
+
+	// Allows script checks to be run
+	enableLocalScriptChecks bool
 }
 
 func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.Duration) *CheckRunner {
