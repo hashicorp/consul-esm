@@ -33,6 +33,7 @@ type CheckRunner struct {
 	checks         map[types.CheckID]*api.HealthCheck
 	checksHTTP     map[types.CheckID]*consulchecks.CheckHTTP
 	checksTCP      map[types.CheckID]*consulchecks.CheckTCP
+	checksMonitor  map[types.CheckID]*consulchecks.CheckMonitor
 	checksCritical map[types.CheckID]time.Time
 
 	// Used to track checks that are being deferred
@@ -48,6 +49,7 @@ func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.
 		checks:              make(map[types.CheckID]*api.HealthCheck),
 		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
 		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
+		checksMonitor:       make(map[types.CheckID]*consulchecks.CheckMonitor),
 		checksCritical:      make(map[types.CheckID]time.Time),
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
@@ -63,6 +65,10 @@ func (c *CheckRunner) Stop() {
 	}
 
 	for _, check := range c.checksTCP {
+		check.Stop()
+	}
+
+	for _, check := range c.checksMonitor {
 		check.Stop()
 	}
 }
@@ -83,6 +89,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 		checkHash := checkHash(check)
 		found[checkHash] = struct{}{}
+		fmt.Printf("process check: %s %v\n", checkHash, check.Definition)
 
 		definition := check.Definition
 		if definition.IntervalDuration == 0 {
@@ -102,7 +109,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					InsecureSkipVerify: definition.TLSSkipVerify},
 			}
 
+			// see if this check has previously been stored on the check runner
 			if _, ok := c.checks[checkHash]; ok {
+				// check is it was previously stored in the http checks of check runner
+				// make sure it's the same exact check (check all fields)
 				if data, ok := c.checksHTTP[checkHash]; ok &&
 					c.checks[checkHash].Status == check.Status &&
 					data.HTTP == http.HTTP &&
@@ -113,20 +123,26 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					data.Interval == http.Interval &&
 					data.Timeout == http.Timeout &&
 					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+					// check exists and hasn't been modified, no need initiate check or do updates
 					continue
 				}
+				// otherwise there's been a change in the check or it was previously not an http check
 				c.logger.Printf("[INFO] Updating HTTP check %q", checkHash)
+				// look at previously stored checkif the check is still type http, then stop it
 				if c.checks[checkHash].Definition.HTTP != "" {
 					httpCheck := c.checksHTTP[checkHash]
 					httpCheck.Stop()
-				} else {
-					if _, ok := c.checksTCP[checkHash]; !ok {
-						c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
-						continue
-					}
+				} else if _, ok := c.checksTCP[checkHash]; ok {
 					tcpCheck := c.checksTCP[checkHash]
 					tcpCheck.Stop()
 					delete(c.checksTCP, checkHash)
+				} else if _, ok := c.checksMonitor[checkHash]; ok {
+					monitorCheck := c.checksMonitor[checkHash]
+					monitorCheck.Stop()
+					delete(c.checksMonitor, checkHash)
+				} else {
+					c.logger.Printf("[WARN] Inconsistency check %q - is not HTTP, TCP, or Monitor", checkHash)
+					continue
 				}
 			}
 			http.Start()
@@ -154,20 +170,60 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				if c.checks[checkHash].Definition.TCP != "" {
 					tcpCheck := c.checksTCP[checkHash]
 					tcpCheck.Stop()
-				} else {
-					if _, ok := c.checksHTTP[checkHash]; !ok {
-						c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
-						continue
-					}
+				} else if _, ok := c.checksHTTP[checkHash]; ok {
 					httpCheck := c.checksHTTP[checkHash]
 					httpCheck.Stop()
 					delete(c.checksHTTP, checkHash)
+				} else if _, ok := c.checksMonitor[checkHash]; ok {
+					monitorCheck := c.checksMonitor[checkHash]
+					monitorCheck.Stop()
+					delete(c.checksMonitor, checkHash)
+				} else {
+					c.logger.Printf("[WARN] Inconsistency check %q - is not TCP, HTTP, or Monitor", checkHash)
+					continue
 				}
 			}
 			tcp.Start()
 			c.checksTCP[checkHash] = tcp
+		} else if len(definition.ScriptArgs) > 0 {
+			monitor := &consulchecks.CheckMonitor{
+				Notify:     c,
+				CheckID:    checkHash,
+				ScriptArgs: definition.ScriptArgs,
+				Interval:   definition.IntervalDuration,
+				Timeout:    definition.TimeoutDuration,
+				Logger:     c.logger,
+			}
+			if _, ok := c.checks[checkHash]; ok {
+				if data, ok := c.checksMonitor[checkHash]; ok &&
+					c.checks[checkHash].Status == check.Status &&
+					reflect.DeepEqual(data.ScriptArgs, monitor.ScriptArgs) &&
+					data.Interval == monitor.Interval &&
+					data.Timeout == monitor.Timeout &&
+					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+					continue
+				}
+				c.logger.Printf("[INFO] Updating Monitor check %q", checkHash)
+				if len(c.checks[checkHash].Definition.ScriptArgs) > 0 {
+					monitorCheck := c.checksMonitor[checkHash]
+					monitorCheck.Stop()
+				} else if _, ok := c.checksHTTP[checkHash]; ok {
+					httpCheck := c.checksHTTP[checkHash]
+					httpCheck.Stop()
+					delete(c.checksHTTP, checkHash)
+				} else if _, ok := c.checksTCP[checkHash]; ok {
+					tcpCheck := c.checksTCP[checkHash]
+					tcpCheck.Stop()
+					delete(c.checksTCP, checkHash)
+				} else {
+					c.logger.Printf("[WARN] Inconsistency check %q - is not Monitor, TCP, or HTTP", checkHash)
+					continue
+				}
+			}
+			monitor.Start()
+			c.checksMonitor[checkHash] = monitor
 		} else {
-			c.logger.Printf("[WARN] check %q is not a valid HTTP or TCP check", checkHash)
+			c.logger.Printf("[WARN] check %q is not a valid HTTP, TCP, or Script check %v\n", checkHash, definition)
 			continue
 		}
 
@@ -184,16 +240,20 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 				httpCheck := c.checksHTTP[checkHash]
 				httpCheck.Stop()
 				delete(c.checksHTTP, checkHash)
-			} else {
+			} else if check.Definition.TCP != "" {
 				tcpCheck := c.checksTCP[checkHash]
 				tcpCheck.Stop()
 				delete(c.checksTCP, checkHash)
+			} else {
+				monitorCheck := c.checksMonitor[checkHash]
+				monitorCheck.Stop()
+				delete(c.checksMonitor, checkHash)
 			}
 		}
 	}
 }
 
-// UpdateCheck handles the output of an HTTP/TCP check and decides whether or not
+// UpdateCheck handles the output of an HTTP/TCP/Monitor check and decides whether or not
 // to push an update to the catalog.
 func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) {
 	c.Lock()
