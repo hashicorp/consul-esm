@@ -94,7 +94,6 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 		checkHash := checkHash(check)
 		found[checkHash] = struct{}{}
-		fmt.Printf("process check: %s %v\n", checkHash, check.Definition)
 
 		definition := check.Definition
 		if definition.IntervalDuration == 0 {
@@ -146,7 +145,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					monitorCheck.Stop()
 					delete(c.checksMonitor, checkHash)
 				} else {
-					c.logger.Printf("[WARN] Inconsistency check %q - is not HTTP, TCP, or Monitor", checkHash)
+					c.logger.Printf("[WARN] Inconsistency check %q - is not HTTP, TCP, or script", checkHash)
 					continue
 				}
 			}
@@ -184,7 +183,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					monitorCheck.Stop()
 					delete(c.checksMonitor, checkHash)
 				} else {
-					c.logger.Printf("[WARN] Inconsistency check %q - is not TCP, HTTP, or Monitor", checkHash)
+					c.logger.Printf("[WARN] Inconsistency check %q - is not TCP, HTTP, or script", checkHash)
 					continue
 				}
 			}
@@ -216,7 +215,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					}
 					continue
 				}
-				c.logger.Printf("[INFO] Updating Monitor check %q", checkHash)
+				c.logger.Printf("[INFO] Updating script check %q", checkHash)
 				if len(c.checks[checkHash].Definition.ScriptArgs) > 0 {
 					monitorCheck := c.checksMonitor[checkHash]
 					monitorCheck.Stop()
@@ -229,7 +228,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					tcpCheck.Stop()
 					delete(c.checksTCP, checkHash)
 				} else {
-					c.logger.Printf("[WARN] Inconsistency check %q - is not Monitor, TCP, or HTTP", checkHash)
+					c.logger.Printf("[WARN] Inconsistency check %q - is not script, TCP, or HTTP", checkHash)
 					continue
 				}
 			}
@@ -241,7 +240,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			monitor.Start()
 			c.checksMonitor[checkHash] = monitor
 		} else {
-			c.logger.Printf("[WARN] check %q is not a valid HTTP, TCP, or Script check %v\n", checkHash, definition)
+			c.logger.Printf("[WARN] check %q is not a valid HTTP, TCP, or script check %v", checkHash, definition)
 			continue
 		}
 
