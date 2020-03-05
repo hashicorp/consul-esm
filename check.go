@@ -45,17 +45,19 @@ type CheckRunner struct {
 	enableLocalScriptChecks bool
 }
 
-func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.Duration) *CheckRunner {
+// NewCheckRunner makes a new CheckRunner
+func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.Duration, enableLocalScriptChecks bool) *CheckRunner {
 	return &CheckRunner{
-		logger:              logger,
-		client:              client,
-		checks:              make(map[types.CheckID]*api.HealthCheck),
-		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
-		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
-		checksMonitor:       make(map[types.CheckID]*consulchecks.CheckMonitor),
-		checksCritical:      make(map[types.CheckID]time.Time),
-		deferCheck:          make(map[types.CheckID]*time.Timer),
-		CheckUpdateInterval: updateInterval,
+		logger:                  logger,
+		client:                  client,
+		checks:                  make(map[types.CheckID]*api.HealthCheck),
+		checksHTTP:              make(map[types.CheckID]*consulchecks.CheckHTTP),
+		checksTCP:               make(map[types.CheckID]*consulchecks.CheckTCP),
+		checksMonitor:           make(map[types.CheckID]*consulchecks.CheckMonitor),
+		checksCritical:          make(map[types.CheckID]time.Time),
+		deferCheck:              make(map[types.CheckID]*time.Timer),
+		CheckUpdateInterval:     updateInterval,
+		enableLocalScriptChecks: enableLocalScriptChecks,
 	}
 }
 
@@ -204,6 +206,14 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					data.Interval == monitor.Interval &&
 					data.Timeout == monitor.Timeout &&
 					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+					if !c.enableLocalScriptChecks {
+						// currently no support for config reload. not expecting this use case, just to be safe.
+						c.logger.Printf("[WARN] %q is already running script check but 'enableLocalScriptChecks' has since been disabled. Stopping.",
+							checkHash)
+						data.Stop()
+						delete(c.checksMonitor, checkHash)
+						delete(c.checks, checkHash)
+					}
 					continue
 				}
 				c.logger.Printf("[INFO] Updating Monitor check %q", checkHash)
@@ -222,6 +232,11 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 					c.logger.Printf("[WARN] Inconsistency check %q - is not Monitor, TCP, or HTTP", checkHash)
 					continue
 				}
+			}
+			if !c.enableLocalScriptChecks {
+				c.logger.Printf("[WARN] %q is script check but 'enableLocalScriptChecks' is false. Skip.", checkHash)
+				delete(c.checks, checkHash)
+				continue
 			}
 			monitor.Start()
 			c.checksMonitor[checkHash] = monitor

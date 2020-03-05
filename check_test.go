@@ -23,7 +23,7 @@ func TestCheck_HTTP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, false)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
@@ -125,7 +125,7 @@ func TestCheck_TCP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, false)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical tcp check.
@@ -234,7 +234,7 @@ func TestCheck_Monitor(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, true)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical monitor check.
@@ -346,7 +346,7 @@ func TestCheck_SwitchCheckTypes(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, true)
 	defer runner.Stop()
 
 	// Define 3 types of nodes
@@ -445,6 +445,94 @@ func TestCheck_SwitchCheckTypes(t *testing.T) {
 		if actualNumMonitorChecks != c.expectedNumMonitorChecks {
 			t.Fatalf("'%v'. Expected %d but actual %d Monitor checks / %d TCP checks, %d HTTP checks",
 				c.desc, c.expectedNumMonitorChecks, actualNumMonitorChecks, actualNumTCPChecks, actualNumHTTPChecks)
+		}
+	}
+}
+
+func TestCheck_EnableLocalScriptChecks(t *testing.T) {
+	// set up
+	t.Parallel()
+	s, err := NewTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logger := log.New(LOGOUT, "", 0)
+	runner := NewCheckRunner(logger, client, 0, false)
+	defer runner.Stop()
+
+	nodeMeta := map[string]string{"external-node": "true"}
+	httpNode := &api.CatalogRegistration{
+		Node:       "external",
+		Address:    "service.local",
+		Datacenter: "dc1",
+		NodeMeta:   nodeMeta,
+		Check: &api.AgentCheck{
+			Node:    "external",
+			CheckID: "ext-check",
+			Name:    "http-test",
+			Status:  api.HealthCritical,
+			Definition: api.HealthCheckDefinition{
+				HTTP:             "http://" + s.HTTPAddr + "/v1/status/leader",
+				IntervalDuration: 50 * time.Millisecond,
+			},
+		},
+	}
+	monitorNode := &api.CatalogRegistration{
+		Node:       "external",
+		Address:    "service.local",
+		Datacenter: "dc1",
+		NodeMeta:   nodeMeta,
+		Check: &api.AgentCheck{
+			Node:    "external",
+			CheckID: "ext-check",
+			Name:    "monitor-test",
+			Status:  api.HealthCritical,
+			Definition: api.HealthCheckDefinition{
+				ScriptArgs:       []string{"echo", s.HTTPAddr},
+				IntervalDuration: 50 * time.Millisecond,
+			},
+		},
+	}
+
+	cases := []struct {
+		desc                     string
+		nodeRegistration         *api.CatalogRegistration
+		expectedNumChecks        int
+		expectedNumMonitorChecks int
+		enableLocalScriptChecks  bool
+	}{
+		{"Newly created monitor check should not run", monitorNode, 0, 0, false},
+		{"Existing http check changes to monitor check should not run (Pt 1/2 Set up)", httpNode, 1, 0, false},
+		{"Existing http check changes to monitor check should not run (Pt 2/2)", monitorNode, 0, 0, false},
+		{"Monitor check when changing from enable local script checks to disable (Pt 1/2 Set up)", monitorNode, 1, 1, true},
+		{"Monitor check when changing from enable local script checks to disable (Pt 2/2)", monitorNode, 0, 0, false},
+	}
+
+	for _, c := range cases {
+		if _, err := client.Catalog().Register(c.nodeRegistration, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		checks, _, err := client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		runner.enableLocalScriptChecks = c.enableLocalScriptChecks
+		runner.UpdateChecks(checks)
+
+		if len(runner.checksMonitor) != c.expectedNumMonitorChecks {
+			t.Fatalf("'%s': Expected %d monitor checks but actual %d", c.desc, c.expectedNumMonitorChecks, len(runner.checksMonitor))
+		}
+		if len(runner.checks) != c.expectedNumChecks {
+			t.Fatalf("'%s': Expected %d checks in general but actual %d", c.desc, c.expectedNumChecks, len(runner.checks))
 		}
 	}
 }
