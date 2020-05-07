@@ -159,6 +159,13 @@ enable_syslog = false
 // The syslog facility to use, if enabled.
 syslog_facility = ""
 
+// The unique id for this agent to use when registering itself with Consul.
+// If unconfigured, a UUID will be generated for the instance id.
+// Note: do not reuse the same instance id value for other agents. This id
+// must be unique to disambiguate different instances on the same host.
+// Failure to maintain uniqueness will result in an already-exists error.
+instance_id = ""
+
 // The service name for this agent to use when registering itself with Consul.
 consul_service = "consul-esm"
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/flags"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
@@ -29,6 +30,7 @@ type Config struct {
 	Tag     string
 	KVPath  string
 
+	InstanceID                string
 	NodeMeta                  map[string]string
 	Interval                  time.Duration
 	DeregisterAfter           time.Duration
@@ -49,9 +51,6 @@ type Config struct {
 	PingType string
 
 	DisableCoordinateUpdates bool
-
-	// Test-only fields.
-	id string
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -85,11 +84,19 @@ func (c *Config) ClientConfig() *api.Config {
 	return conf
 }
 
-func DefaultConfig() *Config {
+// DefaultConfig generates esm config with default values
+func DefaultConfig() (*Config, error) {
+	// if no ID is configured, generate a unique ID for this agent
+	instanceID, err := uuid.GenerateUUID()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
-		LogLevel: "INFO",
-		Service:  "consul-esm",
-		KVPath:   "consul-esm/",
+		InstanceID: instanceID,
+		LogLevel:   "INFO",
+		Service:    "consul-esm",
+		KVPath:     "consul-esm/",
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
@@ -101,18 +108,20 @@ func DefaultConfig() *Config {
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
 		DisableCoordinateUpdates:  false,
-	}
+	}, nil
 }
 
+// HumanConfig contains configuration that the practitioner can set
 type HumanConfig struct {
 	LogLevel       flags.StringValue `mapstructure:"log_level"`
 	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
 	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
 
-	Service  flags.StringValue   `mapstructure:"consul_service"`
-	Tag      flags.StringValue   `mapstructure:"consul_service_tag"`
-	KVPath   flags.StringValue   `mapstructure:"consul_kv_path"`
-	NodeMeta []map[string]string `mapstructure:"external_node_meta"`
+	InstanceID flags.StringValue   `mapstructure:"instance_id"`
+	Service    flags.StringValue   `mapstructure:"consul_service"`
+	Tag        flags.StringValue   `mapstructure:"consul_service_tag"`
+	KVPath     flags.StringValue   `mapstructure:"consul_kv_path"`
+	NodeMeta   []map[string]string `mapstructure:"external_node_meta"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
 	NodeProbeInterval    flags.DurationValue `mapstructure:"node_probe_interval"`
@@ -131,6 +140,8 @@ type HumanConfig struct {
 	DisableCoordinateUpdates flags.BoolValue `mapstructure:"disable_coordinate_updates"`
 }
 
+// DecodeConfig takes a reader containing config file and returns
+// configuration struct
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 	// Parse the file (could be HCL or JSON)
 	bytes, err := ioutil.ReadAll(r)
@@ -178,7 +189,10 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 // BuildConfig builds a new Config object from the default configuration
 // and the list of config files given and returns it after validation.
 func BuildConfig(configFiles []string) (*Config, error) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		return nil, err
+	}
 	if err := MergeConfigPaths(config, configFiles); err != nil {
 		return nil, fmt.Errorf("Error loading config: %v", err)
 	}
@@ -253,8 +267,11 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 	return nil
 }
 
+// MergeConfig merges the default config with any configuration
+// set by the practitioner
 func MergeConfig(dst *Config, src *HumanConfig) {
 	src.LogLevel.Merge(&dst.LogLevel)
+	src.InstanceID.Merge(&dst.InstanceID)
 	src.Service.Merge(&dst.Service)
 	src.Tag.Merge(&dst.Tag)
 	src.KVPath.Merge(&dst.KVPath)
