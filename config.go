@@ -50,7 +50,7 @@ type Config struct {
 	PingType string
 
 	DisableRedundantStatusUpdates bool
-	DisableCooridnateUpdates      bool
+	DisableCoordinateUpdates      bool
 
 	Telemetry lib.TelemetryConfig
 
@@ -97,13 +97,15 @@ func DefaultConfig() *Config {
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
-		Interval:                  10 * time.Second,
-		DeregisterAfter:           72 * time.Hour,
-		CheckUpdateInterval:       5 * time.Minute,
-		CoordinateUpdateInterval:  10 * time.Second,
-		NodeHealthRefreshInterval: 1 * time.Hour,
-		NodeReconnectTimeout:      72 * time.Hour,
-		PingType:                  PingTypeUDP,
+		Interval:                      10 * time.Second,
+		DeregisterAfter:               72 * time.Hour,
+		CheckUpdateInterval:           5 * time.Minute,
+		CoordinateUpdateInterval:      10 * time.Second,
+		NodeHealthRefreshInterval:     1 * time.Hour,
+		NodeReconnectTimeout:          72 * time.Hour,
+		PingType:                      PingTypeUDP,
+    DisableRedundantStatusUpdates: false,
+    DisableCoordinateUpdates:      false,
 	}
 }
 
@@ -157,7 +159,7 @@ type HumanConfig struct {
 	PingType flags.StringValue `mapstructure:"ping_type"`
 
 	DisableRedundantStatusUpdates flags.BoolValue `mapstructure:"disable_redundant_status_updates"`
-	DisableCooridnateUpdates      flags.BoolValue `mapstructure:"disable_cooridinate_updates"`
+	DisableCoordinateUpdates      flags.BoolValue `mapstructure:"disable_cooridinate_updates"`
 
 	Telemetry []Telemetry `mapstructure:"telemetry"`
 }
@@ -323,7 +325,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
 	src.DisableRedundantStatusUpdates.Merge(&dst.DisableRedundantStatusUpdates)
-	src.DisableCooridnateUpdates.Merge(&dst.DisableCooridnateUpdates)
+	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
 
 	// We check on parse time that there is at most one
 	if len(src.Telemetry) != 0 {

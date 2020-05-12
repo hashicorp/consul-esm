@@ -309,7 +309,7 @@ func (a *Agent) runClientTxn(ops api.TxnOps) error {
 // updateNodeCoordinate updates the node's coordinate entry based on the
 // given RTT from a ping
 func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
-	if a.config.DisableCooridnateUpdates {
+	if a.config.DisableCoordinateUpdates {
 		a.logger.Printf("[TRACE] Debounce: skipping coordinate update for node %s", node.Node)
 		return nil
 	}
