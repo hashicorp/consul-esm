@@ -14,8 +14,7 @@ require (
 	github.com/hashicorp/go-rootcerts v1.0.1 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
 	github.com/hashicorp/go-uuid v1.0.1
-	github.com/hashicorp/go-version v1.1.0 // indirect
-	github.com/hashicorp/golang-lru v0.5.1 // indirect
+	github.com/hashicorp/go-version v1.2.0
 	github.com/hashicorp/hcl v1.0.0
 	github.com/hashicorp/serf v0.8.4
 	github.com/miekg/dns v1.1.22 // indirect

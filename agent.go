@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-uuid"
 )
@@ -427,4 +429,50 @@ func (a *Agent) updateLastKnownNodeStatus(node string, newStatus string) {
 	a.knownNodeStatusesLock.Lock()
 	defer a.knownNodeStatusesLock.Unlock()
 	a.knownNodeStatuses[node] = lastKnownStatus{newStatus, time.Now()}
+}
+
+// VerifyConsulCompatibility queries Consul for all server versions to verify
+// compatibility with ESM.
+func (a *Agent) VerifyConsulCompatibility() error {
+	if a.client == nil {
+		return fmt.Errorf("unable to check version compatibility without Consul client initialized")
+	}
+
+VERIFYCONSULCOMPAT:
+	select {
+	case <-a.shutdownCh:
+		return nil
+	default:
+	}
+
+	resp, err := a.client.Operator().AutopilotServerHealth(nil)
+	if err != nil {
+		if strings.Contains(err.Error(), "429") {
+			// 429 is a warning that something is unhealthy. This may occur when ESM
+			// races with Consul servers first starting up.
+			a.logger.Printf("[ERR] Failed to query for Consul server versions (will retry): %v", err)
+			time.Sleep(retryTime)
+			goto VERIFYCONSULCOMPAT
+		}
+
+		return fmt.Errorf("unable to check the version compatibility with Consul: %s", err)
+	}
+
+	var versions []string
+	uniqueVersions := make(map[string]bool)
+	for _, s := range resp.Servers {
+		if !uniqueVersions[s.Version] {
+			uniqueVersions[s.Version] = true
+			versions = append(versions, s.Version)
+		}
+	}
+
+	err = version.CheckConsulVersions(versions)
+	if err != nil {
+		a.logger.Printf("[ERR] Incompatible Consul versions")
+		return err
+	}
+
+	a.logger.Printf("[DEBUG] All Consul servers are running compatible versions with ESM")
+	return nil
 }
