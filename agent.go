@@ -431,35 +431,50 @@ func (a *Agent) updateLastKnownNodeStatus(node string, newStatus string) {
 	a.knownNodeStatuses[node] = lastKnownStatus{newStatus, time.Now()}
 }
 
-// VerifyConsulCompatibility queries Consul for all server versions to verify
+// VerifyConsulCompatibility queries Consul for local agent and all server versions to verify
 // compatibility with ESM.
 func (a *Agent) VerifyConsulCompatibility() error {
 	if a.client == nil {
 		return fmt.Errorf("unable to check version compatibility without Consul client initialized")
 	}
 
-VERIFYCONSULCOMPAT:
+	// Fetch local agent version
+	agentInfo, err := a.client.Agent().Self()
+	if err != nil {
+		// ESM blocks in NewAgent() until agent is available. At this point
+		// /agent/self endpoint should be available and an error would not be useful
+		// to retry the request.
+		return fmt.Errorf("unable to check version compatibility with Consul agent: %s", err)
+	}
+	agentVersionRaw, ok := agentInfo["Config"]["Version"]
+	if !ok {
+		return fmt.Errorf("unable to check version compatibility with Consul agent")
+	}
+	agentVersion := agentVersionRaw.(string)
+
+VERIFYCONSULSERVER:
 	select {
 	case <-a.shutdownCh:
 		return nil
 	default:
 	}
 
+	// Fetch server versions
 	resp, err := a.client.Operator().AutopilotServerHealth(nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "429") {
 			// 429 is a warning that something is unhealthy. This may occur when ESM
-			// races with Consul servers first starting up.
+			// races with Consul servers first starting up, so this is safe to retry.
 			a.logger.Printf("[ERR] Failed to query for Consul server versions (will retry): %v", err)
 			time.Sleep(retryTime)
-			goto VERIFYCONSULCOMPAT
+			goto VERIFYCONSULSERVER
 		}
 
-		return fmt.Errorf("unable to check the version compatibility with Consul: %s", err)
+		return fmt.Errorf("unable to check version compatibility with Consul servers: %s", err)
 	}
 
-	var versions []string
-	uniqueVersions := make(map[string]bool)
+	versions := []string{agentVersion}
+	uniqueVersions := map[string]bool{agentVersion: true}
 	for _, s := range resp.Servers {
 		if !uniqueVersions[s.Version] {
 			uniqueVersions[s.Version] = true
@@ -473,6 +488,6 @@ VERIFYCONSULCOMPAT:
 		return err
 	}
 
-	a.logger.Printf("[DEBUG] All Consul servers are running compatible versions with ESM")
+	a.logger.Printf("[DEBUG] Consul agent and all servers are running compatible versions with ESM")
 	return nil
 }

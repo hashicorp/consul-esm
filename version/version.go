@@ -101,17 +101,16 @@ func CheckConsulVersions(versions []string) error {
 }
 
 // NewConsulVersionError returns an error detailing the version compatibility
-// issue between ESM and Consul severs.
+// issue between ESM and Consul servers.
 func NewConsulVersionError(consulVersions []string) error {
 	versions := strings.Join(consulVersions, ", ")
 	return fmt.Errorf(versionErrorTmpl, GetHumanVersion(), versions)
 }
 
 const versionErrorTmpl = `
-Consul ESM version %s is incompatible with the running versions of your
-Consul servers (%s), please refer to the Consul documentation to safely
-upgrade the servers or change to a version of ESM that is compatible with your
-servers.
+Consul ESM version %s is incompatible with the running versions of the local
+Consul agent or Consul servers (%s), please refer to the documentation
+to safely upgrade Consul or change to a version of ESM that is compatible.
 
 https://www.consul.io/docs/upgrading.html
 `
