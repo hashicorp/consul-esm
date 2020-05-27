@@ -90,7 +90,6 @@ func main() {
 	ui.Info(fmt.Sprintf("           Service Tag: %q", config.Tag))
 	ui.Info(fmt.Sprintf("            Service ID: %q", agent.serviceID()))
 	ui.Info(fmt.Sprintf("Node Reconnect Timeout: %q", config.NodeReconnectTimeout.String()))
-	ui.Info(fmt.Sprintf("  No Redundant updates: %t", config.DisableRedundantStatusUpdates))
 	ui.Info(fmt.Sprintf("   Disable coordinates: %t", config.DisableCoordinateUpdates))
 	ui.Info("")
 	ui.Output("Log data will now stream in as it occurs:\n")

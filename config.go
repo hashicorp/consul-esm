@@ -48,8 +48,7 @@ type Config struct {
 
 	PingType string
 
-	DisableRedundantStatusUpdates bool
-	DisableCoordinateUpdates      bool
+	DisableCoordinateUpdates bool
 
 	// Test-only fields.
 	id string
@@ -94,15 +93,14 @@ func DefaultConfig() *Config {
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
-		Interval:                      10 * time.Second,
-		DeregisterAfter:               72 * time.Hour,
-		CheckUpdateInterval:           5 * time.Minute,
-		CoordinateUpdateInterval:      10 * time.Second,
-		NodeHealthRefreshInterval:     1 * time.Hour,
-		NodeReconnectTimeout:          72 * time.Hour,
-		PingType:                      PingTypeUDP,
-		DisableRedundantStatusUpdates: false,
-		DisableCoordinateUpdates:      false,
+		Interval:                  10 * time.Second,
+		DeregisterAfter:           72 * time.Hour,
+		CheckUpdateInterval:       5 * time.Minute,
+		CoordinateUpdateInterval:  10 * time.Second,
+		NodeHealthRefreshInterval: 1 * time.Hour,
+		NodeReconnectTimeout:      72 * time.Hour,
+		PingType:                  PingTypeUDP,
+		DisableCoordinateUpdates:  false,
 	}
 }
 
@@ -130,8 +128,7 @@ type HumanConfig struct {
 
 	PingType flags.StringValue `mapstructure:"ping_type"`
 
-	DisableRedundantStatusUpdates flags.BoolValue `mapstructure:"disable_redundant_status_updates"`
-	DisableCoordinateUpdates      flags.BoolValue `mapstructure:"disable_coordinate_updates"`
+	DisableCoordinateUpdates flags.BoolValue `mapstructure:"disable_coordinate_updates"`
 }
 
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
@@ -275,6 +272,5 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.KeyFile.Merge(&dst.KeyFile)
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
-	src.DisableRedundantStatusUpdates.Merge(&dst.DisableRedundantStatusUpdates)
 	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
 }
