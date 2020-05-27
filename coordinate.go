@@ -157,7 +157,7 @@ func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, 
 	return err
 }
 
-// updateHealthyNode updates the node's health check and clears any kv
+// updateHealthyNodeTxn updates the node's health check and clears any kv
 // critical tracking associated with it.
 func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	// If a critical node went back to passing, delete the KV entry for it.

@@ -101,8 +101,8 @@ func DefaultConfig() *Config {
 		NodeHealthRefreshInterval:     1 * time.Hour,
 		NodeReconnectTimeout:          72 * time.Hour,
 		PingType:                      PingTypeUDP,
-    DisableRedundantStatusUpdates: false,
-    DisableCoordinateUpdates:      false,
+		DisableRedundantStatusUpdates: false,
+		DisableCoordinateUpdates:      false,
 	}
 }
 
@@ -131,7 +131,7 @@ type HumanConfig struct {
 	PingType flags.StringValue `mapstructure:"ping_type"`
 
 	DisableRedundantStatusUpdates flags.BoolValue `mapstructure:"disable_redundant_status_updates"`
-	DisableCoordinateUpdates      flags.BoolValue `mapstructure:"disable_cooridinate_updates"`
+	DisableCoordinateUpdates      flags.BoolValue `mapstructure:"disable_coordinate_updates"`
 }
 
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {

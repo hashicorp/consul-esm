@@ -35,11 +35,11 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 	}
 
 	agent := &Agent{
-    client: client,
-    config: DefaultConfig(),
-    logger: log.New(LOGOUT, "", log.LstdFlags),
-    knownNodeStatuses: make(map[string]lastKnownStatus),
-  }
+		client:            client,
+		config:            DefaultConfig(),
+		logger:            log.New(LOGOUT, "", log.LstdFlags),
+		knownNodeStatuses: make(map[string]lastKnownStatus),
+	}
 	agent.updateNodeCoordinate(&api.Node{Node: "external"}, 1*time.Second)
 
 	var coords []*api.CoordinateEntry
@@ -79,11 +79,11 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	}
 
 	agent := &Agent{
-    client: client,
-    config: DefaultConfig(),
-    logger: log.New(LOGOUT, "", log.LstdFlags),
-    knownNodeStatuses: make(map[string]lastKnownStatus),
-  }
+		client:            client,
+		config:            DefaultConfig(),
+		logger:            log.New(LOGOUT, "", log.LstdFlags),
+		knownNodeStatuses: make(map[string]lastKnownStatus),
+	}
 	if err := agent.updateFailedNode(&api.Node{Node: "external"}, client.KV(), "testkey", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -174,10 +174,10 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client: client,
-		config: DefaultConfig(),
-		logger: log.New(LOGOUT, "", log.LstdFlags),
-    knownNodeStatuses: make(map[string]lastKnownStatus),
+		client:            client,
+		config:            DefaultConfig(),
+		logger:            log.New(LOGOUT, "", log.LstdFlags),
+		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
 	agent.config.NodeReconnectTimeout = 200 * time.Millisecond
 

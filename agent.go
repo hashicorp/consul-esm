@@ -62,8 +62,7 @@ type Agent struct {
 	// Custom func to hook into for testing.
 	watchedNodeFunc       func(map[string]bool, []*api.Node)
 	knownNodeStatuses     map[string]lastKnownStatus
-	knwonNodeStatusesLock sync.Mutex
-
+	knownNodeStatusesLock sync.Mutex
 }
 
 func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
@@ -413,8 +412,8 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 // Check last visible node status.
 // Returns true, if status is changed since last update and false otherwise.
 func (a *Agent) shouldUpdateNodeStatus(node string, newStatus string) bool {
-	a.knwonNodeStatusesLock.Lock()
-	defer a.knwonNodeStatusesLock.Unlock()
+	a.knownNodeStatusesLock.Lock()
+	defer a.knownNodeStatusesLock.Unlock()
 	ttl := a.config.NodeHealthRefreshInterval
 	lastStatus, exists := a.knownNodeStatuses[node]
 	if !exists || lastStatus.isExpired(ttl) {
@@ -425,7 +424,7 @@ func (a *Agent) shouldUpdateNodeStatus(node string, newStatus string) bool {
 
 // Update last visible node status.
 func (a *Agent) updateLastKnownNodeStatus(node string, newStatus string) {
-	a.knwonNodeStatusesLock.Lock()
-	defer a.knwonNodeStatusesLock.Unlock()
+	a.knownNodeStatusesLock.Lock()
+	defer a.knownNodeStatusesLock.Unlock()
 	a.knownNodeStatuses[node] = lastKnownStatus{newStatus, time.Now()}
 }
