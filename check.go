@@ -32,9 +32,14 @@ type CheckRunner struct {
 	logger *log.Logger
 	client *api.Client
 
-	checks         map[types.CheckID]*api.HealthCheck
-	checksHTTP     map[types.CheckID]*consulchecks.CheckHTTP
-	checksTCP      map[types.CheckID]*consulchecks.CheckTCP
+	// checks are unmodified checks as retrieved from Consul Catalog
+	checks map[types.CheckID]*api.HealthCheck
+
+	// checksHTTP & checksTCP are HTTP/TCP checks that are run by ESM.
+	// They have potentially modified values from the Consul Catalog checks
+	checksHTTP map[types.CheckID]*consulchecks.CheckHTTP
+	checksTCP  map[types.CheckID]*consulchecks.CheckTCP
+
 	checksCritical map[types.CheckID]time.Time
 
 	// Used to track checks that are being deferred
@@ -190,6 +195,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		}
 
 		checkHash := checkHash(check)
+
+		// create a copy of the definition that will be modified
 		definition := check.Definition
 		if definition.IntervalDuration == 0 {
 			definition.IntervalDuration = defaultInterval
@@ -212,8 +219,9 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		}
 
 		// if we had to fix the interval and we had to update the service, put some trace out
-		if anyUpdates && check.Definition.IntervalDuration < c.MinimumInterval {
-			c.logger.Printf("[WARN] Check interval too low at %v for check %s", check.Definition.Interval, check.Name)
+		unmodifiedDef := check.Definition
+		if anyUpdates && unmodifiedDef.IntervalDuration < c.MinimumInterval {
+			c.logger.Printf("[WARN] Check interval too low at %v for check %s", unmodifiedDef.Interval, check.Name)
 		}
 
 		found[checkHash] = true
