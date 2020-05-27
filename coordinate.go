@@ -140,13 +140,13 @@ func (a *Agent) nodeTicker(numNodes int) *time.Ticker {
 func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	status := api.HealthPassing
 
-	isChanged := a.shouldUpdateNodeStatus(node.Node, status)
-	if !isChanged {
+	toUpdate := a.shouldUpdateNodeStatus(node.Node, status)
+	if !toUpdate {
 		a.logger.Printf("[TRACE] Debounce: skipping healthy node status update for node %s", node.Node)
 		return nil
 	}
 
-	a.logger.Printf("[TRACE] Debounce: healthy node status update. Node %s, status %s", node.Node, status)
+	a.logger.Printf("[TRACE] Debounce: updating healthy node status. Node %s, status %s", node.Node, status)
 
 	err := a.updateHealthyNodeTxn(node, kvClient, key, kvPair)
 	if err == nil {
@@ -181,13 +181,13 @@ func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key strin
 func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, kvPair *api.KVPair) error {
 	status := api.HealthCritical
 
-	isChanged := a.shouldUpdateNodeStatus(node.Node, status)
-	if !isChanged {
+	toUpdate := a.shouldUpdateNodeStatus(node.Node, status)
+	if !toUpdate {
 		a.logger.Printf("[TRACE] Debounce: skipping failed node status update for node %s", node.Node)
 		return nil
 	}
 
-	a.logger.Printf("[TRACE] Debounce: failed node status update. Node %s, status %s", node.Node, status)
+	a.logger.Printf("[TRACE] Debounce: updating failed node status. Node %s, status %s", node.Node, status)
 
 	err := a.updateFailedNodeTxn(node, kvClient, key, kvPair)
 	if err == nil {
@@ -372,10 +372,10 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 			return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
 		}
 		a.logger.Printf("[INFO] Updated coordinates for node %q with distance %q from previous", node.Node, coord.Coord.DistanceTo(newCoord))
-	} else {
-		a.logger.Printf("[TRACE] Skipped update for coordinates, node %q change %q not significant", node.Node, coord.Coord.DistanceTo(newCoord))
+		return nil
 	}
 
+	a.logger.Printf("[TRACE] Skipped update for coordinates, node %q change %q not significant", node.Node, coord.Coord.DistanceTo(newCoord))
 	return nil
 }
 

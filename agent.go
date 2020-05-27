@@ -410,7 +410,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 // Check last visible node status.
-// Returns true, if status is changed since last update and false otherwise.
+// Returns true, if status is changed or expired since last update and false otherwise.
 func (a *Agent) shouldUpdateNodeStatus(node string, newStatus string) bool {
 	a.knownNodeStatusesLock.Lock()
 	defer a.knownNodeStatusesLock.Unlock()
