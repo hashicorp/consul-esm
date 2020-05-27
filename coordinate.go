@@ -144,9 +144,9 @@ func (a *Agent) updateHealthyNode(node *api.Node, kvClient *api.KV, key string, 
 	if !isChanged {
 		a.logger.Printf("[TRACE] Debounce: skipping healthy node status update for node %s", node.Node)
 		return nil
-	} else {
-		a.logger.Printf("[TRACE] Debounce: healthy node status update. Node %s, status %s", node.Node, status)
 	}
+
+	a.logger.Printf("[TRACE] Debounce: healthy node status update. Node %s, status %s", node.Node, status)
 
 	err := a.updateHealthyNodeTxn(node, kvClient, key, kvPair)
 	if err == nil {
@@ -185,9 +185,9 @@ func (a *Agent) updateFailedNode(node *api.Node, kvClient *api.KV, key string, k
 	if !isChanged {
 		a.logger.Printf("[TRACE] Debounce: skipping failed node status update for node %s", node.Node)
 		return nil
-	} else {
-		a.logger.Printf("[TRACE] Debounce: failed node status update. Node %s, status %s", node.Node, status)
 	}
+
+	a.logger.Printf("[TRACE] Debounce: failed node status update. Node %s, status %s", node.Node, status)
 
 	err := a.updateFailedNodeTxn(node, kvClient, key, kvPair)
 	if err == nil {

@@ -24,7 +24,7 @@ var (
 	defaultInterval = 30 * time.Second
 )
 
-type CheckIdSet map[types.CheckID]bool
+type checkIDSet map[types.CheckID]bool
 
 type CheckRunner struct {
 	sync.RWMutex
@@ -72,7 +72,7 @@ func (c *CheckRunner) Stop() {
 }
 
 // Update an HTTP check
-func (c *CheckRunner) updateCheckHttp(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated CheckIdSet, added CheckIdSet) bool {
+func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated checkIDSet, added checkIDSet) bool {
 	http := &consulchecks.CheckHTTP{
 		Notify:   c,
 		CheckID:  checkHash,
@@ -125,7 +125,7 @@ func (c *CheckRunner) updateCheckHttp(latestCheck *api.HealthCheck, checkHash ty
 	return true
 }
 
-func (c *CheckRunner) updateCheckTcp(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated CheckIdSet, added CheckIdSet) bool {
+func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated checkIDSet, added checkIDSet) bool {
 	tcp := &consulchecks.CheckTCP{
 		Notify:   c,
 		CheckID:  checkHash,
@@ -177,11 +177,11 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 	c.Lock()
 	defer c.Unlock()
 
-	found := make(CheckIdSet)
+	found := make(checkIDSet)
 
-	added := make(CheckIdSet)
-	updated := make(CheckIdSet)
-	removed := make(CheckIdSet)
+	added := make(checkIDSet)
+	updated := make(checkIDSet)
+	removed := make(checkIDSet)
 
 	for _, check := range checks {
 		// Skip the ping-based node check since we're managing that separately
@@ -203,9 +203,9 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		anyUpdates := false
 
 		if definition.HTTP != "" {
-			anyUpdates = c.updateCheckHttp(check, checkHash, &definition, updated, added)
+			anyUpdates = c.updateCheckHTTP(check, checkHash, &definition, updated, added)
 		} else if definition.TCP != "" {
-			anyUpdates = c.updateCheckTcp(check, checkHash, &definition, updated, added)
+			anyUpdates = c.updateCheckTCP(check, checkHash, &definition, updated, added)
 		} else {
 			c.logger.Printf("[WARN] check %q is not a valid HTTP or TCP check", checkHash)
 			continue

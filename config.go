@@ -207,7 +207,7 @@ func ValidateConfig(conf *Config) error {
 	}
 
 	if conf.CoordinateUpdateInterval < time.Second {
-		return fmt.Errorf("node_probe_interval cannot be lower than 1 second.")
+		return fmt.Errorf("node_probe_interval cannot be lower than 1 second")
 	}
 
 	return nil
