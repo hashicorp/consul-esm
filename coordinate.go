@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
@@ -265,7 +264,6 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 
 // updateNodeCheck updates the node's externalNodeHealth check with the given status/output.
 func (a *Agent) updateNodeCheck(node *api.Node, ops api.TxnOps, status, output string) error {
-	metrics.IncrCounter([]string{"coord", "txn"}, 1)
 	// Update the external health check status.
 	ops = append(ops, &api.TxnOp{
 		Check: &api.CheckTxnOp{

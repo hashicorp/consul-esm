@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/hashicorp/consul/lib"
 )
 
 func TestDecodeMergeConfig(t *testing.T) {
@@ -31,10 +29,6 @@ cert_file = "cert.pem"
 key_file = "key.pem"
 tls_server_name = "example.io"
 ping_type = "socket"
-telemetry {
-    statsd_address = "example.io:8888"
-    prefix_filter = ["+good", "-bad", "+better", "-worse", "wrong", ""]
-}
 `)
 
 	expected := &Config{
@@ -57,11 +51,6 @@ telemetry {
 		KeyFile:       "key.pem",
 		TLSServerName: "example.io",
 		PingType:      PingTypeSocket,
-		Telemetry: lib.TelemetryConfig{
-			StatsdAddr:      "example.io:8888",
-			AllowedPrefixes: []string{"good", "better"},
-			BlockedPrefixes: []string{"bad", "worse"},
-		},
 	}
 
 	result := &Config{}

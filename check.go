@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
 	consulchecks "github.com/hashicorp/consul/agent/checks"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
@@ -175,7 +174,6 @@ func (c *CheckRunner) updateCheckTcp(latestCheck *api.HealthCheck, checkHash typ
 // UpdateChecks takes a list of checks from the catalog and updates
 // our list of running checks to match.
 func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
-	defer metrics.MeasureSince([]string{"checks", "update"}, time.Now())
 	c.Lock()
 	defer c.Unlock()
 
@@ -329,7 +327,6 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 			},
 		},
 	}
-	metrics.IncrCounter([]string{"check", "txn"}, 1)
 	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
 	if err != nil {
 		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)
