@@ -132,6 +132,7 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	// Avoid blocking on first pass
 	retryTimer := time.After(0)
 
+WATCH_NODES_WAIT:
 	for {
 		select {
 		case <-stopCh:
@@ -175,7 +176,7 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 			if len(ops) >= maximumTransactionSize {
 				if !a.commitOps(ops) {
 					retryTimer = time.After(retryTime)
-					continue
+					goto WATCH_NODES_WAIT
 				}
 				ops = api.KVTxnOps{}
 			}
