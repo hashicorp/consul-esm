@@ -5,7 +5,6 @@ go 1.13
 require (
 	github.com/DataDog/datadog-go v3.2.0+incompatible // indirect
 	github.com/Microsoft/go-winio v0.4.5 // indirect
-	github.com/armon/go-metrics v0.0.0-20190430140413-ec5e00d3c878
 	github.com/hashicorp/consul v1.6.1
 	github.com/hashicorp/consul/api v1.2.0
 	github.com/hashicorp/consul/sdk v0.4.0
