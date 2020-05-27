@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armon/go-metrics"
 	consulchecks "github.com/hashicorp/consul/agent/checks"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
@@ -23,6 +24,8 @@ var (
 	// defaultInterval is the check interval to use if one is not set.
 	defaultInterval = 30 * time.Second
 )
+
+type CheckIdSet map[types.CheckID]bool
 
 type CheckRunner struct {
 	sync.RWMutex
@@ -39,9 +42,10 @@ type CheckRunner struct {
 	deferCheck map[types.CheckID]*time.Timer
 
 	CheckUpdateInterval time.Duration
+	MinimumInterval     time.Duration
 }
 
-func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.Duration) *CheckRunner {
+func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.Duration, minimumInterval time.Duration) *CheckRunner {
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
@@ -51,6 +55,7 @@ func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.
 		checksCritical:      make(map[types.CheckID]time.Time),
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
+		MinimumInterval:     minimumInterval,
 	}
 }
 
@@ -67,13 +72,118 @@ func (c *CheckRunner) Stop() {
 	}
 }
 
+// Update an HTTP check
+func (c *CheckRunner) updateCheckHttp(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated CheckIdSet, added CheckIdSet) bool {
+	http := &consulchecks.CheckHTTP{
+		Notify:   c,
+		CheckID:  checkHash,
+		HTTP:     definition.HTTP,
+		Header:   definition.Header,
+		Method:   definition.Method,
+		Interval: definition.IntervalDuration,
+		Timeout:  definition.TimeoutDuration,
+		Logger:   c.logger,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: definition.TLSSkipVerify},
+	}
+
+	if check, checkExists := c.checks[checkHash]; checkExists {
+		httpCheck, httpCheckExists := c.checksHTTP[checkHash]
+		if httpCheckExists &&
+			check.Status == latestCheck.Status &&
+			httpCheck.HTTP == http.HTTP &&
+			reflect.DeepEqual(httpCheck.Header, http.Header) &&
+			httpCheck.Method == http.Method &&
+			httpCheck.TLSClientConfig.InsecureSkipVerify == http.TLSClientConfig.InsecureSkipVerify &&
+			httpCheck.Interval == http.Interval &&
+			httpCheck.Timeout == http.Timeout &&
+			check.Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+			return false
+		}
+
+		c.logger.Printf("[INFO] Updating HTTP check %q", checkHash)
+
+		if httpCheckExists {
+			httpCheck.Stop()
+		} else {
+			tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
+			if !tcpCheckExists {
+				c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
+				return false
+			}
+			tcpCheck.Stop()
+			delete(c.checksTCP, checkHash)
+		}
+
+		updated[checkHash] = true
+	} else {
+		added[checkHash] = true
+	}
+
+	http.Start()
+	c.checksHTTP[checkHash] = http
+
+	return true
+}
+
+func (c *CheckRunner) updateCheckTcp(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated CheckIdSet, added CheckIdSet) bool {
+	tcp := &consulchecks.CheckTCP{
+		Notify:   c,
+		CheckID:  checkHash,
+		TCP:      definition.TCP,
+		Interval: definition.IntervalDuration,
+		Timeout:  definition.TimeoutDuration,
+		Logger:   c.logger,
+	}
+
+	if check, checkExists := c.checks[checkHash]; checkExists {
+		tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
+		if tcpCheckExists &&
+			check.Status == latestCheck.Status &&
+			tcpCheck.TCP == tcp.TCP &&
+			tcpCheck.Interval == tcp.Interval &&
+			tcpCheck.Timeout == tcp.Timeout &&
+			check.Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+			return false
+		}
+
+		c.logger.Printf("[INFO] Updating TCP check %q", checkHash)
+
+		if tcpCheckExists {
+			tcpCheck.Stop()
+		} else {
+			httpCheck, httpCheckExists := c.checksHTTP[checkHash]
+			if !httpCheckExists {
+				c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
+				return false
+			}
+			httpCheck.Stop()
+			delete(c.checksHTTP, checkHash)
+		}
+
+		updated[checkHash] = true
+	} else {
+		added[checkHash] = true
+	}
+
+	tcp.Start()
+	c.checksTCP[checkHash] = tcp
+
+	return true
+}
+
 // UpdateChecks takes a list of checks from the catalog and updates
 // our list of running checks to match.
 func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
+	defer metrics.MeasureSince([]string{"checks", "update"}, time.Now())
 	c.Lock()
 	defer c.Unlock()
 
-	found := make(map[types.CheckID]struct{})
+	found := make(CheckIdSet)
+
+	added := make(CheckIdSet)
+	updated := make(CheckIdSet)
+	removed := make(CheckIdSet)
 
 	for _, check := range checks {
 		// Skip the ping-based node check since we're managing that separately
@@ -82,95 +192,33 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		}
 
 		checkHash := checkHash(check)
-		found[checkHash] = struct{}{}
-
 		definition := check.Definition
 		if definition.IntervalDuration == 0 {
 			definition.IntervalDuration = defaultInterval
 		}
+
+		// here we verify that the interval is not less then the minimum
+		if definition.IntervalDuration < c.MinimumInterval {
+			definition.IntervalDuration = c.MinimumInterval
+		}
+
+		anyUpdates := false
+
 		if definition.HTTP != "" {
-			http := &consulchecks.CheckHTTP{
-				Notify:   c,
-				CheckID:  checkHash,
-				HTTP:     definition.HTTP,
-				Header:   definition.Header,
-				Method:   definition.Method,
-				Interval: definition.IntervalDuration,
-				Timeout:  definition.TimeoutDuration,
-				Logger:   c.logger,
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: definition.TLSSkipVerify},
-			}
-
-			if _, ok := c.checks[checkHash]; ok {
-				if data, ok := c.checksHTTP[checkHash]; ok &&
-					c.checks[checkHash].Status == check.Status &&
-					data.HTTP == http.HTTP &&
-					reflect.DeepEqual(data.Header, http.Header) &&
-					data.Method == http.Method &&
-					data.TLSClientConfig.InsecureSkipVerify ==
-						http.TLSClientConfig.InsecureSkipVerify &&
-					data.Interval == http.Interval &&
-					data.Timeout == http.Timeout &&
-					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
-					continue
-				}
-				c.logger.Printf("[INFO] Updating HTTP check %q", checkHash)
-				if c.checks[checkHash].Definition.HTTP != "" {
-					httpCheck := c.checksHTTP[checkHash]
-					httpCheck.Stop()
-				} else {
-					if _, ok := c.checksTCP[checkHash]; !ok {
-						c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
-						continue
-					}
-					tcpCheck := c.checksTCP[checkHash]
-					tcpCheck.Stop()
-					delete(c.checksTCP, checkHash)
-				}
-			}
-			http.Start()
-			c.checksHTTP[checkHash] = http
+			anyUpdates = c.updateCheckHttp(check, checkHash, &definition, updated, added)
 		} else if definition.TCP != "" {
-			tcp := &consulchecks.CheckTCP{
-				Notify:   c,
-				CheckID:  checkHash,
-				TCP:      definition.TCP,
-				Interval: definition.IntervalDuration,
-				Timeout:  definition.TimeoutDuration,
-				Logger:   c.logger,
-			}
-
-			if _, ok := c.checks[checkHash]; ok {
-				if data, ok := c.checksTCP[checkHash]; ok &&
-					c.checks[checkHash].Status == check.Status &&
-					data.TCP == tcp.TCP &&
-					data.Interval == tcp.Interval &&
-					data.Timeout == tcp.Timeout &&
-					c.checks[checkHash].Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
-					continue
-				}
-				c.logger.Printf("[INFO] Updating TCP check %q", checkHash)
-				if c.checks[checkHash].Definition.TCP != "" {
-					tcpCheck := c.checksTCP[checkHash]
-					tcpCheck.Stop()
-				} else {
-					if _, ok := c.checksHTTP[checkHash]; !ok {
-						c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
-						continue
-					}
-					httpCheck := c.checksHTTP[checkHash]
-					httpCheck.Stop()
-					delete(c.checksHTTP, checkHash)
-				}
-			}
-			tcp.Start()
-			c.checksTCP[checkHash] = tcp
+			anyUpdates = c.updateCheckTcp(check, checkHash, &definition, updated, added)
 		} else {
 			c.logger.Printf("[WARN] check %q is not a valid HTTP or TCP check", checkHash)
 			continue
 		}
 
+		// if we had to fix the interval and we had to update the service, put some trace out
+		if anyUpdates && check.Definition.IntervalDuration < c.MinimumInterval {
+			c.logger.Printf("[WARN] Check interval too low at %v for check %s", check.Definition.Interval, check.Name)
+		}
+
+		found[checkHash] = true
 		c.checks[checkHash] = check
 	}
 
@@ -180,16 +228,23 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		if _, ok := found[checkHash]; !ok {
 			delete(c.checks, checkHash)
 			delete(c.checksCritical, checkHash)
-			if check.Definition.HTTP != "" {
-				httpCheck := c.checksHTTP[checkHash]
+
+			if httpCheck, httpCheckExists := c.checksHTTP[checkHash]; httpCheckExists {
 				httpCheck.Stop()
 				delete(c.checksHTTP, checkHash)
-			} else {
-				tcpCheck := c.checksTCP[checkHash]
+			}
+			if tcpCheck, tcpCheckExists := c.checksTCP[checkHash]; tcpCheckExists {
 				tcpCheck.Stop()
 				delete(c.checksTCP, checkHash)
 			}
+
+			removed[checkHash] = true
 		}
+	}
+
+	if len(added) > 0 || len(updated) > 0 || len(removed) > 0 {
+		c.logger.Printf("[INFO] Updated %d checks, found %d, added %d, updated %d, removed %d",
+			len(checks), len(found), len(added), len(updated), len(removed))
 	}
 }
 
@@ -251,9 +306,9 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	}
 	var existing *api.HealthCheck
 	checkID := strings.TrimPrefix(string(check.CheckID), check.Node+"/")
-	for _, c := range checks {
-		if c.CheckID == checkID {
-			existing = c
+	for _, check := range checks {
+		if check.CheckID == checkID {
+			existing = check
 			break
 		}
 	}
@@ -263,6 +318,9 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 
 	existing.Status = status
 	existing.Output = output
+
+	c.logger.Printf("[INFO] Updating output and status for %q", existing.CheckID)
+
 	ops := api.TxnOps{
 		&api.TxnOp{
 			Check: &api.CheckTxnOp{
@@ -271,6 +329,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 			},
 		},
 	}
+	metrics.IncrCounter([]string{"check", "txn"}, 1)
 	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
 	if err != nil {
 		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)

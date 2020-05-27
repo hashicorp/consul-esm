@@ -23,7 +23,7 @@ func TestCheck_HTTP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
@@ -125,7 +125,7 @@ func TestCheck_TCP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
