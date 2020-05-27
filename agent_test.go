@@ -127,3 +127,62 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	// Make sure the service and check are gone
 	retry.Run(t, ensureDeregistered)
 }
+
+func TestAgent_shouldUpdateNodeStatus(t *testing.T) {
+	t.Parallel()
+
+	agent := Agent{
+		config:            DefaultConfig(),
+		knownNodeStatuses: make(map[string]lastKnownStatus),
+	}
+
+	// add an existing node to agent for testing
+	agent.updateLastKnownNodeStatus("existing", "healthy")
+
+	// Warning: test cases are deliberately ordered for changing health statuses and allowing time for status to expire
+	cases := []struct {
+		scenario                  string
+		node                      string
+		status                    string
+		nodeHealthRefreshInterval time.Duration
+		expected                  bool
+	}{
+		{
+			scenario:                  "Existing node, not expired status, same status: should not need to update",
+			node:                      "existing",
+			status:                    "healthy",
+			nodeHealthRefreshInterval: 1 * time.Hour,
+			expected:                  false,
+		},
+		{
+			scenario:                  "Existing node, expired status, same status: should need to update",
+			node:                      "existing",
+			status:                    "healthy",
+			nodeHealthRefreshInterval: 0 * time.Millisecond,
+			expected:                  true,
+		},
+		{
+			scenario:                  "Existing node, not expired status, different status: should need to update",
+			node:                      "existing",
+			status:                    "critical",
+			nodeHealthRefreshInterval: 1 * time.Hour,
+			expected:                  true,
+		},
+		{
+			scenario:                  "New node: should need to update",
+			node:                      "new node",
+			status:                    "critical",
+			nodeHealthRefreshInterval: 0 * time.Hour,
+			expected:                  true,
+		},
+	}
+
+	for _, tc := range cases {
+		agent.config.NodeHealthRefreshInterval = tc.nodeHealthRefreshInterval
+
+		actual := agent.shouldUpdateNodeStatus(tc.node, tc.status)
+		if actual != tc.expected {
+			t.Fatalf("%s - expected need to update '%t', got '%t'", tc.scenario, tc.expected, actual)
+		}
+	}
+}
