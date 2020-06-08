@@ -187,7 +187,7 @@ node_reconnect_timeout = "72h"
 node_probe_interval = "10s"
 
 // Controls whether or not to disable calculating and updating node coordinates
-// when when doing the node probe. Defaults to false i.e. coordinate updates
+// when doing the node probe. Defaults to false i.e. coordinate updates
 // are enabled.
 disable_coordinate_updates
 
