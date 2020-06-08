@@ -358,24 +358,23 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 		return fmt.Errorf("error updating coordinate for node %q: %v", node.Node, err)
 	}
 
-	// Update the coordinate in the catalog
-	// - if there is a significant change
-	// - if there isn't a coordinate already there
-	if len(coords) == 0 || coord.Coord.DistanceTo(newCoord) > time.Millisecond {
-		_, err = a.client.Coordinate().Update(&api.CoordinateEntry{
-			Node:    coord.Node,
-			Segment: coord.Segment,
-			Coord:   newCoord,
-		}, nil)
-
-		if err != nil {
-			return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
-		}
-		a.logger.Printf("[INFO] Updated coordinates for node %q with distance %q from previous", node.Node, coord.Coord.DistanceTo(newCoord))
+	// Don't update the coordinate in the catalog if the coordinate already
+	// exists and the change is insignificant
+	if len(coords) > 0 && coord.Coord.DistanceTo(newCoord) <= time.Millisecond {
+		a.logger.Printf("[TRACE] Skipped update for coordinates, node %q change %q not significant", node.Node, coord.Coord.DistanceTo(newCoord))
 		return nil
 	}
 
-	a.logger.Printf("[TRACE] Skipped update for coordinates, node %q change %q not significant", node.Node, coord.Coord.DistanceTo(newCoord))
+	_, err = a.client.Coordinate().Update(&api.CoordinateEntry{
+		Node:    coord.Node,
+		Segment: coord.Segment,
+		Coord:   newCoord,
+	}, nil)
+
+	if err != nil {
+		return fmt.Errorf("error applying coordinate update for node %q: %v", node.Node, err)
+	}
+	a.logger.Printf("[INFO] Updated coordinates for node %q with distance %q from previous", node.Node, coord.Coord.DistanceTo(newCoord))
 	return nil
 }
 
