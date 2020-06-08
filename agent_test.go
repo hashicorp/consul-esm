@@ -186,3 +186,39 @@ func TestAgent_shouldUpdateNodeStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestAgent_LastKnownStatusIsExpired(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		scenario  string
+		statusAge time.Duration
+		ttl       time.Duration
+		expected  bool
+	}{
+		{
+			scenario:  "Last known time is within TTL",
+			statusAge: 5 * time.Minute,
+			ttl:       1 * time.Hour,
+			expected:  false,
+		},
+		{
+			scenario:  "Last known time is beyond of TTL",
+			statusAge: 1 * time.Hour,
+			ttl:       5 * time.Minute,
+			expected:  true,
+		},
+	}
+
+	for _, tc := range cases {
+		lastKnown := lastKnownStatus{
+			status: "healthy",
+			time:   time.Now().Add(-tc.statusAge),
+		}
+
+		actual := lastKnown.isExpired(tc.ttl, time.Now())
+
+		if actual != tc.expected {
+			t.Fatalf("%s - expected expired '%t', got '%t'", tc.scenario, tc.expected, actual)
+		}
+	}
+}

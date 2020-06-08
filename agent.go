@@ -41,8 +41,8 @@ type lastKnownStatus struct {
 	time   time.Time
 }
 
-func (s lastKnownStatus) isExpired(ttl time.Duration) bool {
-	statusAge := time.Now().Sub(s.time)
+func (s lastKnownStatus) isExpired(ttl time.Duration, now time.Time) bool {
+	statusAge := now.Sub(s.time)
 	return statusAge >= ttl
 }
 
@@ -416,7 +416,7 @@ func (a *Agent) shouldUpdateNodeStatus(node string, newStatus string) bool {
 	defer a.knownNodeStatusesLock.Unlock()
 	ttl := a.config.NodeHealthRefreshInterval
 	lastStatus, exists := a.knownNodeStatuses[node]
-	if !exists || lastStatus.isExpired(ttl) {
+	if !exists || lastStatus.isExpired(ttl, time.Now()) {
 		return true
 	}
 	return newStatus != lastStatus.status
