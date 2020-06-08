@@ -130,16 +130,6 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 
 func TestAgent_shouldUpdateNodeStatus(t *testing.T) {
 	t.Parallel()
-
-	agent := Agent{
-		config:            DefaultConfig(),
-		knownNodeStatuses: make(map[string]lastKnownStatus),
-	}
-
-	// add an existing node to agent for testing
-	agent.updateLastKnownNodeStatus("existing", "healthy")
-
-	// Warning: test cases are deliberately ordered for changing health statuses and allowing time for status to expire
 	cases := []struct {
 		scenario                  string
 		node                      string
@@ -178,6 +168,14 @@ func TestAgent_shouldUpdateNodeStatus(t *testing.T) {
 	}
 
 	for _, tc := range cases {
+
+		agent := Agent{
+			config:            DefaultConfig(),
+			knownNodeStatuses: make(map[string]lastKnownStatus),
+		}
+
+		// set up an existing node and configs for testing
+		agent.updateLastKnownNodeStatus("existing", "healthy")
 		agent.config.NodeHealthRefreshInterval = tc.nodeHealthRefreshInterval
 
 		actual := agent.shouldUpdateNodeStatus(tc.node, tc.status)
