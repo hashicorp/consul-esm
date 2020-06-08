@@ -1,6 +1,6 @@
 module github.com/hashicorp/consul-esm
 
-go 1.12
+go 1.13
 
 require (
 	github.com/hashicorp/consul v1.6.1
