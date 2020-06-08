@@ -49,7 +49,8 @@ type CheckRunner struct {
 	MinimumInterval     time.Duration
 }
 
-func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval time.Duration, minimumInterval time.Duration) *CheckRunner {
+func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
+	minimumInterval time.Duration) *CheckRunner {
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
@@ -77,7 +78,8 @@ func (c *CheckRunner) Stop() {
 }
 
 // Update an HTTP check
-func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated checkIDSet, added checkIDSet) bool {
+func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash types.CheckID,
+	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
 	http := &consulchecks.CheckHTTP{
 		Notify:   c,
 		CheckID:  checkHash,
@@ -130,7 +132,8 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	return true
 }
 
-func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash types.CheckID, definition *api.HealthCheckDefinition, updated checkIDSet, added checkIDSet) bool {
+func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash types.CheckID,
+	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
 	tcp := &consulchecks.CheckTCP{
 		Notify:   c,
 		CheckID:  checkHash,
