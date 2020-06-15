@@ -46,6 +46,8 @@ func main() {
 
 	if isVersion {
 		fmt.Printf("%s\n", version.GetHumanVersion())
+		fmt.Printf("Compatible with Consul versions %s\n",
+			version.GetConsulVersionConstraint())
 		os.Exit(ExitCodeOK)
 	}
 
@@ -73,6 +75,15 @@ func main() {
 	agent, err := NewAgent(config, logger)
 	if err != nil {
 		panic(err)
+	}
+
+	// Consul compatibility is only verified at startup. If new Consul servers
+	// join later with incompatible versions, inconsistent results may occur with
+	// updating health checks for external services.
+	err = agent.VerifyConsulCompatibility()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(ExitCodeError)
 	}
 
 	// Set up shutdown and signal handling.

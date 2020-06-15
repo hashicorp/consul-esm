@@ -220,3 +220,25 @@ func TestAgent_LastKnownStatusIsExpired(t *testing.T) {
 		}
 	}
 }
+
+func TestAgent_VerifyConsulCompatibility(t *testing.T) {
+	// Smoke test to test the compatibility with the current Consul version
+	// pinned in go dependency.
+	t.Parallel()
+	s, err := NewTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	agent := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.Tag = "test"
+	})
+	defer agent.Shutdown()
+
+	err = agent.VerifyConsulCompatibility()
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
