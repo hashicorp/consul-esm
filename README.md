@@ -186,6 +186,11 @@ node_reconnect_timeout = "72h"
 // update the coordinates for all nodes it is watching every 10 seconds.
 node_probe_interval = "10s"
 
+// Controls whether or not to disable calculating and updating node coordinates
+// when doing the node probe. Defaults to false i.e. coordinate updates
+// are enabled.
+disable_coordinate_updates
+
 // The address of the local Consul agent. Can also be provided through the
 // CONSUL_HTTP_ADDR environment variable.
 http_addr = "localhost:8500"

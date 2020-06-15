@@ -127,3 +127,96 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	// Make sure the service and check are gone
 	retry.Run(t, ensureDeregistered)
 }
+
+func TestAgent_shouldUpdateNodeStatus(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		scenario                  string
+		node                      string
+		status                    string
+		nodeHealthRefreshInterval time.Duration
+		expected                  bool
+	}{
+		{
+			scenario:                  "Existing node, not expired status, same status: should not need to update",
+			node:                      "existing",
+			status:                    "healthy",
+			nodeHealthRefreshInterval: 1 * time.Hour,
+			expected:                  false,
+		},
+		{
+			scenario:                  "Existing node, expired status, same status: should need to update",
+			node:                      "existing",
+			status:                    "healthy",
+			nodeHealthRefreshInterval: 0 * time.Millisecond,
+			expected:                  true,
+		},
+		{
+			scenario:                  "Existing node, not expired status, different status: should need to update",
+			node:                      "existing",
+			status:                    "critical",
+			nodeHealthRefreshInterval: 1 * time.Hour,
+			expected:                  true,
+		},
+		{
+			scenario:                  "New node: should need to update",
+			node:                      "new node",
+			status:                    "critical",
+			nodeHealthRefreshInterval: 0 * time.Hour,
+			expected:                  true,
+		},
+	}
+
+	for _, tc := range cases {
+
+		agent := Agent{
+			config:            DefaultConfig(),
+			knownNodeStatuses: make(map[string]lastKnownStatus),
+		}
+
+		// set up an existing node and configs for testing
+		agent.updateLastKnownNodeStatus("existing", "healthy")
+		agent.config.NodeHealthRefreshInterval = tc.nodeHealthRefreshInterval
+
+		actual := agent.shouldUpdateNodeStatus(tc.node, tc.status)
+		if actual != tc.expected {
+			t.Fatalf("%s - expected need to update '%t', got '%t'", tc.scenario, tc.expected, actual)
+		}
+	}
+}
+
+func TestAgent_LastKnownStatusIsExpired(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		scenario  string
+		statusAge time.Duration
+		ttl       time.Duration
+		expected  bool
+	}{
+		{
+			scenario:  "Last known time is within TTL",
+			statusAge: 5 * time.Minute,
+			ttl:       1 * time.Hour,
+			expected:  false,
+		},
+		{
+			scenario:  "Last known time is beyond of TTL",
+			statusAge: 1 * time.Hour,
+			ttl:       5 * time.Minute,
+			expected:  true,
+		},
+	}
+
+	for _, tc := range cases {
+		lastKnown := lastKnownStatus{
+			status: "healthy",
+			time:   time.Now().Add(-tc.statusAge),
+		}
+
+		actual := lastKnown.isExpired(tc.ttl, time.Now())
+
+		if actual != tc.expected {
+			t.Fatalf("%s - expected expired '%t', got '%t'", tc.scenario, tc.expected, actual)
+		}
+	}
+}

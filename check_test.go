@@ -23,7 +23,7 @@ func TestCheck_HTTP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
@@ -125,7 +125,7 @@ func TestCheck_TCP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0)
+	runner := NewCheckRunner(logger, client, 0, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
@@ -218,4 +218,60 @@ func TestCheck_TCP(t *testing.T) {
 			r.Fatalf("expected: %v, got: %v", api.HealthCritical, checks[0].Status)
 		}
 	})
+}
+
+func TestCheck_MinimumInterval(t *testing.T) {
+	// Confirm that a check's interval is at least the minimum interval
+
+	t.Parallel()
+	s, err := NewTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logger := log.New(LOGOUT, "", 0)
+	minimumInterval := 2 * time.Second
+	runner := NewCheckRunner(logger, client, 0, minimumInterval)
+	defer runner.Stop()
+
+	// Make a check with an interval that is below the minimum required interval
+	belowMinimumInterval := 1 * time.Second
+	check := &api.HealthCheck{
+		Node:    "external",
+		CheckID: "below-minimum-interval",
+		Name:    "below-minimum-interval-test",
+		Status:  api.HealthCritical,
+		Definition: api.HealthCheckDefinition{
+			HTTP:             "http://localhost:8080",
+			IntervalDuration: belowMinimumInterval,
+		},
+	}
+
+	// run check
+	checks := api.HealthChecks{check}
+	runner.UpdateChecks(checks)
+
+	// confirm that the original check's interval is unmodified
+	originalCheck, ok := runner.checks[checkHash(check)]
+	if !ok {
+		t.Fatalf("Check was not stored on runner.checks as expected. Checks: %v", runner.checks)
+	}
+	if originalCheck.Definition.IntervalDuration != belowMinimumInterval {
+		t.Fatalf("Unprocessed check's interval was %v but should have remained unchanged at %v", originalCheck.Definition.IntervalDuration, belowMinimumInterval)
+	}
+
+	// confirm that esm's modified version of check's interval is updated
+	esmCheck, ok := runner.checksHTTP[checkHash(check)]
+	if !ok {
+		t.Fatalf("HTTP check was not stored on runner.checksHTTP as expected. Checks: %v", runner.checksHTTP)
+	}
+	if esmCheck.Interval != minimumInterval {
+		t.Fatalf("Processed HTTP check's interval was %v but should have been updated to same as minimum interval %v", esmCheck.Interval, minimumInterval)
+	}
 }

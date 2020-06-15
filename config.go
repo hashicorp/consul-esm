@@ -29,12 +29,13 @@ type Config struct {
 	Tag     string
 	KVPath  string
 
-	NodeMeta                 map[string]string
-	Interval                 time.Duration
-	DeregisterAfter          time.Duration
-	CheckUpdateInterval      time.Duration
-	CoordinateUpdateInterval time.Duration
-	NodeReconnectTimeout     time.Duration
+	NodeMeta                  map[string]string
+	Interval                  time.Duration
+	DeregisterAfter           time.Duration
+	CheckUpdateInterval       time.Duration
+	CoordinateUpdateInterval  time.Duration
+	NodeHealthRefreshInterval time.Duration
+	NodeReconnectTimeout      time.Duration
 
 	HTTPAddr      string
 	Token         string
@@ -46,6 +47,8 @@ type Config struct {
 	TLSServerName string
 
 	PingType string
+
+	DisableCoordinateUpdates bool
 
 	// Test-only fields.
 	id string
@@ -90,12 +93,14 @@ func DefaultConfig() *Config {
 		NodeMeta: map[string]string{
 			"external-node": "true",
 		},
-		Interval:                 10 * time.Second,
-		DeregisterAfter:          72 * time.Hour,
-		CheckUpdateInterval:      5 * time.Minute,
-		CoordinateUpdateInterval: 10 * time.Second,
-		NodeReconnectTimeout:     72 * time.Hour,
-		PingType:                 PingTypeUDP,
+		Interval:                  10 * time.Second,
+		DeregisterAfter:           72 * time.Hour,
+		CheckUpdateInterval:       5 * time.Minute,
+		CoordinateUpdateInterval:  10 * time.Second,
+		NodeHealthRefreshInterval: 1 * time.Hour,
+		NodeReconnectTimeout:      72 * time.Hour,
+		PingType:                  PingTypeUDP,
+		DisableCoordinateUpdates:  false,
 	}
 }
 
@@ -122,6 +127,8 @@ type HumanConfig struct {
 	TLSServerName flags.StringValue `mapstructure:"tls_server_name"`
 
 	PingType flags.StringValue `mapstructure:"ping_type"`
+
+	DisableCoordinateUpdates flags.BoolValue `mapstructure:"disable_coordinate_updates"`
 }
 
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
@@ -197,7 +204,7 @@ func ValidateConfig(conf *Config) error {
 	}
 
 	if conf.CoordinateUpdateInterval < time.Second {
-		return fmt.Errorf("node_probe_interval cannot be lower than 1 second.")
+		return fmt.Errorf("node_probe_interval cannot be lower than 1 second")
 	}
 
 	return nil
@@ -265,4 +272,5 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.KeyFile.Merge(&dst.KeyFile)
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
+	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
 }

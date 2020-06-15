@@ -28,6 +28,7 @@ ca_path = "ca/"
 cert_file = "cert.pem"
 key_file = "key.pem"
 tls_server_name = "example.io"
+disable_coordinate_updates = true
 ping_type = "socket"
 `)
 
@@ -42,15 +43,16 @@ ping_type = "socket"
 			"a": "1",
 			"b": "2",
 		},
-		HTTPAddr:      "localhost:4949",
-		Token:         "qwerasdf",
-		Datacenter:    "dc3",
-		CAFile:        "ca.pem",
-		CAPath:        "ca/",
-		CertFile:      "cert.pem",
-		KeyFile:       "key.pem",
-		TLSServerName: "example.io",
-		PingType:      PingTypeSocket,
+		HTTPAddr:                 "localhost:4949",
+		Token:                    "qwerasdf",
+		Datacenter:               "dc3",
+		CAFile:                   "ca.pem",
+		CAPath:                   "ca/",
+		CertFile:                 "cert.pem",
+		KeyFile:                  "key.pem",
+		TLSServerName:            "example.io",
+		DisableCoordinateUpdates: true,
+		PingType:                 PingTypeSocket,
 	}
 
 	result := &Config{}
