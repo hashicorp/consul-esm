@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	configPkg "github.com/hashicorp/consul-esm/config"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/go-uuid"
@@ -25,6 +26,7 @@ type Config struct {
 	LogLevel       string
 	EnableSyslog   bool
 	SyslogFacility string
+	Telemetry      *configPkg.TelemetryConfig
 
 	Service string
 	Tag     string
@@ -107,15 +109,17 @@ func DefaultConfig() (*Config, error) {
 		NodeHealthRefreshInterval: 1 * time.Hour,
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
+		Telemetry:                 configPkg.DefaultTelemetryConfig(),
 		DisableCoordinateUpdates:  false,
 	}, nil
 }
 
 // HumanConfig contains configuration that the practitioner can set
 type HumanConfig struct {
-	LogLevel       flags.StringValue `mapstructure:"log_level"`
-	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
-	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
+	LogLevel       flags.StringValue          `mapstructure:"log_level"`
+	EnableSyslog   flags.BoolValue            `mapstructure:"enable_syslog"`
+	SyslogFacility flags.StringValue          `mapstructure:"syslog_facility"`
+	Telemetry      *configPkg.TelemetryConfig `mapstructure:"telemetry"`
 
 	InstanceID flags.StringValue   `mapstructure:"instance_id"`
 	Service    flags.StringValue   `mapstructure:"consul_service"`
@@ -200,6 +204,8 @@ func BuildConfig(configFiles []string) (*Config, error) {
 	if !strings.HasSuffix(config.KVPath, "/") {
 		config.KVPath = config.KVPath + "/"
 	}
+
+	config.Telemetry.Finalize()
 
 	if err := ValidateConfig(config); err != nil {
 		return nil, fmt.Errorf("Error parsing config: %v", err)
@@ -290,4 +296,6 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
 	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
+
+	dst.Telemetry = dst.Telemetry.Merge(src.Telemetry)
 }
