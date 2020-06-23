@@ -308,6 +308,7 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 // Should only be called when the lock is held.
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
 	// Exit early if the check or node have been deregistered.
+	// consistent mode reduces convergency time particularly when services have many updates in a short time
 	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{RequireConsistent: true})
 	if err != nil {
 		c.logger.Printf("[WARN] error retrieving existing node entry: %v", err)
