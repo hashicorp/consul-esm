@@ -109,7 +109,7 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 	// Register one ESM agent to start.
 	agent1 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent1"
+		c.InstanceID = "agent1"
 	})
 	defer agent1.Shutdown()
 
@@ -119,7 +119,7 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 	// Add a 2nd ESM agent.
 	agent2 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent2"
+		c.InstanceID = "agent2"
 	})
 	defer agent2.Shutdown()
 
@@ -130,7 +130,7 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 	// Add a 3rd ESM agent.
 	agent3 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent3"
+		c.InstanceID = "agent3"
 	})
 	defer agent3.Shutdown()
 
@@ -200,13 +200,13 @@ func TestLeader_divideCoordinates(t *testing.T) {
 	// Register two ESM agents.
 	agent1 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent1"
+		c.InstanceID = "agent1"
 	})
 	defer agent1.Shutdown()
 
 	agent2 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent2"
+		c.InstanceID = "agent2"
 	})
 	defer agent2.Shutdown()
 
@@ -316,14 +316,14 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 	// Register two ESM agents.
 	agent1 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent1"
+		c.InstanceID = "agent1"
 		c.CoordinateUpdateInterval = time.Second
 	})
 	defer agent1.Shutdown()
 
 	agent2 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
-		c.id = "agent2"
+		c.InstanceID = "agent2"
 		c.CoordinateUpdateInterval = time.Second
 	})
 	defer agent2.Shutdown()

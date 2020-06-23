@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
-	"github.com/hashicorp/go-uuid"
 )
 
 const LeaderKey = "leader"
@@ -74,20 +73,10 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 		return nil, err
 	}
 
-	// Generate a unique ID for this agent so we can disambiguate different
-	// instances on the same host.
-	id := config.id
-	if id == "" {
-		id, err = uuid.GenerateUUID()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	agent := Agent{
 		config:            config,
 		client:            client,
-		id:                id,
+		id:                config.InstanceID,
 		logger:            logger,
 		shutdownCh:        make(chan struct{}),
 		inflightPings:     make(map[string]struct{}),
@@ -162,8 +151,21 @@ func (a *Agent) serviceID() string {
 	return fmt.Sprintf("%s:%s", a.config.Service, a.id)
 }
 
+type alreadyExistsError struct {
+	serviceID string
+}
+
+func (e *alreadyExistsError) Error() string {
+	return fmt.Sprintf("ESM instance with service id '%s' is already registered with Consul", e.serviceID)
+}
+
 // register is used to register this agent with Consul service discovery.
 func (a *Agent) register() error {
+	// agent ids need to be unique to disambiguate different instances on same host
+	if existing, _, _ := a.client.Agent().Service(a.serviceID(), nil); existing != nil {
+		return &alreadyExistsError{a.serviceID()}
+	}
+
 	service := &api.AgentServiceRegistration{
 		ID:   a.serviceID(),
 		Name: a.config.Service,

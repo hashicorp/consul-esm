@@ -11,6 +11,7 @@ import (
 func TestDecodeMergeConfig(t *testing.T) {
 	raw := bytes.NewBufferString(`
 log_level = "INFO"
+instance_id = "test-instance-id"
 consul_service = "service"
 consul_service_tag = "asdf"
 consul_kv_path = "custom-esm/"
@@ -34,6 +35,7 @@ ping_type = "socket"
 
 	expected := &Config{
 		LogLevel:                 "INFO",
+		InstanceID:               "test-instance-id",
 		Service:                  "service",
 		Tag:                      "asdf",
 		KVPath:                   "custom-esm/",
@@ -90,7 +92,11 @@ func TestValidateConfig(t *testing.T) {
 	for _, tc := range cases {
 		buf := bytes.NewBufferString(tc.raw)
 
-		result := DefaultConfig()
+		result, err := DefaultConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		humanConfig, err := DecodeConfig(buf)
 		if err != nil {
 			t.Fatal(err)

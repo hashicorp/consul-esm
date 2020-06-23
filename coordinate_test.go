@@ -34,9 +34,14 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	agent := &Agent{
 		client:            client,
-		config:            DefaultConfig(),
+		config:            conf,
 		logger:            log.New(LOGOUT, "", log.LstdFlags),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
@@ -78,9 +83,14 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	agent := &Agent{
 		client:            client,
-		config:            DefaultConfig(),
+		config:            conf,
 		logger:            log.New(LOGOUT, "", log.LstdFlags),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
@@ -173,9 +183,14 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	agent := &Agent{
 		client:            client,
-		config:            DefaultConfig(),
+		config:            conf,
 		logger:            log.New(LOGOUT, "", log.LstdFlags),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
