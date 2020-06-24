@@ -32,6 +32,10 @@ type CheckRunner struct {
 	logger *log.Logger
 	client *api.Client
 
+	// instruments manages the various metric instruments used for monitoring
+	// the check runner.
+	instruments *checkRunnerInstruments
+
 	// checks are unmodified checks as retrieved from Consul Catalog
 	checks map[types.CheckID]*api.HealthCheck
 
@@ -51,9 +55,16 @@ type CheckRunner struct {
 
 func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
 	minimumInterval time.Duration) *CheckRunner {
+	instr, err := newCheckRunnerInstruments()
+	if err != nil {
+		logger.Printf("[ERR] failed to setup CheckRunner telemetry instruments, "+
+			"metrics will not be reported for this runner: %s", err)
+	}
+
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
+		instruments:         instr,
 		checks:              make(map[types.CheckID]*api.HealthCheck),
 		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
 		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
@@ -182,6 +193,7 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 // UpdateChecks takes a list of checks from the catalog and updates
 // our list of running checks to match.
 func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
+	start := time.Now()
 	c.Lock()
 	defer c.Unlock()
 
@@ -255,6 +267,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		c.logger.Printf("[INFO] Updated %d checks, found %d, added %d, updated %d, removed %d",
 			len(checks), len(found), len(added), len(updated), len(removed))
 	}
+
+	c.instruments.checksUpdate(time.Since(start))
 }
 
 // UpdateCheck handles the output of an HTTP/TCP check and decides whether or not
@@ -330,6 +344,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	existing.Output = output
 
 	c.logger.Printf("[INFO] Updating output and status for %q", existing.CheckID)
+	c.instruments.checkTxn()
 
 	ops := api.TxnOps{
 		&api.TxnOp{

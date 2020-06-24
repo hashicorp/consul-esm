@@ -54,6 +54,10 @@ type Agent struct {
 	checkRunner *CheckRunner
 	id          string
 
+	// instruments manages the various metric instruments used for monitoring
+	// the agent.
+	instruments *agentInstruments
+
 	shutdownCh chan struct{}
 	shutdown   bool
 
@@ -73,11 +77,18 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 		return nil, err
 	}
 
+	instr, err := newAgentInstruments()
+	if err != nil {
+		logger.Printf("[ERR] failed to setup Agent telemetry instruments: %s", err)
+		return nil, err
+	}
+
 	agent := Agent{
 		config:            config,
 		client:            client,
 		id:                config.InstanceID,
 		logger:            logger,
+		instruments:       instr,
 		shutdownCh:        make(chan struct{}),
 		inflightPings:     make(map[string]struct{}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),

@@ -33,6 +33,11 @@ func GlobalMeter() metric.Meter {
 	return global.Meter(meterName)
 }
 
+// GlobalMeterName returns the name of the global meter
+func GlobalMeterName() string {
+	return meterName
+}
+
 // Init initializes metrics reporting. If no sink is configured, the no-op
 // provider is used.
 func Init(c *config.TelemetryConfig) (*Telemetry, error) {
