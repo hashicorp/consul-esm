@@ -10,7 +10,7 @@ GOPATH := $(lastword $(subst :, ,${GOPATH}))# use last GOPATH entry
 
 # Project information
 GOVERSION := 1.13.12
-PROJECT := $(CURRENT_DIR:$(GOPATH)/src/%=%)
+PROJECT := $(shell go list -m -mod=vendor)
 NAME := $(notdir $(PROJECT))
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 GIT_DESCRIBE ?= $(shell git describe --tags --always)
