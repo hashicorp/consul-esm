@@ -17,15 +17,14 @@ require (
 	github.com/hashicorp/go-version v1.2.0
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/hashicorp/hcl v1.0.0
+	github.com/hashicorp/hcl-opentelemetry v0.0.0-20200626211046-b18a6d268b77
 	github.com/hashicorp/serf v0.8.4
 	github.com/miekg/dns v1.1.22 // indirect
 	github.com/mitchellh/cli v1.0.0
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
-	github.com/mitchellh/mapstructure v1.1.2
+	github.com/mitchellh/mapstructure v1.3.2
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
-	go.opentelemetry.io/contrib/exporters/metric/dogstatsd v0.6.1
 	go.opentelemetry.io/otel v0.6.0
-	go.opentelemetry.io/otel/exporters/metric/prometheus v0.6.0
 	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc // indirect
 	golang.org/x/net v0.0.0-20191003171128-d98b1b443823 // indirect
 )

@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/hashicorp/consul-esm/telemetry"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/consul/logger"
+	"github.com/hashicorp/hcl-opentelemetry"
 	"github.com/mitchellh/cli"
 )
 
@@ -74,7 +74,7 @@ func main() {
 	gatedWriter.Flush()
 
 	// Initialize telemetry
-	tel, err := telemetry.Init(config.Telemetry)
+	tel, err := hclotel.Init(config.Telemetry)
 	if err != nil {
 		ui.Error(err.Error())
 		os.Exit(ExitCodeError)

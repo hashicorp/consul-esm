@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/consul-esm/telemetry"
+	"github.com/hashicorp/hcl-opentelemetry"
 	"go.opentelemetry.io/otel/api/metric"
 )
 
@@ -13,8 +13,8 @@ type agentInstruments struct {
 }
 
 func newAgentInstruments() (*agentInstruments, error) {
-	meter := telemetry.GlobalMeter()
-	prefix := telemetry.GlobalMeterName()
+	meter := hclotel.GlobalMeter()
+	prefix := hclotel.GlobalMeterName()
 
 	coordTxn, err := meter.NewInt64Counter(
 		fmt.Sprintf("%s.check.txn", prefix),

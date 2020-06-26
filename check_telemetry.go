@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/consul-esm/telemetry"
+	"github.com/hashicorp/hcl-opentelemetry"
 	"go.opentelemetry.io/otel/api/metric"
 )
 
 type checkRunnerInstruments struct {
 	checkTxnCounter      metric.Int64Counter
-	checksUpdateDuration metric.Float64ValueRecorder
+	checksUpdateDuration metric.Int64ValueRecorder
 }
 
 func newCheckRunnerInstruments() (*checkRunnerInstruments, error) {
-	meter := telemetry.GlobalMeter()
-	prefix := telemetry.GlobalMeterName()
+	meter := hclotel.GlobalMeter()
+	prefix := hclotel.GlobalMeterName()
 
 	checkTxn, err := meter.NewInt64Counter(
 		fmt.Sprintf("%s.check.txn", prefix),
@@ -25,9 +25,9 @@ func newCheckRunnerInstruments() (*checkRunnerInstruments, error) {
 		return nil, err
 	}
 
-	checksUpdate, err := meter.NewFloat64ValueRecorder(
-		fmt.Sprintf("%s.checks.update", prefix),
-		metric.WithDescription("The duration (seconds) to update checks"))
+	checksUpdate, err := meter.NewInt64ValueRecorder(
+		fmt.Sprintf("%s.checks.update.ms", prefix),
+		metric.WithDescription("The duration (milliseconds) to update checks"))
 	if err != nil {
 		return nil, err
 	}
@@ -55,5 +55,5 @@ func (i *checkRunnerInstruments) checksUpdate(dur time.Duration) {
 		return
 	}
 
-	i.checksUpdateDuration.Record(context.Background(), dur.Seconds())
+	i.checksUpdateDuration.Record(context.Background(), dur.Milliseconds())
 }

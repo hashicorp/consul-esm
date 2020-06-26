@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
-	configPkg "github.com/hashicorp/consul-esm/config"
+	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/hcl"
+	"github.com/hashicorp/hcl-opentelemetry"
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/mapstructure"
 )
@@ -26,7 +27,7 @@ type Config struct {
 	LogLevel       string
 	EnableSyslog   bool
 	SyslogFacility string
-	Telemetry      *configPkg.TelemetryConfig
+	Telemetry      *hclotel.TelemetryConfig
 
 	Service string
 	Tag     string
@@ -94,6 +95,9 @@ func DefaultConfig() (*Config, error) {
 		return nil, err
 	}
 
+	tel := hclotel.DefaultTelemetryConfig()
+	tel.MetricsPrefix = hclotel.String(version.Name)
+
 	return &Config{
 		InstanceID: instanceID,
 		LogLevel:   "INFO",
@@ -109,17 +113,17 @@ func DefaultConfig() (*Config, error) {
 		NodeHealthRefreshInterval: 1 * time.Hour,
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
-		Telemetry:                 configPkg.DefaultTelemetryConfig(),
+		Telemetry:                 tel,
 		DisableCoordinateUpdates:  false,
 	}, nil
 }
 
 // HumanConfig contains configuration that the practitioner can set
 type HumanConfig struct {
-	LogLevel       flags.StringValue          `mapstructure:"log_level"`
-	EnableSyslog   flags.BoolValue            `mapstructure:"enable_syslog"`
-	SyslogFacility flags.StringValue          `mapstructure:"syslog_facility"`
-	Telemetry      *configPkg.TelemetryConfig `mapstructure:"telemetry"`
+	LogLevel       flags.StringValue        `mapstructure:"log_level"`
+	EnableSyslog   flags.BoolValue          `mapstructure:"enable_syslog"`
+	SyslogFacility flags.StringValue        `mapstructure:"syslog_facility"`
+	Telemetry      *hclotel.TelemetryConfig `mapstructure:"telemetry"`
 
 	InstanceID flags.StringValue   `mapstructure:"instance_id"`
 	Service    flags.StringValue   `mapstructure:"consul_service"`
@@ -179,7 +183,11 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 
 	// Decode the simple (non service/handler) objects into Config
 	msdec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:  flags.ConfigDecodeHook,
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			hclotel.HookWeakDecodeFromSlice,
+			flags.ConfigDecodeHook,
+			mapstructure.StringToTimeDurationHookFunc(),
+		),
 		Result:      &config,
 		ErrorUnused: true,
 	})
@@ -248,6 +256,7 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 		if err != nil {
 			return err
 		}
+
 		if !strings.HasSuffix(fi.Name(), ".json") && !strings.HasSuffix(fi.Name(), ".hcl") {
 			return nil
 		}
