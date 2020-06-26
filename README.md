@@ -171,7 +171,7 @@ consul_service = "consul-esm"
 
 // The service tag for this agent to use when registering itself with Consul.
 // ESM instances that share a service name/tag combination will have the work
-// of running health checks and pings for any external nodes in the catalog 
+// of running health checks and pings for any external nodes in the catalog
 // divided evenly amongst themselves.
 consul_service_tag = ""
 
@@ -237,6 +237,41 @@ ping_type = "udp"
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"
 
+### Consul ACL Policies
+
+With [ACL system][ACL] enabled on Consul agents, a specific ACL policy may be
+required for ESM's token in order for ESM to perform its functions. To narrow
+down the privileges required for ESM the following [ACL policy rules][rules]
+can be used:
+
+```hcl
+agent_prefix "" {
+  policy = "read"
+}
+
+key_prefix "consul-esm/" {
+  policy = "write"
+}
+
+node_prefix "" {
+  policy = "write"
+}
+
+service_prefix "" {
+  policy = "write"
+}
+
+session_prefix "" {
+   policy = "write"
+}
+```
+
+The `key_prefix` rule is set to allow the `consul-esm/` KV prefix, which is
+defined in the config file using the `consul_kv_path` parameter.
+
+[ACL]: https://www.consul.io/docs/acl/acl-system.html "Consul ACL System"
+[rules]: https://www.consul.io/docs/acl/acl-rules "Consul ACL Rules"
+
 ## Contributing
 
 **Note** if you run Linux and see `socket: permission denied` errors with UDP
@@ -267,7 +302,7 @@ $ make dev
 This will compile the `consul-esm` binary into `bin/consul-esm` as
 well as your `$GOPATH` and run the test suite.
 
-If you want to compile a specific binary, run `make XC_OS/XC_ARCH`. 
+If you want to compile a specific binary, run `make XC_OS/XC_ARCH`.
 For example:
 ```
 make darwin/amd64
