@@ -234,7 +234,7 @@ can be used:
 
 ```hcl
 agent_prefix "" {
-  policy = "write"
+  policy = "read"
 }
 
 key_prefix "consul-esm/" {
@@ -242,7 +242,7 @@ key_prefix "consul-esm/" {
 }
 
 node_prefix "" {
-  policy = "read"
+  policy = "write"
 }
 
 service_prefix "" {
