@@ -17,7 +17,7 @@ func newAgentInstruments() (*agentInstruments, error) {
 	prefix := hclotel.GlobalMeterName()
 
 	coordTxn, err := meter.NewInt64Counter(
-		fmt.Sprintf("%s.check.txn", prefix),
+		fmt.Sprintf("%s.coord.txn", prefix),
 		metric.WithDescription("A counter of node check updates using Consul txn API"))
 	if err != nil {
 		return nil, err
