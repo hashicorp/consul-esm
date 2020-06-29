@@ -235,6 +235,45 @@ tls_server_name = ""
 ping_type = "udp"
 ```
 
+#### Telemetry
+
+Consul ESM uses the [OpenTelemetry](https://opentelemetry.io/) project for its
+monitoring engine to collect various runtime metrics. It currently supports
+metrics exported to stdout, dogstatsd server, and prometheus endpoint.
+
+| Metric Name | Description |
+|-|-|
+| `consul-esm.coord.txn` | A counter of node check updates using Consul txn API |
+| `consul-esm.check.txn` | A counter of check updates using Consul txn API |
+| `consul-esm.checks.update.ms` | The duration (milliseconds) to update checks |
+
+##### Configure Telemetry
+Enable telemetry by configuring the `telemetry` block with one metric provider.
+
+```hcl
+telemetry {
+  metrics_prefix = "consul-esm"
+
+  stdout {
+    period = "60s"
+    pretty_print = false
+    do_not_print_time = false
+  }
+
+  dogstatsd {
+    // address describes the destination for exporting dogstatsd data.
+    // e.g., udp://host:port tcp://host:port unix:///socket/path
+    address = "udp://127.0.0.1:8125"
+    period = "60s"
+  }
+
+  prometheus {
+    cache_period = "60s"
+    port = 8888
+  }
+}
+```
+
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"
 
 ## Contributing
