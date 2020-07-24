@@ -1,26 +1,31 @@
 ## Upcoming
 
+## v0.4.0 (July 27, 2020)
+
 IMPROVEMENTS:
 
-  * Update to compile with Go version 1.13 [[GH-64](https://github.com/hashicorp/consul-esm/pull/64)]
-  * Prevent health checks from running more frequently than once per second [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
-  * Prevent spurious node status updates so that they only update on status change or status expiration [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
-  * Allow disabling coordinate updates with `disable_coordinate_updates` configuration [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
-  * Support clusters of over 64 ESM instances [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
-  * Skip updating small changes in node coordinates [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
-  * Add more logging [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
+  * Update to compile with Go version 1.13. [[GH-64](https://github.com/hashicorp/consul-esm/pull/64)]
+  * Prevent health checks from running more frequently than once per second. [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
+  * Prevent spurious node status updates so that they only update on status change or status expiration. [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
+  * Allow disabling coordinate updates with `disable_coordinate_updates` configuration option. [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
+  * Support clusters of over 64 ESM instances. [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
+  * Skip updating small changes in node coordinates. [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
+  * Add more logging. [[GH-63](https://github.com/hashicorp/consul-esm/pull/63)]
   * Add consul version compatibility check on startup. [[GH-62](https://github.com/hashicorp/consul-esm/pull/62)]
-  * Switch to Go Modules [[GH-47](https://github.com/hashicorp/consul-esm/pull/47)]
+  * Switch to Go Modules. [[GH-47](https://github.com/hashicorp/consul-esm/pull/47)]
+  * Allow setting a unique ESM instance id with `instance_id` configuration option. [[GH-61](https://github.com/hashicorp/consul-esm/pull/61), [GH-60](https://github.com/hashicorp/consul-esm/issues/60)]
 
 BUG FIXES:
 
-  * Fix an issue when there are no healthy Consul instances [[GH-48](https://github.com/hashicorp/consul-esm/pull/48), [GH-43](https://github.com/hashicorp/consul-esm/issues/43)]
-  * Fix broken ping by switching to new library [[GH-46](https://github.com/hashicorp/consul-esm/pull/46), [GH-45](https://github.com/hashicorp/consul-esm/issues/45)]
+  * Fix an issue when there are no healthy Consul instances. [[GH-48](https://github.com/hashicorp/consul-esm/pull/48), [GH-43](https://github.com/hashicorp/consul-esm/issues/43)]
+  * Fix broken ping by switching to new library. [[GH-46](https://github.com/hashicorp/consul-esm/pull/46), [GH-45](https://github.com/hashicorp/consul-esm/issues/45)]
+  * Fix spurious updates that cause delays in updating health checks by reading health check in consistent mode. [[GH-68](https://github.com/hashicorp/consul-esm/pull/68)]
 
 DOCUMENTATION:
 
-  * Request users to use :+1: voting system to help prioritize issues and pull requests [[GH-57](https://github.com/hashicorp/consul-esm/pull/57)]
-  * Clarification on time when ESM becomes critical and deregisters [[GH-54](https://github.com/hashicorp/consul-esm/pull/54)]
+  * Request users to use :+1: voting system to help prioritize issues and pull requests. [[GH-57](https://github.com/hashicorp/consul-esm/pull/57)]
+  * Clarification on time when ESM becomes critical and deregisters. [[GH-54](https://github.com/hashicorp/consul-esm/pull/54)]
+  * Minimum ACL rules required to run ESM. [[GH-66](https://github.com/hashicorp/consul-esm/pull/66)]
 
 ## v0.3.3 (April 12, 2019)
 
