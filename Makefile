@@ -14,7 +14,7 @@ PROJECT := $(CURRENT_DIR:$(GOPATH)/src/%=%)
 NAME := $(notdir $(PROJECT))
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 GIT_DESCRIBE ?= $(shell git describe --tags --always)
-VERSION := $(shell awk -F\" '/Version/ { print $$2; exit }' "${CURRENT_DIR}/version/version.go")
+VERSION := $(shell awk -F\" '/Version =/ { print $$2; exit }' "${CURRENT_DIR}/version/version.go")
 
 # Tags specific for building
 GOTAGS ?=
