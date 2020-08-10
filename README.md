@@ -274,6 +274,55 @@ defined in the config file using the `consul_kv_path` parameter.
 [ACL]: https://www.consul.io/docs/acl/acl-system.html "Consul ACL System"
 [rules]: https://www.consul.io/docs/acl/acl-rules "Consul ACL Rules"
 
+It is possible to have even finer-grained ACL policies if you know the
+the set name of the consul agent that ESM is registered with and a set list of
+nodes that ESM will monitor.
+ - `<consul-agent-node-name>`: insert the node name for the consul agent that
+consul-esm is registered with
+ - `<monitored-node-name>`: insert the name of the nodes that ESM will
+ monitor
+ - `<consul-esm-name>`: insert the name that ESM is registered with. Default
+ value is 'consul-esm' if not defined in config file using the `consul_service`
+ parameter
+
+```hcl
+operator = "read"
+
+agent "<consul-agent-node-name>" {
+  policy = "read"
+}
+
+key_prefix "consul-esm/" {
+  policy = "write"
+}
+
+node "<monitored-node-name: one acl block needed per node>" {
+  policy = "write"
+}
+
+node_prefix "" {
+  policy = "read"
+}
+
+service "<consul-esm-name>" {
+  policy = "write"
+}
+
+session "<consul-agent-node-name>" {
+   policy = "write"
+}
+```
+
+For context on usage of each ACL:
+
+- `operator:read` - for feature to check consul and esm version compatibility
+- `agent:read` - for features to check version compatibility and calculating network coordinates
+- `key:write` - to store assigned checks
+- `node:write` - to update the status of each node that esm monitors
+- `node:read` - to retrieve nodes that need to be monitored
+- `service:write` - to register esm service
+- `session:write` - to acquire esm cluster leader lock
+
 ## Contributing
 
 **Note** if you run Linux and see `socket: permission denied` errors with UDP
