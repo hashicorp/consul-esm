@@ -62,6 +62,8 @@ telemetry {
  	statsd_address = "example.io:8888"
  	statsite_address = "5.6.7.8"
 }
+passing_threshold = 3
+critical_threshold = 2
 `)
 
 	expected := &Config{
@@ -115,6 +117,8 @@ telemetry {
 			StatsdAddr:                         "example.io:8888",
 			StatsiteAddr:                       "5.6.7.8",
 		},
+		PassingThreshold:  3,
+		CriticalThreshold: 2,
 	}
 
 	result := &Config{}

@@ -393,7 +393,8 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval, minimumInterval, tlsClientConfig)
+	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval, minimumInterval,
+		tlsClientConfig, a.config.PassingThreshold, a.config.CriticalThreshold)
 	go a.checkRunner.reapServices(a.shutdownCh)
 	defer a.checkRunner.Stop()
 

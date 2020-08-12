@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -59,6 +60,9 @@ type Config struct {
 	DisableCoordinateUpdates bool
 
 	Telemetry lib.TelemetryConfig
+
+	PassingThreshold  int
+	CriticalThreshold int
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -179,7 +183,51 @@ type HumanConfig struct {
 	DisableCoordinateUpdates flags.BoolValue `mapstructure:"disable_coordinate_updates"`
 
 	Telemetry []Telemetry `mapstructure:"telemetry"`
+
+	PassingThreshold  intValue `mapstructure:"passing_threshold"`
+	CriticalThreshold intValue `mapstructure:"critical_threshold"`
 }
+
+// intValue provides a flag value that's aware if it has been set.
+type intValue struct {
+	v *int
+}
+
+// Merge will overlay this value if it has been set.
+func (i *intValue) Merge(onto *int) {
+	if i.v != nil {
+		*onto = *(i.v)
+	}
+}
+
+func intTointValueFunc() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if f.Kind() != reflect.Int {
+			return data, nil
+		}
+
+		val := intValue{}
+		if t != reflect.TypeOf(val) {
+			return data, nil
+		}
+
+		val.v = new(int)
+		*(val.v) = data.(int)
+		return val, nil
+	}
+}
+
+// configDecodeHook should be passed to mapstructure in order to decode into
+// the *Value objects here.
+var configDecodeHook = mapstructure.ComposeDecodeHookFunc(
+	flags.BoolToBoolValueFunc(),
+	flags.StringToDurationValueFunc(),
+	flags.StringToStringValueFunc(),
+	intTointValueFunc(),
+)
 
 // DecodeConfig takes a reader containing config file and returns
 // configuration struct
@@ -221,7 +269,7 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 
 	// Decode the simple (non service/handler) objects into Config
 	msdec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:  flags.ConfigDecodeHook,
+		DecodeHook:  configDecodeHook,
 		Result:      &config,
 		ErrorUnused: true,
 	})
@@ -265,6 +313,14 @@ func ValidateConfig(conf *Config) error {
 
 	if conf.CoordinateUpdateInterval < time.Second {
 		return fmt.Errorf("node_probe_interval cannot be lower than 1 second")
+	}
+
+	if conf.PassingThreshold < 0 {
+		return fmt.Errorf("passing_threshold cannot be negative")
+	}
+
+	if conf.CriticalThreshold < 0 {
+		return fmt.Errorf("critical_threshold cannot be negative")
 	}
 
 	return nil
@@ -420,5 +476,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 		dst.Telemetry = t
 	}
 
+	src.PassingThreshold.Merge(&dst.PassingThreshold)
+	src.CriticalThreshold.Merge(&dst.CriticalThreshold)
 	return nil
 }
