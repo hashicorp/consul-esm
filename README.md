@@ -233,6 +233,34 @@ tls_server_name = ""
 // The method to use for pinging external nodes. Defaults to "udp" but can
 // also be set to "socket" to use ICMP (which requires root privileges).
 ping_type = "udp"
+
+// The telemetry configuration which matches Consul's telemetry config options.
+// See Consul's documentation https://www.consul.io/docs/agent/options#telemetry
+// for more details on how to configure
+telemetry {
+	circonus_api_app = ""
+ 	circonus_api_token = ""
+ 	circonus_api_url = ""
+ 	circonus_broker_id = ""
+ 	circonus_broker_select_tag = ""
+ 	circonus_check_display_name = ""
+ 	circonus_check_force_metric_activation = ""
+ 	circonus_check_id = ""
+ 	circonus_check_instance_id = ""
+ 	circonus_check_search_tag = ""
+ 	circonus_check_tags = ""
+ 	circonus_submission_interval = ""
+ 	circonus_submission_url = ""
+ 	disable_hostname = false
+ 	dogstatsd_addr = ""
+ 	dogstatsd_tags = []
+ 	filter_default = false
+ 	prefix_filter = []
+ 	metrics_prefix = ""
+ 	prometheus_retention_time = ""
+ 	statsd_address = ""
+ 	statsite_address = ""
+}
 ```
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"

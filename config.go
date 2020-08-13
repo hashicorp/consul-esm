@@ -114,6 +114,7 @@ func DefaultConfig() (*Config, error) {
 	}, nil
 }
 
+// Telemetry is the configuration for to match Consul's go-metrics telemetry config
 type Telemetry struct {
 	CirconusAPIApp                     *string  `mapstructure:"circonus_api_app"`
 	CirconusAPIToken                   *string  `mapstructure:"circonus_api_token"`
@@ -131,10 +132,10 @@ type Telemetry struct {
 	DisableHostname                    *bool    `mapstructure:"disable_hostname"`
 	DogstatsdAddr                      *string  `mapstructure:"dogstatsd_addr"`
 	DogstatsdTags                      []string `mapstructure:"dogstatsd_tags"`
+	PrometheusRetentionTime            *string  `mapstructure:"prometheus_retention_time"`
 	FilterDefault                      *bool    `mapstructure:"filter_default"`
 	PrefixFilter                       []string `mapstructure:"prefix_filter"`
 	MetricsPrefix                      *string  `mapstructure:"metrics_prefix"`
-	PrometheusRetentionTime            *string  `mapstructure:"prometheus_retention_time"`
 	StatsdAddr                         *string  `mapstructure:"statsd_address"`
 	StatsiteAddr                       *string  `mapstructure:"statsite_address"`
 }
@@ -316,6 +317,64 @@ func boolVal(v *bool) bool {
 	return *v
 }
 
+// convertTelemetry converts the HumanConfig{} telemetry to the telemetry
+// structure needed by Config{}
+func convertTelemetry(telemetry Telemetry) (lib.TelemetryConfig, error) {
+	// split metric filters into allow vs. blocked
+	var telemetryAllowedPrefixes, telemetryBlockedPrefixes []string
+	for _, rule := range telemetry.PrefixFilter {
+		if rule == "" {
+			fmt.Println("[WARN] Cannot have empty filter rule in prefix_filter")
+			continue
+		}
+		switch rule[0] {
+		case '+':
+			telemetryAllowedPrefixes = append(telemetryAllowedPrefixes, rule[1:])
+		case '-':
+			telemetryBlockedPrefixes = append(telemetryBlockedPrefixes, rule[1:])
+		default:
+			fmt.Printf("[WARN] Filter rule must begin with either '+' or '-': %q\n", rule)
+		}
+	}
+
+	var prometheusRetentionTime time.Duration
+	if telemetry.PrometheusRetentionTime != nil {
+		d, err := time.ParseDuration(*telemetry.PrometheusRetentionTime)
+		if err != nil {
+			return lib.TelemetryConfig{},
+				fmt.Errorf("prometheus_retention_time: invalid duration: %q: %s", *telemetry.PrometheusRetentionTime, err)
+		}
+
+		prometheusRetentionTime = d
+	}
+
+	return lib.TelemetryConfig{
+		CirconusAPIApp:                     stringVal(telemetry.CirconusAPIApp),
+		CirconusAPIToken:                   stringVal(telemetry.CirconusAPIToken),
+		CirconusAPIURL:                     stringVal(telemetry.CirconusAPIURL),
+		CirconusBrokerID:                   stringVal(telemetry.CirconusBrokerID),
+		CirconusBrokerSelectTag:            stringVal(telemetry.CirconusBrokerSelectTag),
+		CirconusCheckDisplayName:           stringVal(telemetry.CirconusCheckDisplayName),
+		CirconusCheckForceMetricActivation: stringVal(telemetry.CirconusCheckForceMetricActivation),
+		CirconusCheckID:                    stringVal(telemetry.CirconusCheckID),
+		CirconusCheckInstanceID:            stringVal(telemetry.CirconusCheckInstanceID),
+		CirconusCheckSearchTag:             stringVal(telemetry.CirconusCheckSearchTag),
+		CirconusCheckTags:                  stringVal(telemetry.CirconusCheckTags),
+		CirconusSubmissionInterval:         stringVal(telemetry.CirconusSubmissionInterval),
+		CirconusSubmissionURL:              stringVal(telemetry.CirconusSubmissionURL),
+		DisableHostname:                    boolVal(telemetry.DisableHostname),
+		DogstatsdAddr:                      stringVal(telemetry.DogstatsdAddr),
+		DogstatsdTags:                      telemetry.DogstatsdTags,
+		PrometheusRetentionTime:            prometheusRetentionTime,
+		FilterDefault:                      boolVal(telemetry.FilterDefault),
+		AllowedPrefixes:                    telemetryAllowedPrefixes,
+		BlockedPrefixes:                    telemetryBlockedPrefixes,
+		MetricsPrefix:                      stringVal(telemetry.MetricsPrefix),
+		StatsdAddr:                         stringVal(telemetry.StatsdAddr),
+		StatsiteAddr:                       stringVal(telemetry.StatsiteAddr),
+	}, nil
+}
+
 // MergeConfig merges the default config with any configuration
 // set by the practitioner
 func MergeConfig(dst *Config, src *HumanConfig) error {
@@ -339,62 +398,12 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
 	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
-
-	// We check on parse time that there is at most one
-	if len(src.Telemetry) != 0 {
-		telemetry := src.Telemetry[0]
-		// Parse the metric filters
-		var telemetryAllowedPrefixes, telemetryBlockedPrefixes []string
-		for _, rule := range telemetry.PrefixFilter {
-			if rule == "" {
-				fmt.Println("[WARN] Cannot have empty filter rule in prefix_filter")
-				continue
-			}
-			switch rule[0] {
-			case '+':
-				telemetryAllowedPrefixes = append(telemetryAllowedPrefixes, rule[1:])
-			case '-':
-				telemetryBlockedPrefixes = append(telemetryBlockedPrefixes, rule[1:])
-			default:
-				fmt.Printf("[WARN] Filter rule must begin with either '+' or '-': %q\n", rule)
-			}
+	if len(src.Telemetry) == 1 {
+		t, err := convertTelemetry(src.Telemetry[0])
+		if err != nil {
+			return err
 		}
-
-		var prometheusRetentionTime time.Duration
-		if telemetry.PrometheusRetentionTime != nil {
-			d, err := time.ParseDuration(*telemetry.PrometheusRetentionTime)
-			if err != nil {
-				return fmt.Errorf("prometheus_retention_time: invalid duration: %q: %s", *telemetry.PrometheusRetentionTime, err)
-			}
-
-			prometheusRetentionTime = d
-		}
-
-		dst.Telemetry = lib.TelemetryConfig{
-			CirconusAPIApp:                     stringVal(telemetry.CirconusAPIApp),
-			CirconusAPIToken:                   stringVal(telemetry.CirconusAPIToken),
-			CirconusAPIURL:                     stringVal(telemetry.CirconusAPIURL),
-			CirconusBrokerID:                   stringVal(telemetry.CirconusBrokerID),
-			CirconusBrokerSelectTag:            stringVal(telemetry.CirconusBrokerSelectTag),
-			CirconusCheckDisplayName:           stringVal(telemetry.CirconusCheckDisplayName),
-			CirconusCheckForceMetricActivation: stringVal(telemetry.CirconusCheckForceMetricActivation),
-			CirconusCheckID:                    stringVal(telemetry.CirconusCheckID),
-			CirconusCheckInstanceID:            stringVal(telemetry.CirconusCheckInstanceID),
-			CirconusCheckSearchTag:             stringVal(telemetry.CirconusCheckSearchTag),
-			CirconusCheckTags:                  stringVal(telemetry.CirconusCheckTags),
-			CirconusSubmissionInterval:         stringVal(telemetry.CirconusSubmissionInterval),
-			CirconusSubmissionURL:              stringVal(telemetry.CirconusSubmissionURL),
-			DisableHostname:                    boolVal(telemetry.DisableHostname),
-			DogstatsdAddr:                      stringVal(telemetry.DogstatsdAddr),
-			DogstatsdTags:                      telemetry.DogstatsdTags,
-			PrometheusRetentionTime:            prometheusRetentionTime,
-			FilterDefault:                      boolVal(telemetry.FilterDefault),
-			AllowedPrefixes:                    telemetryAllowedPrefixes,
-			BlockedPrefixes:                    telemetryBlockedPrefixes,
-			MetricsPrefix:                      stringVal(telemetry.MetricsPrefix),
-			StatsdAddr:                         stringVal(telemetry.StatsdAddr),
-			StatsiteAddr:                       stringVal(telemetry.StatsiteAddr),
-		}
+		dst.Telemetry = t
 	}
 
 	return nil
