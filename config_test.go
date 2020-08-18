@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/consul/lib"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDecodeMergeConfig(t *testing.T) {
@@ -31,6 +34,30 @@ key_file = "key.pem"
 tls_server_name = "example.io"
 disable_coordinate_updates = true
 ping_type = "socket"
+telemetry {
+	circonus_api_app = "circonus_api_app"
+ 	circonus_api_token = "circonus_api_token"
+ 	circonus_api_url = "www.circonus.com"
+ 	circonus_broker_id = "1234"
+ 	circonus_broker_select_tag = "circonus_broker_select_tag"
+ 	circonus_check_display_name = "circonus_check_display_name"
+ 	circonus_check_force_metric_activation = "circonus_check_force_metric_activation"
+ 	circonus_check_id = "5678"
+ 	circonus_check_instance_id = "abcd"
+ 	circonus_check_search_tag = "circonus_check_search_tag"
+ 	circonus_check_tags = "circonus_check_tags"
+ 	circonus_submission_interval = "5s"
+ 	circonus_submission_url = "www.example.com"
+ 	disable_hostname = true
+ 	dogstatsd_addr = "1.2.3.4"
+ 	dogstatsd_tags = ["dogstatsd"]
+ 	filter_default = true
+ 	prefix_filter = ["+good", "-bad", "+better", "-worse", "wrong", ""]
+ 	metrics_prefix = "test"
+ 	prometheus_retention_time = "5h"
+ 	statsd_address = "example.io:8888"
+ 	statsite_address = "5.6.7.8"
+}
 `)
 
 	expected := &Config{
@@ -55,6 +82,31 @@ ping_type = "socket"
 		TLSServerName:            "example.io",
 		DisableCoordinateUpdates: true,
 		PingType:                 PingTypeSocket,
+		Telemetry: lib.TelemetryConfig{
+			CirconusAPIApp:                     "circonus_api_app",
+			CirconusAPIToken:                   "circonus_api_token",
+			CirconusAPIURL:                     "www.circonus.com",
+			CirconusBrokerID:                   "1234",
+			CirconusBrokerSelectTag:            "circonus_broker_select_tag",
+			CirconusCheckDisplayName:           "circonus_check_display_name",
+			CirconusCheckForceMetricActivation: "circonus_check_force_metric_activation",
+			CirconusCheckID:                    "5678",
+			CirconusCheckInstanceID:            "abcd",
+			CirconusCheckSearchTag:             "circonus_check_search_tag",
+			CirconusCheckTags:                  "circonus_check_tags",
+			CirconusSubmissionInterval:         "5s",
+			CirconusSubmissionURL:              "www.example.com",
+			DisableHostname:                    true,
+			DogstatsdAddr:                      "1.2.3.4",
+			DogstatsdTags:                      []string{"dogstatsd"},
+			FilterDefault:                      true,
+			AllowedPrefixes:                    []string{"good", "better"},
+			BlockedPrefixes:                    []string{"bad", "worse"},
+			MetricsPrefix:                      "test",
+			PrometheusRetentionTime:            5 * time.Hour,
+			StatsdAddr:                         "example.io:8888",
+			StatsiteAddr:                       "5.6.7.8",
+		},
 	}
 
 	result := &Config{}
@@ -117,4 +169,121 @@ func TestValidateConfig(t *testing.T) {
 			t.Fatalf("error %q does not contain %q", err.Error(), tc.err)
 		}
 	}
+}
+
+func TestDecodeConfig(t *testing.T) {
+	cases := []struct {
+		name        string
+		config      string
+		expectError bool
+	}{
+		{
+			"hcl parsing error",
+			"{config}",
+			true,
+		},
+		{
+			"map decode error",
+			`stuff = "stuff"`,
+			true,
+		},
+		{
+			"multiple telemetry blocks error",
+			`telemetry {
+				 metrics_prefix = "test"
+			}
+			telemetry {
+				metrics_prefix = "test2"
+		    }`,
+			true,
+		},
+		{
+			"multiple node-meta blocks error",
+			`external_node_meta {
+				a = "1"
+			}
+			external_node_meta {
+				b = "2"
+		    }`,
+			true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := bytes.NewBufferString(tc.config)
+			_, err := DecodeConfig(raw)
+			if tc.expectError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestConvertTelemetry(t *testing.T) {
+	cases := []struct {
+		name        string
+		telem       Telemetry
+		expectError bool
+		expected    lib.TelemetryConfig
+	}{
+		{
+			"happy path",
+			Telemetry{
+				PrefixFilter:            []string{"+allow", "-deny"},
+				PrometheusRetentionTime: stringPointer("1m"),
+			},
+			false,
+			lib.TelemetryConfig{
+				AllowedPrefixes:         []string{"allow"},
+				BlockedPrefixes:         []string{"deny"},
+				PrometheusRetentionTime: 1 * time.Minute,
+			},
+		},
+		{
+			"empty prefix rule gets ignored",
+			Telemetry{
+				PrefixFilter: []string{""},
+			},
+			false,
+			lib.TelemetryConfig{},
+		},
+		{
+			"invalid prefix rule gets ignored",
+			Telemetry{
+				PrefixFilter: []string{"*test"},
+			},
+			false,
+			lib.TelemetryConfig{},
+		},
+		{
+			"invalid prometheus retention error",
+			Telemetry{
+				PrometheusRetentionTime: stringPointer("invalid"),
+			},
+			true,
+			lib.TelemetryConfig{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := convertTelemetry(tc.telem)
+			if tc.expectError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func stringPointer(s string) *string {
+	if len(s) == 0 {
+		return nil
+	}
+	return &s
 }

@@ -9,8 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/lib"
 )
 
 const LeaderKey = "leader"
@@ -64,11 +66,18 @@ type Agent struct {
 	watchedNodeFunc       func(map[string]bool, []*api.Node)
 	knownNodeStatuses     map[string]lastKnownStatus
 	knownNodeStatusesLock sync.Mutex
+
+	memSink *metrics.InmemSink
 }
 
 func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 	clientConf := config.ClientConfig()
 	client, err := api.NewClient(clientConf)
+	if err != nil {
+		return nil, err
+	}
+
+	memSink, err := lib.InitTelemetry(config.Telemetry)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +90,7 @@ func NewAgent(config *Config, logger *log.Logger) (*Agent, error) {
 		shutdownCh:        make(chan struct{}),
 		inflightPings:     make(map[string]struct{}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
+		memSink:           memSink,
 	}
 
 	logger.Printf("[INFO] Connecting to Consul on %s...", clientConf.Address)

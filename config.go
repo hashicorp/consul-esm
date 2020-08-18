@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/flags"
+	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
@@ -51,6 +52,8 @@ type Config struct {
 	PingType string
 
 	DisableCoordinateUpdates bool
+
+	Telemetry lib.TelemetryConfig
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -111,6 +114,32 @@ func DefaultConfig() (*Config, error) {
 	}, nil
 }
 
+// Telemetry is the configuration for to match Consul's go-metrics telemetry config
+type Telemetry struct {
+	CirconusAPIApp                     *string  `mapstructure:"circonus_api_app"`
+	CirconusAPIToken                   *string  `mapstructure:"circonus_api_token"`
+	CirconusAPIURL                     *string  `mapstructure:"circonus_api_url"`
+	CirconusBrokerID                   *string  `mapstructure:"circonus_broker_id"`
+	CirconusBrokerSelectTag            *string  `mapstructure:"circonus_broker_select_tag"`
+	CirconusCheckDisplayName           *string  `mapstructure:"circonus_check_display_name"`
+	CirconusCheckForceMetricActivation *string  `mapstructure:"circonus_check_force_metric_activation"`
+	CirconusCheckID                    *string  `mapstructure:"circonus_check_id"`
+	CirconusCheckInstanceID            *string  `mapstructure:"circonus_check_instance_id"`
+	CirconusCheckSearchTag             *string  `mapstructure:"circonus_check_search_tag"`
+	CirconusCheckTags                  *string  `mapstructure:"circonus_check_tags"`
+	CirconusSubmissionInterval         *string  `mapstructure:"circonus_submission_interval"`
+	CirconusSubmissionURL              *string  `mapstructure:"circonus_submission_url"`
+	DisableHostname                    *bool    `mapstructure:"disable_hostname"`
+	DogstatsdAddr                      *string  `mapstructure:"dogstatsd_addr"`
+	DogstatsdTags                      []string `mapstructure:"dogstatsd_tags"`
+	PrometheusRetentionTime            *string  `mapstructure:"prometheus_retention_time"`
+	FilterDefault                      *bool    `mapstructure:"filter_default"`
+	PrefixFilter                       []string `mapstructure:"prefix_filter"`
+	MetricsPrefix                      *string  `mapstructure:"metrics_prefix"`
+	StatsdAddr                         *string  `mapstructure:"statsd_address"`
+	StatsiteAddr                       *string  `mapstructure:"statsite_address"`
+}
+
 // HumanConfig contains configuration that the practitioner can set
 type HumanConfig struct {
 	LogLevel       flags.StringValue `mapstructure:"log_level"`
@@ -138,6 +167,8 @@ type HumanConfig struct {
 	PingType flags.StringValue `mapstructure:"ping_type"`
 
 	DisableCoordinateUpdates flags.BoolValue `mapstructure:"disable_coordinate_updates"`
+
+	Telemetry []Telemetry `mapstructure:"telemetry"`
 }
 
 // DecodeConfig takes a reader containing config file and returns
@@ -164,6 +195,11 @@ func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 	nodeMeta := list.Filter("external_node_meta")
 	if len(nodeMeta.Elem().Items) > 1 {
 		return nil, fmt.Errorf("only one node_meta block allowed")
+	}
+
+	telemetry := list.Filter("telemetry")
+	if len(telemetry.Elem().Items) > 1 {
+		return nil, fmt.Errorf("only one telemetry block allowed")
 	}
 
 	// Decode the full thing into a map[string]interface for ease of use
@@ -253,9 +289,8 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 		if err != nil {
 			return err
 		}
-		MergeConfig(dst, src)
 
-		return nil
+		return MergeConfig(dst, src)
 	}
 
 	for _, path := range paths {
@@ -267,9 +302,82 @@ func MergeConfigPaths(dst *Config, paths []string) error {
 	return nil
 }
 
+func stringVal(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func boolVal(v *bool) bool {
+	if v == nil {
+		return false
+	}
+
+	return *v
+}
+
+// convertTelemetry converts the HumanConfig{} telemetry to the telemetry
+// structure needed by Config{}
+func convertTelemetry(telemetry Telemetry) (lib.TelemetryConfig, error) {
+	// split metric filters into allow vs. blocked
+	var telemetryAllowedPrefixes, telemetryBlockedPrefixes []string
+	for _, rule := range telemetry.PrefixFilter {
+		if rule == "" {
+			fmt.Println("[WARN] Cannot have empty filter rule in prefix_filter")
+			continue
+		}
+		switch rule[0] {
+		case '+':
+			telemetryAllowedPrefixes = append(telemetryAllowedPrefixes, rule[1:])
+		case '-':
+			telemetryBlockedPrefixes = append(telemetryBlockedPrefixes, rule[1:])
+		default:
+			fmt.Printf("[WARN] Filter rule must begin with either '+' or '-': %q\n", rule)
+		}
+	}
+
+	var prometheusRetentionTime time.Duration
+	if telemetry.PrometheusRetentionTime != nil {
+		d, err := time.ParseDuration(*telemetry.PrometheusRetentionTime)
+		if err != nil {
+			return lib.TelemetryConfig{},
+				fmt.Errorf("prometheus_retention_time: invalid duration: %q: %s", *telemetry.PrometheusRetentionTime, err)
+		}
+
+		prometheusRetentionTime = d
+	}
+
+	return lib.TelemetryConfig{
+		CirconusAPIApp:                     stringVal(telemetry.CirconusAPIApp),
+		CirconusAPIToken:                   stringVal(telemetry.CirconusAPIToken),
+		CirconusAPIURL:                     stringVal(telemetry.CirconusAPIURL),
+		CirconusBrokerID:                   stringVal(telemetry.CirconusBrokerID),
+		CirconusBrokerSelectTag:            stringVal(telemetry.CirconusBrokerSelectTag),
+		CirconusCheckDisplayName:           stringVal(telemetry.CirconusCheckDisplayName),
+		CirconusCheckForceMetricActivation: stringVal(telemetry.CirconusCheckForceMetricActivation),
+		CirconusCheckID:                    stringVal(telemetry.CirconusCheckID),
+		CirconusCheckInstanceID:            stringVal(telemetry.CirconusCheckInstanceID),
+		CirconusCheckSearchTag:             stringVal(telemetry.CirconusCheckSearchTag),
+		CirconusCheckTags:                  stringVal(telemetry.CirconusCheckTags),
+		CirconusSubmissionInterval:         stringVal(telemetry.CirconusSubmissionInterval),
+		CirconusSubmissionURL:              stringVal(telemetry.CirconusSubmissionURL),
+		DisableHostname:                    boolVal(telemetry.DisableHostname),
+		DogstatsdAddr:                      stringVal(telemetry.DogstatsdAddr),
+		DogstatsdTags:                      telemetry.DogstatsdTags,
+		PrometheusRetentionTime:            prometheusRetentionTime,
+		FilterDefault:                      boolVal(telemetry.FilterDefault),
+		AllowedPrefixes:                    telemetryAllowedPrefixes,
+		BlockedPrefixes:                    telemetryBlockedPrefixes,
+		MetricsPrefix:                      stringVal(telemetry.MetricsPrefix),
+		StatsdAddr:                         stringVal(telemetry.StatsdAddr),
+		StatsiteAddr:                       stringVal(telemetry.StatsiteAddr),
+	}, nil
+}
+
 // MergeConfig merges the default config with any configuration
 // set by the practitioner
-func MergeConfig(dst *Config, src *HumanConfig) {
+func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.InstanceID.Merge(&dst.InstanceID)
 	src.Service.Merge(&dst.Service)
@@ -290,4 +398,13 @@ func MergeConfig(dst *Config, src *HumanConfig) {
 	src.TLSServerName.Merge(&dst.TLSServerName)
 	src.PingType.Merge(&dst.PingType)
 	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
+	if len(src.Telemetry) == 1 {
+		t, err := convertTelemetry(src.Telemetry[0])
+		if err != nil {
+			return err
+		}
+		dst.Telemetry = t
+	}
+
+	return nil
 }
