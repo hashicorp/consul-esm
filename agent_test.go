@@ -97,9 +97,12 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	retry.Run(t, ensureRegistered)
 
 	// Deregister the service
-	if err := agent.client.Agent().ServiceDeregister(serviceID); err != nil {
-		t.Fatal(err)
-	}
+	go func() {
+		time.Sleep(time.Second)
+		if err := agent.client.Agent().ServiceDeregister(serviceID); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Make sure the service and check are deregistered
 	ensureDeregistered := func(r *retry.R) {
@@ -119,7 +122,7 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 			r.Fatalf("bad: %v", checks)
 		}
 	}
-	retry.Run(t, ensureDeregistered)
+	retry.RunWith(&retry.Timer{Timeout: 10 * time.Second, Wait: 20 * time.Millisecond}, t, ensureDeregistered)
 
 	// Wait for the agent to re-register the service and TTL check
 	retry.Run(t, ensureRegistered)
@@ -128,7 +131,7 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	agent.Shutdown()
 
 	// Make sure the service and check are gone
-	retry.Run(t, ensureDeregistered)
+	retry.RunWith(&retry.Timer{Timeout: 15 * time.Second, Wait: 50 * time.Millisecond}, t, ensureDeregistered)
 }
 
 func TestAgent_shouldUpdateNodeStatus(t *testing.T) {

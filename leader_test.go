@@ -14,7 +14,7 @@ import (
 
 func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNodes []string) {
 	serviceID := fmt.Sprintf("%s:%s", a.config.Service, a.id)
-	retry.RunWith(&retry.Timer{Timeout: 5 * time.Second, Wait: time.Second}, t, func(r *retry.R) {
+	retry.RunWith(&retry.Timer{Timeout: 10 * time.Second, Wait: time.Second}, t, func(r *retry.R) {
 		// Get the KV entry for this agent's node list.
 		kv, _, err := a.client.KV().Get(a.kvNodeListPath()+serviceID, nil)
 		if err != nil {
@@ -78,7 +78,6 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 }
 
 func TestLeader_rebalanceHealthWatches(t *testing.T) {
-	t.Parallel()
 	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +167,6 @@ func TestLeader_divideCoordinates(t *testing.T) {
 		t.Skip("skip this test in Travis as pings aren't supported")
 	}
 
-	t.Parallel()
 	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +274,6 @@ func TestLeader_divideCoordinates(t *testing.T) {
 }
 
 func TestLeader_divideHealthChecks(t *testing.T) {
-	t.Parallel()
 	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
@@ -368,10 +365,14 @@ func TestLeader_divideHealthChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// We can't really tell which agent will pick up node3 with 100% certainty
+	// and we've already established that rebalancing worked higher up
+	//
+	// agent1.verifyUpdates(t, []string{"node1", "node3"}, []string{})
+	// agent2.verifyUpdates(t, []string{"node2"}, []string{})
+
 	// Wait for node3 to get picked up and set to healthy.
-	agent1.verifyUpdates(t, []string{"node1", "node3"}, []string{})
-	agent2.verifyUpdates(t, []string{"node2"}, []string{})
-	retry.Run(t, func(r *retry.R) {
+	retry.RunWith(&retry.Timer{Timeout: 15 * time.Second, Wait: time.Second}, t, func(r *retry.R) {
 		checks, _, err := client.Health().Node("node3", nil)
 		if err != nil {
 			r.Fatal(err)

@@ -304,6 +304,9 @@ func TestCoordinate_parallelPings(t *testing.T) {
 			if err != nil {
 				r.Fatal(err)
 			}
+			if len(checks) != 1 {
+				r.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+			}
 			expected := &api.HealthCheck{
 				Node:        node,
 				CheckID:     externalCheckName,
@@ -312,9 +315,6 @@ func TestCoordinate_parallelPings(t *testing.T) {
 				Output:      NodeAliveStatus,
 				CreateIndex: checks[0].CreateIndex,
 				ModifyIndex: checks[0].ModifyIndex,
-			}
-			if len(checks) != 1 {
-				r.Fatal("Bad number of checks; wanted 1, got ", len(checks))
 			}
 			if err := compareHealthCheck(checks[0], expected); err != nil {
 				r.Fatal(err)

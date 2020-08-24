@@ -24,8 +24,8 @@ func TestMain(m *testing.M) {
 	log.SetOutput(LOGOUT)
 
 	MaxRTT = 500 * time.Millisecond
-	retryTime = 200 * time.Millisecond
-	agentTTL = 100 * time.Millisecond
+	retryTime = 400 * time.Millisecond
+	agentTTL = 300 * time.Millisecond
 
 	os.Exit(m.Run())
 }
