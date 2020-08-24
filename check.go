@@ -97,7 +97,6 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	if check, checkExists := c.checks[checkHash]; checkExists {
 		httpCheck, httpCheckExists := c.checksHTTP[checkHash]
 		if httpCheckExists &&
-			check.Status == latestCheck.Status &&
 			httpCheck.HTTP == http.HTTP &&
 			reflect.DeepEqual(httpCheck.Header, http.Header) &&
 			httpCheck.Method == http.Method &&
@@ -147,7 +146,6 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 	if check, checkExists := c.checks[checkHash]; checkExists {
 		tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
 		if tcpCheckExists &&
-			check.Status == latestCheck.Status &&
 			tcpCheck.TCP == tcp.TCP &&
 			tcpCheck.Interval == tcp.Interval &&
 			tcpCheck.Timeout == tcp.Timeout &&
