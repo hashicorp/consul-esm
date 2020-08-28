@@ -48,10 +48,12 @@ type CheckRunner struct {
 
 	CheckUpdateInterval time.Duration
 	MinimumInterval     time.Duration
+
+	tlsConfig *tls.Config
 }
 
 func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
-	minimumInterval time.Duration) *CheckRunner {
+	minimumInterval time.Duration, tlsConfig *tls.Config) *CheckRunner {
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
@@ -62,6 +64,7 @@ func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
 		MinimumInterval:     minimumInterval,
+		tlsConfig:           tlsConfig,
 	}
 }
 
@@ -81,17 +84,19 @@ func (c *CheckRunner) Stop() {
 // Update an HTTP check
 func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash types.CheckID,
 	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
+	tlsConfig := c.tlsConfig.Clone()
+	tlsConfig.InsecureSkipVerify = definition.TLSSkipVerify
+
 	http := &consulchecks.CheckHTTP{
-		Notify:   c,
-		CheckID:  checkHash,
-		HTTP:     definition.HTTP,
-		Header:   definition.Header,
-		Method:   definition.Method,
-		Interval: definition.IntervalDuration,
-		Timeout:  definition.TimeoutDuration,
-		Logger:   c.logger,
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: definition.TLSSkipVerify},
+		Notify:          c,
+		CheckID:         checkHash,
+		HTTP:            definition.HTTP,
+		Header:          definition.Header,
+		Method:          definition.Method,
+		Interval:        definition.IntervalDuration,
+		Timeout:         definition.TimeoutDuration,
+		Logger:          c.logger,
+		TLSClientConfig: tlsConfig,
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {

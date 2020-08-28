@@ -32,6 +32,10 @@ ca_path = "ca/"
 cert_file = "cert.pem"
 key_file = "key.pem"
 tls_server_name = "example.io"
+https_ca_file = "CA-cert.pem"
+https_ca_path = "CAPath/"
+https_cert_file = "server-cert.pem"
+https_key_file = "server-key.pem"
 disable_coordinate_updates = true
 ping_type = "socket"
 telemetry {
@@ -80,6 +84,10 @@ telemetry {
 		CertFile:                 "cert.pem",
 		KeyFile:                  "key.pem",
 		TLSServerName:            "example.io",
+		HTTPSCAFile:              "CA-cert.pem",
+		HTTPSCAPath:              "CAPath/",
+		HTTPSCertFile:            "server-cert.pem",
+		HTTPSKeyFile:             "server-key.pem",
 		DisableCoordinateUpdates: true,
 		PingType:                 PingTypeSocket,
 		Telemetry: lib.TelemetryConfig{

@@ -377,9 +377,23 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 		cancelFunc()
 	}()
 
+	// Initialize a tlsConfig struct
+	tlsConfig := api.TLSConfig{
+		CAFile:   a.config.HTTPSCAFile,
+		CAPath:   a.config.HTTPSCAPath,
+		CertFile: a.config.HTTPSCertFile,
+		KeyFile:  a.config.HTTPSKeyFile,
+	}
+
+	tlsClientConfig, err := api.SetupTLSConfig(&tlsConfig)
+	if err != nil {
+		a.logger.Printf("[ERROR] Could not create TLS config: %v", err)
+		return
+	}
+
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval, minimumInterval)
+	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval, minimumInterval, tlsClientConfig)
 	go a.checkRunner.reapServices(a.shutdownCh)
 	defer a.checkRunner.Stop()
 
