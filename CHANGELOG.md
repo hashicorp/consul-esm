@@ -1,5 +1,21 @@
 ## Upcoming
 
+IMPROVEMENTS:
+
+  * Add metrics supports with configurable `telemetry` block. [[GH-67](https://github.com/hashicorp/consul-esm/pull/67)]
+  * Update caught signal log from info-level to debug-level. [[GH-79](https://github.com/hashicorp/consul-esm/pull/79)]
+  * Improve flaky tests. [[GH-80](https://github.com/hashicorp/consul-esm/pull/80)]
+  * Add mTLS support for HTTPS checks with configuration options `https_ca_file`, `https_ca_path`, `https_cert_file`, and `https_key_file`. [[GH-81](https://github.com/hashicorp/consul-esm/pull/81), [GH-72](https://github.com/hashicorp/consul-esm/issues/72)]
+
+BUG FIXES:
+
+  * Remove checking status when syncing checks, which can causing flapping. [[GH-83](https://github.com/hashicorp/consul-esm/pull/83)]
+
+DOCUMENTATION:
+
+  * Fix outdated "Consul ACL Policies" to include `operator = read` needed for 0.4.0 feature to check ESM and Consul version compatibility. [[GH-75](https://github.com/hashicorp/consul-esm/pull/75), [GH-74](https://github.com/hashicorp/consul-esm/issues/74)]
+  * New documentation on finer-grained ACL policies and context on how each ACL is used. [[GH-76](https://github.com/hashicorp/consul-esm/pull/76), [GH-77](https://github.com/hashicorp/consul-esm/issues/77)]
+
 ## v0.4.0 (July 27, 2020)
 
 IMPROVEMENTS:
