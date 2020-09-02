@@ -230,6 +230,18 @@ key_file = ""
 // variable.
 tls_server_name = ""
 
+// The CA file to use for talking to HTTPS checks.
+https_ca_file = ""
+
+// The path to a directory of CA certs to use for talking to HTTPS checks.
+https_ca_path = ""
+
+// The client cert file to use for talking to HTTPS checks.
+https_cert_file = ""
+
+// The client key file to use for talking to HTTPS checks.
+https_key_file = ""
+
 // The method to use for pinging external nodes. Defaults to "udp" but can
 // also be set to "socket" to use ICMP (which requires root privileges).
 ping_type = "udp"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"log"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestCheck_HTTP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0, 0)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{})
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
@@ -125,7 +126,7 @@ func TestCheck_TCP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0, 0)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{})
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
@@ -237,7 +238,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 
 	logger := log.New(LOGOUT, "", 0)
 	minimumInterval := 2 * time.Second
-	runner := NewCheckRunner(logger, client, 0, minimumInterval)
+	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{})
 	defer runner.Stop()
 
 	// Make a check with an interval that is below the minimum required interval
