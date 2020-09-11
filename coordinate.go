@@ -400,12 +400,14 @@ func pingNode(addr string, method string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid ping type %q", method)
 	}
 
+	p.Count = 1
 	p.Timeout = MaxRTT
-	p.OnRecv = func(pkt *ping.Packet) {
-		rtt = pkt.Rtt
-	}
-	p.OnFinish = func(*ping.Statistics) {
-		pingErr = fmt.Errorf("ping to %q timed out", addr)
+	p.OnFinish = func(stats *ping.Statistics) {
+		if stats.PacketsRecv >= p.Count {
+			rtt = stats.MaxRtt
+		} else {
+			pingErr = fmt.Errorf("ping to %q timed out", addr)
+		}
 	}
 	p.Run()
 
