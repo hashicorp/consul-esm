@@ -34,7 +34,7 @@ type CheckRunner struct {
 	client *api.Client
 
 	// checks are unmodified checks as retrieved from Consul Catalog
-	checks map[types.CheckID]*api.HealthCheck
+	checks map[types.CheckID]*esmHealthCheck
 
 	// checksHTTP & checksTCP are HTTP/TCP checks that are run by ESM.
 	// They have potentially modified values from the Consul Catalog checks
@@ -50,14 +50,24 @@ type CheckRunner struct {
 	MinimumInterval     time.Duration
 
 	tlsConfig *tls.Config
+
+	PassingThreshold  int
+	CriticalThreshold int
+}
+
+type esmHealthCheck struct {
+	api.HealthCheck
+	failureCounter int
+	successCounter int
 }
 
 func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
-	minimumInterval time.Duration, tlsConfig *tls.Config) *CheckRunner {
+	minimumInterval time.Duration, tlsConfig *tls.Config, passingThreshold int,
+	criticalThreshold int) *CheckRunner {
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
-		checks:              make(map[types.CheckID]*api.HealthCheck),
+		checks:              make(map[types.CheckID]*esmHealthCheck),
 		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
 		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
 		checksCritical:      make(map[types.CheckID]time.Time),
@@ -65,6 +75,8 @@ func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
 		CheckUpdateInterval: updateInterval,
 		MinimumInterval:     minimumInterval,
 		tlsConfig:           tlsConfig,
+		PassingThreshold:    passingThreshold,
+		CriticalThreshold:   criticalThreshold,
 	}
 }
 
@@ -233,12 +245,16 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		}
 
 		found[checkHash] = true
-		c.checks[checkHash] = check
+		c.checks[checkHash] = &esmHealthCheck{
+			*check,
+			0,
+			0,
+		}
 	}
 
 	// Look for removed checks
 	for _, check := range c.checks {
-		checkHash := checkHash(check)
+		checkHash := checkHash(&check.HealthCheck)
 		if _, ok := found[checkHash]; !ok {
 			delete(c.checks, checkHash)
 			delete(c.checksCritical, checkHash)
@@ -273,6 +289,27 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 		return
 	}
 
+	// Do nothing if update is idempotent
+	if check.Status == status && check.Output == output {
+		check.failureCounter = decrementCounter(check.failureCounter)
+		check.successCounter = decrementCounter(check.successCounter)
+		return
+	}
+
+	if status == api.HealthCritical {
+		if check.failureCounter < c.CriticalThreshold {
+			check.failureCounter++
+			return
+		}
+		check.failureCounter = 0
+	} else {
+		if check.successCounter < c.PassingThreshold {
+			check.successCounter++
+			return
+		}
+		check.successCounter = 0
+	}
+
 	// Update the critical time tracking
 	if status == api.HealthCritical {
 		if _, ok := c.checksCritical[checkID]; !ok {
@@ -280,11 +317,6 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 		}
 	} else {
 		delete(c.checksCritical, checkID)
-	}
-
-	// Do nothing if update is idempotent
-	if check.Status == status && check.Output == output {
-		return
 	}
 
 	// Defer a sync if the output has changed. This is an optimization around
@@ -297,7 +329,7 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 			intv := time.Duration(uint64(c.CheckUpdateInterval)/2) + lib.RandomStagger(c.CheckUpdateInterval)
 			deferSync := time.AfterFunc(intv, func() {
 				c.Lock()
-				c.handleCheckUpdate(check, status, output)
+				c.handleCheckUpdate(&check.HealthCheck, status, output)
 				delete(c.deferCheck, checkID)
 				c.Unlock()
 			})
@@ -306,7 +338,7 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 		return
 	}
 
-	c.handleCheckUpdate(check, status, output)
+	c.handleCheckUpdate(&check.HealthCheck, status, output)
 }
 
 // handleCheckUpdate writes a check's status to the catalog and updates the local check state.
@@ -424,4 +456,11 @@ func checkHash(check *api.HealthCheck) types.CheckID {
 		return types.CheckID(fmt.Sprintf("%s/%s/%s", check.Node, check.ServiceID, check.CheckID))
 	}
 	return types.CheckID(fmt.Sprintf("%s/%s", check.Node, check.CheckID))
+}
+
+func decrementCounter(count int) int {
+	if count == 0 {
+		return 0
+	}
+	return count - 1
 }

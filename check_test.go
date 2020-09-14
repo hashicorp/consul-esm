@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCheck_HTTP(t *testing.T) {
@@ -24,7 +25,7 @@ func TestCheck_HTTP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{})
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
@@ -126,7 +127,7 @@ func TestCheck_TCP(t *testing.T) {
 	}
 
 	logger := log.New(LOGOUT, "", 0)
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{})
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
@@ -238,7 +239,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 
 	logger := log.New(LOGOUT, "", 0)
 	minimumInterval := 2 * time.Second
-	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{})
+	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 0, 0)
 	defer runner.Stop()
 
 	// Make a check with an interval that is below the minimum required interval
@@ -275,4 +276,109 @@ func TestCheck_MinimumInterval(t *testing.T) {
 	if esmCheck.Interval != minimumInterval {
 		t.Fatalf("Processed HTTP check's interval was %v but should have been updated to same as minimum interval %v", esmCheck.Interval, minimumInterval)
 	}
+}
+
+func TestCheck_NoFlapping(t *testing.T) {
+	// Confirm that the status flapping protections work
+
+	s, err := NewTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logger := log.New(LOGOUT, "", 0)
+	minimumInterval := 2 * time.Second
+	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 2, 2)
+	defer runner.Stop()
+
+	// Register an external node with an initially critical http check.
+	nodeMeta := map[string]string{"external-node": "true"}
+	nodeRegistration := &api.CatalogRegistration{
+		Node:       "external",
+		Address:    "service.local",
+		Datacenter: "dc1",
+		NodeMeta:   nodeMeta,
+		Check: &api.AgentCheck{
+			Node:    "external",
+			CheckID: "ext-http",
+			Name:    "http-test",
+			Status:  api.HealthCritical,
+			Definition: api.HealthCheckDefinition{
+				HTTP:             "http://" + s.HTTPAddr + "/v1/status/leader",
+				IntervalDuration: 50 * time.Millisecond,
+			},
+		},
+	}
+	_, err = client.Catalog().Register(nodeRegistration, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checks, _, err := client.Health().State(api.HealthAny, &api.QueryOptions{NodeMeta: nodeMeta})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner.UpdateChecks(checks)
+
+	id := checkHash(checks[0])
+
+	originalCheck, ok := runner.checks[id]
+	if !ok {
+		t.Fatalf("Check was not stored on runner.checks as expected. Checks: %v", runner.checks)
+	}
+
+	// test consecutive checks: when threshold is met, the status will toggle from
+	// critical => passing and counters will reset
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthCritical, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthPassing, "")
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 1, originalCheck.successCounter)
+	assert.Equal(t, api.HealthCritical, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthPassing, "")
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 2, originalCheck.successCounter)
+	assert.Equal(t, api.HealthCritical, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthPassing, "")
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthPassing, originalCheck.Status)
+
+	// test non-consecutive checks: non-consecutive will increment and
+	// decrement accordingly until threshold is crossed
+	runner.UpdateCheck(id, api.HealthCritical, "")
+	assert.Equal(t, 1, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthPassing, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthCritical, "")
+	assert.Equal(t, 2, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthPassing, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthPassing, "")
+	assert.Equal(t, 1, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthPassing, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthCritical, "")
+	assert.Equal(t, 2, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthPassing, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthCritical, "")
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, api.HealthCritical, originalCheck.Status)
 }

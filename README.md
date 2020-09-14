@@ -273,9 +273,50 @@ telemetry {
  	statsd_address = ""
  	statsite_address = ""
 }
+
+// The number of additional successful checks needed to trigger a status update to
+// passing. Defaults to 0, meaning the status will update to passing on the
+// first successful check.
+passing_threshold = 0
+
+// The number of additional failed checks needed to trigger a status update to
+// critical. Defaults to 0, meaning the status will update to critical on the
+// first failed check.
+critical_threshold = 0
 ```
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"
+
+### Threshold for Updating Check Status
+
+To prevent flapping, thresholds for updating a check status can be configured by `passing_threshold`
+and `critical_threshold` such that a check will update and switch to be passing / critical after an
+additional number of consecutive or non-consecutive checks.
+
+By default, these configurations are set to 0, which retains the original ESM behavior. If the status
+of a check is 'passing', then the next failed check will cause the status to update to be 'critical'.
+Hence, the first failed check causes the update and 0 additional checks are needed.
+
+If a check is currently 'passing' and configuration is `critical_threshold=3`, then after the first
+failure, 3 additional consecutive failures (4 in total) are needed in order to update the status to 'critical'.
+
+ESM also employs a counting system that allows for non-consecutive checks to aggregate and update
+the check status. This counting system increments when a check result is the opposite of the current status
+and decrements when same as the current status.
+
+For an example of how non-consecutive checks are counted, we have a check that has the status
+'passing', `critical_threshold=3`, and the counter is at 0 (c=0). The following pattern of pass/fail
+will decrement/increment the counter as such:
+
+`PASS (c=0), FAIL (c=1), FAIL (c=2), PASS (c=1), FAIL (c=2), FAIL (c=3), PASS (c=2), FAIL (c=3), FAIL (c=4)`
+
+When the counter reaches 4 (1 initial fail + 3 additional fails), the critical_threshold is met and
+the check status will update to 'critical' and the counter will reset.
+
+Note: this implementation diverges from [Consul's anti-flapping thresholds][Consul Anti-Flapping], which
+counts total consecutive checks.
+
+[Consul Anti-Flapping]: https://www.consul.io/docs/agent/checks#success-failures-before-passing-critical "Consul Agent Success/Failures before passing/critical"
 
 ### Consul ACL Policies
 
