@@ -21,6 +21,7 @@ require (
 	github.com/mitchellh/cli v1.0.0
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
+	github.com/prometheus/client_golang v1.4.0
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc // indirect

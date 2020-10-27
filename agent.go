@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +15,8 @@ import (
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const LeaderKey = "leader"
@@ -119,6 +123,11 @@ func (a *Agent) Run() error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		a.runMetrics()
+		wg.Done()
+	}()
+	wg.Add(1)
+	go func() {
 		a.runRegister()
 		wg.Done()
 	}()
@@ -189,6 +198,35 @@ func (a *Agent) register() error {
 	a.logger.Printf("[DEBUG] Registered ESM service with Consul")
 
 	return nil
+}
+
+// runMetrics is a long-running goroutine that exposes an http metrics interface
+func (a *Agent) runMetrics() {
+	if a.config.Telemetry.PrometheusRetentionTime < 1 || a.config.ClientAddress == "" {
+		return
+	}
+
+	mux := http.NewServeMux()
+	srv := &http.Server{Addr: a.config.ClientAddress, Handler: mux}
+	handlerOptions := promhttp.HandlerOpts{
+		ErrorLog:      a.logger,
+		ErrorHandling: promhttp.ContinueOnError,
+	}
+
+	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOptions))
+	go func() {
+		<-a.shutdownCh
+		deadline := time.Now().Add(5 * time.Second)
+		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			a.logger.Printf("[ERR] Failed to shutdown metrics interface: %v", err)
+		}
+	}()
+
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		a.logger.Printf("[ERR] Failed to open metrics interface: %v", err)
+	}
 }
 
 // runRegister is a long-running goroutine that ensures this agent is registered

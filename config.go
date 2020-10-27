@@ -55,6 +55,8 @@ type Config struct {
 	HTTPSCertFile string
 	HTTPSKeyFile  string
 
+	ClientAddress string
+
 	PingType string
 
 	DisableCoordinateUpdates bool
@@ -177,6 +179,8 @@ type HumanConfig struct {
 	HTTPSCAPath   flags.StringValue `mapstructure:"https_ca_path"`
 	HTTPSCertFile flags.StringValue `mapstructure:"https_cert_file"`
 	HTTPSKeyFile  flags.StringValue `mapstructure:"https_key_file"`
+
+	ClientAddress flags.StringValue `mapstructure:"client_address"`
 
 	PingType flags.StringValue `mapstructure:"ping_type"`
 
@@ -466,6 +470,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.HTTPSCAPath.Merge(&dst.HTTPSCAPath)
 	src.HTTPSCertFile.Merge(&dst.HTTPSCertFile)
 	src.HTTPSKeyFile.Merge(&dst.HTTPSKeyFile)
+	src.ClientAddress.Merge(&dst.ClientAddress)
 	src.PingType.Merge(&dst.PingType)
 	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
 	if len(src.Telemetry) == 1 {

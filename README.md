@@ -242,6 +242,9 @@ https_cert_file = ""
 // The client key file to use for talking to HTTPS checks.
 https_key_file = ""
 
+// Client address to expose API endpoints. Required in order to expose /metrics endpoint for Prometheus. Example: "127.0.0.1:8080"
+client_address = ""
+
 // The method to use for pinging external nodes. Defaults to "udp" but can
 // also be set to "socket" to use ICMP (which requires root privileges).
 ping_type = "udp"
