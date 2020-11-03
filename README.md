@@ -326,7 +326,7 @@ down the privileges required for ESM the following [ACL policy rules][rules]
 can be used:
 
 ```hcl
-operator = read
+operator = "read"
 
 agent_prefix "" {
   policy = "read"
