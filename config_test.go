@@ -37,6 +37,7 @@ https_ca_path = "CAPath/"
 https_cert_file = "server-cert.pem"
 https_key_file = "server-key.pem"
 disable_coordinate_updates = true
+client_address = "127.0.0.1:8080"
 ping_type = "socket"
 telemetry {
 	circonus_api_app = "circonus_api_app"
@@ -91,6 +92,7 @@ critical_threshold = 2
 		HTTPSCertFile:            "server-cert.pem",
 		HTTPSKeyFile:             "server-key.pem",
 		DisableCoordinateUpdates: true,
+		ClientAddress:            "127.0.0.1:8080",
 		PingType:                 PingTypeSocket,
 		Telemetry: lib.TelemetryConfig{
 			CirconusAPIApp:                     "circonus_api_app",
