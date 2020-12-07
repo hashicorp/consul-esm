@@ -23,6 +23,7 @@ var (
 	// Version is the main version number that is being run at the moment.
 	// Note: our current release process searches this file for "Version ="
 	Version = "0.4.0"
+	Version = "0.5.0"
 
 	// VersionPrerelease is a pre-release marker for the version. If this is ""
 	// (empty string) then it means that it is a final release. Otherwise, this

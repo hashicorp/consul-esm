@@ -1,8 +1,8 @@
-## Upcoming
+## v0.5.0 (December 7, 2020)
 
 IMPROVEMENTS:
 
-  * Add metrics supports with configurable `telemetry` block. [[GH-67](https://github.com/hashicorp/consul-esm/pull/67)]
+  * Add metrics support with configurable `telemetry` block. [[GH-67](https://github.com/hashicorp/consul-esm/pull/67)]
   * Add configurable http endpoint to expose telemetry metrics. [[GH-90](https://github.com/hashicorp/consul-esm/pull/90), [GH-89](https://github.com/hashicorp/consul-esm/issues/89)]
   * Support anti-flapping with configuration options `passing_threshold` and `critical_threshold`. [[GH-78](https://github.com/hashicorp/consul-esm/pull/78), [GH-50](https://github.com/hashicorp/consul-esm/issues/50)]
   * Update caught signal log from info-level to debug-level. [[GH-79](https://github.com/hashicorp/consul-esm/pull/79)]
@@ -11,7 +11,7 @@ IMPROVEMENTS:
 
 BUG FIXES:
 
-  * Remove checking status when syncing checks, which can causing flapping. [[GH-83](https://github.com/hashicorp/consul-esm/pull/83)]
+  * Remove checking status when syncing checks, which can cause flapping. [[GH-83](https://github.com/hashicorp/consul-esm/pull/83)]
   * Reduce goroutines used in external-probe ping. [[GH-85](https://github.com/hashicorp/consul-esm/pull/85)]
 
 DOCUMENTATION:
