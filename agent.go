@@ -170,6 +170,12 @@ func (a *Agent) serviceID() string {
 	return fmt.Sprintf("%s:%s", a.config.Service, a.id)
 }
 
+func (a *Agent) serviceMeta() map[string]string {
+	return map[string]string{
+		"external-source": "consul-esm",
+	}
+}
+
 type alreadyExistsError struct {
 	serviceID string
 }
@@ -188,6 +194,7 @@ func (a *Agent) register() error {
 	service := &api.AgentServiceRegistration{
 		ID:   a.serviceID(),
 		Name: a.config.Service,
+		Meta: a.serviceMeta(),
 	}
 	if a.config.Tag != "" {
 		service.Tags = []string{a.config.Tag}

@@ -70,6 +70,9 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 		if got, want := services[0].ServiceTags, []string{"test"}; !reflect.DeepEqual(got, want) {
 			r.Fatalf("got %q, want %q", got, want)
 		}
+		if got, want := services[0].ServiceMeta, map[string]string{"external-source": "consul-esm"}; !reflect.DeepEqual(got, want) {
+			r.Fatalf("got %q, want %q", got, want)
+		}
 
 		checks, _, err := agent.client.Health().Checks(agent.config.Service, nil)
 		if err != nil {
