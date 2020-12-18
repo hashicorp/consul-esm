@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +10,7 @@ import (
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/consul/logger"
+	"github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/cli"
 )
 
@@ -69,7 +69,13 @@ func main() {
 	if !ok {
 		os.Exit(ExitCodeError)
 	}
-	logger := log.New(logOutput, "", log.LstdFlags)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString(config.LogLevel),
+		Output:          logOutput,
+		IncludeLocation: true,
+	})
+
 	gatedWriter.Flush()
 
 	agent, err := NewAgent(config, logger)
@@ -116,12 +122,12 @@ func main() {
 	os.Exit(ExitCodeOK)
 }
 
-func handleSignals(logger *log.Logger, signalCh chan os.Signal, agent *Agent) {
+func handleSignals(logger hclog.Logger, signalCh chan os.Signal, agent *Agent) {
 	for sig := range signalCh {
-		logger.Printf("[DEBUG] Caught signal: %s", sig.String())
+		logger.Debug("Caught signal:", sig.String())
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:
-			logger.Printf("[INFO] Shutting down...")
+			logger.Info("Shutting down...")
 			agent.Shutdown()
 		default:
 		}

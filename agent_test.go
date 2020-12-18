@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"github.com/hashicorp/go-hclog"
 	"reflect"
 	"testing"
 	"time"
@@ -11,7 +11,11 @@ import (
 )
 
 func testAgent(t *testing.T, cb func(*Config)) *Agent {
-	logger := log.New(LOGOUT, "", log.LstdFlags)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+	})
 	conf, err := DefaultConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -339,7 +343,11 @@ func TestAgent_notUniqueInstanceIDFails(t *testing.T) {
 	retry.Run(t, ensureRegistered)
 
 	// Create second ESM service with same instance ID
-	logger := log.New(LOGOUT, "", log.LstdFlags)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+	})
 	conf, err := DefaultConfig()
 	if err != nil {
 		t.Fatal(err)

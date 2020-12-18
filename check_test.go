@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/tls"
-	"log"
+	"github.com/hashicorp/go-hclog"
 	"testing"
 	"time"
 
@@ -24,7 +24,11 @@ func TestCheck_HTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := log.New(LOGOUT, "", 0)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+	})
 	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
 	defer runner.Stop()
 
@@ -126,7 +130,11 @@ func TestCheck_TCP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := log.New(LOGOUT, "", 0)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+	})
 	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
 	defer runner.Stop()
 
@@ -237,7 +245,11 @@ func TestCheck_MinimumInterval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := log.New(LOGOUT, "", 0)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+	})
 	minimumInterval := 2 * time.Second
 	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 0, 0)
 	defer runner.Stop()
@@ -292,7 +304,11 @@ func TestCheck_NoFlapping(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := log.New(LOGOUT, "", 0)
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+	})
 	minimumInterval := 2 * time.Second
 	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 2, 2)
 	defer runner.Stop()
