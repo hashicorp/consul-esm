@@ -27,7 +27,7 @@ var (
 	// VersionPrerelease is a pre-release marker for the version. If this is ""
 	// (empty string) then it means that it is a final release. Otherwise, this
 	// is a pre-release such as "dev" (in development), "beta", "rc1", etc.
-	VersionPrerelease = ""
+	VersionPrerelease = "dev"
 
 	consulConstraints version.Constraints
 )
@@ -44,7 +44,7 @@ func init() {
 // GetHumanVersion composes the parts of the version in a way that's suitable
 // for displaying to humans.
 func GetHumanVersion() string {
-	version := Version
+	version := fmt.Sprintf("%s %s",Name, Version)
 	if GitDescribe != "" && VersionPrerelease == "" {
 		version = GitDescribe
 	}
@@ -105,7 +105,7 @@ func CheckConsulVersions(versions []string) error {
 // issue between ESM and Consul servers.
 func NewConsulVersionError(consulVersions []string) error {
 	versions := strings.Join(consulVersions, ", ")
-	return fmt.Errorf(versionErrorTmpl, GetHumanVersion(), versions)
+	return fmt.Errorf(versionErrorTmpl, Version, versions)
 }
 
 const versionErrorTmpl = `
