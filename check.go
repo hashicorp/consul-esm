@@ -289,25 +289,20 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 		return
 	}
 
-	// Do nothing if update is idempotent
-	if check.Status == status && check.Output == output {
-		check.failureCounter = decrementCounter(check.failureCounter)
-		check.successCounter = decrementCounter(check.successCounter)
-		return
-	}
-
 	if status == api.HealthCritical {
+		check.successCounter = 0
 		if check.failureCounter < c.CriticalThreshold {
 			check.failureCounter++
 			return
 		}
-		check.failureCounter = 0
+
 	} else {
+		check.failureCounter = 0
 		if check.successCounter < c.PassingThreshold {
 			check.successCounter++
 			return
 		}
-		check.successCounter = 0
+
 	}
 
 	// Update the critical time tracking
@@ -319,6 +314,10 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 		delete(c.checksCritical, checkID)
 	}
 
+	// Do nothing if update is idempotent
+	if check.Status == status && check.Output == output {
+		return
+	}
 	// Defer a sync if the output has changed. This is an optimization around
 	// frequent updates of output. Instead, we update the output internally,
 	// and periodically do a write-back to the servers. If there is a status
