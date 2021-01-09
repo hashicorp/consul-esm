@@ -26,7 +26,7 @@ GOMAXPROCS ?= 4
 XC_OS ?= darwin freebsd linux netbsd openbsd solaris windows
 XC_ARCH ?= 386 amd64 arm arm64
 # XC_EXCLUDE "arm64" entries excludes both arm and arm64
-XC_EXCLUDE ?= darwin/arm solaris/386 solaris/arm windows/arm netbsd/arm darwin/arm64 freebsd/arm64 netbsd/arm64 openbsd/arm64 solaris/arm64 windows/arm64
+XC_EXCLUDE ?= solaris/386 darwin/arm64 freebsd/arm64 netbsd/arm64 openbsd/arm64 solaris/arm64 windows/arm64
 
 # List of ldflags
 LD_FLAGS ?= \
