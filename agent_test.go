@@ -15,6 +15,7 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 		Name:            "consul-esm",
 		Level:           hclog.LevelFromString("INFO"),
 		IncludeLocation: true,
+		Output:          LOGOUT,
 	})
 	conf, err := DefaultConfig()
 	if err != nil {
@@ -347,6 +348,7 @@ func TestAgent_notUniqueInstanceIDFails(t *testing.T) {
 		Name:            "consul-esm",
 		Level:           hclog.LevelFromString("INFO"),
 		IncludeLocation: true,
+		Output:          LOGOUT,
 	})
 	conf, err := DefaultConfig()
 	if err != nil {

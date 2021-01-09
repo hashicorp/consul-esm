@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/serf/coordinate"
-	"github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/mapstructure"
 	"github.com/sparrc/go-ping"
 )
@@ -77,7 +76,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		node := nodes[index]
 		a.inflightLock.Lock()
 		if _, ok := a.inflightPings[node.Node]; ok {
-			a.logger.Warn("Error pinging node, last request still outstanding", "node", hclog.Fmt("%q (ID: %s):" , node.Node, node.ID))
+			a.logger.Warn("Error pinging node, last request still outstanding", "node", node.Node, "nodeId" , node.ID)
 		} else {
 			a.inflightPings[node.Node] = struct{}{}
 			go a.runNodePing(node)
@@ -93,7 +92,7 @@ func (a *Agent) runNodePing(node *api.Node) {
 	key := fmt.Sprintf("%sprobes/%s", a.config.KVPath, node.Node)
 	kvPair, _, err := kvClient.Get(key, nil)
 	if err != nil {
-		a.logger.Error("could not get critical status for node", "info", hclog.Fmt("%q: %v", node.Node, err))
+		a.logger.Error("could not get critical status for node", "node", node.Node, "error", err)
 	}
 
 	// Run an ICMP ping to the node.
@@ -105,10 +104,10 @@ func (a *Agent) runNodePing(node *api.Node) {
 			a.logger.Warn("error updating node", "error", err)
 		}
 		if err := a.updateNodeCoordinate(node, rtt); err != nil {
-			a.logger.Warn("could not update coordinate for node", "node", hclog.Fmt("%q: %v", node.Node, err))
+			a.logger.Warn("could not update coordinate for node", "node", node.Node, "error", err)
 		}
 	} else {
-		a.logger.Warn("could not ping node", "node", hclog.Fmt("%q: %v", node.Node, err))
+		a.logger.Warn("could not ping node", "node", node.Node, "error", err)
 		if err := a.updateFailedNode(node, kvClient, key, kvPair); err != nil {
 			a.logger.Warn("error updating node", "error", err)
 		}
@@ -224,8 +223,8 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 
 		// Check if the node has been critical for too long and needs to be reaped.
 		if time.Since(criticalStart) > a.config.NodeReconnectTimeout {
-			a.logger.Info("reaping node", "info", hclog.Fmt(" %q has been failed for more then %s",
-				node.Node, a.config.NodeReconnectTimeout.String()))
+			a.logger.Info("reaping node has been failed for too long", "node",
+				node.Node, "failureTimeout", a.config.NodeReconnectTimeout.String())
 
 			// Clear the KV entry.
 			ops = append(ops, &api.TxnOp{

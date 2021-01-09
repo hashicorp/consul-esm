@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/hashicorp/go-hclog"
 	"reflect"
 	"sort"
 	"time"
@@ -107,7 +106,7 @@ func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
 func (a *Agent) commitOps(ops api.KVTxnOps) bool {
 	success, results, _, err := a.client.KV().Txn(ops, nil)
 	if err != nil || !success {
-		a.logger.Error("Error writing state to KV store", "error", hclog.Fmt("%v, %v", err, results))
+		a.logger.Error("Error writing state to KV store", "results", results, "error", err)
 		// Try again after the wait because we got an error.
 		return false
 	}

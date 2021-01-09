@@ -101,9 +101,9 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 	for {
 		leader, err := client.Status().Leader()
 		if err != nil {
-			logger.Error("error getting leader status", "error", hclog.Fmt("%q, retrying in %s...", err.Error(), retryTime.String()))
+			logger.Error("error getting leader status, will retry", "time", retryTime.String(), "error", err.Error())
 		} else if leader == "" {
-			logger.Info("waiting for cluster to elect a leader before starting, will retry", "time", retryTime.String)
+			logger.Info("waiting for cluster to elect a leader before starting, will retry", "time", retryTime.String())
 		} else {
 			break
 		}
@@ -153,7 +153,7 @@ func (a *Agent) Run() error {
 
 	// Clean up.
 	if err := a.client.Agent().ServiceDeregister(a.serviceID()); err != nil {
-		a.logger.Warn(" Failed to deregister service", "error", err)
+		a.logger.Warn("Failed to deregister service", "error", err)
 	}
 
 	return nil
@@ -457,7 +457,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
-			a.logger.Warn("Error querying for health check info: ", "error", hclog.Fmt("%v", err))
+			a.logger.Warn("Error querying for health check info", "error", err)
 			continue
 		}
 
@@ -473,7 +473,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 		if checkCount != len(ourChecks) {
 			checkCount = len(ourChecks)
-			a.logger.Info("Health check counts changed:", "health checks", checkCount, "nodes", len(ourNodes))
+			a.logger.Info("Health check counts changed", "healthChecks", checkCount, "nodes", len(ourNodes))
 		}
 	}
 }
@@ -532,7 +532,7 @@ VERIFYCONSULSERVER:
 		if strings.Contains(err.Error(), "429") {
 			// 429 is a warning that something is unhealthy. This may occur when ESM
 			// races with Consul servers first starting up, so this is safe to retry.
-			a.logger.Error("Failed to query for Consul server versions (will retry): ", "error", hclog.Fmt("%v", err))
+			a.logger.Error("Failed to query for Consul server versions (will retry)", "error", err)
 			time.Sleep(retryTime)
 			goto VERIFYCONSULSERVER
 		}

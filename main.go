@@ -124,7 +124,7 @@ func main() {
 
 func handleSignals(logger hclog.Logger, signalCh chan os.Signal, agent *Agent) {
 	for sig := range signalCh {
-		logger.Debug("Caught signal:", sig.String())
+		logger.Debug("Caught signal:" + sig.String())
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:
 			logger.Info("Shutting down...")

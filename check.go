@@ -245,7 +245,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		// if we had to fix the interval and we had to update the service, put some trace out
 		unmodifiedDef := check.Definition
 		if anyUpdates && unmodifiedDef.IntervalDuration < c.MinimumInterval {
-			c.logger.Warn("Check interval too low", "Interval", unmodifiedDef.Interval, "check", check.Name)
+			c.logger.Warn("Check interval too low", "interval", unmodifiedDef.Interval, "check", check.Name)
 		}
 
 		found[checkHash] = true
@@ -370,7 +370,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	existing.Status = status
 	existing.Output = output
 
-	c.logger.Info("Updating output and status for ", "id", hclog.Fmt("%q", existing.CheckID))
+	c.logger.Info("Updating output and status for", "checkID", existing.CheckID)
 
 	ops := api.TxnOps{
 		&api.TxnOp{
@@ -383,7 +383,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	metrics.IncrCounter([]string{"check", "txn"}, 1)
 	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
 	if err != nil {
-		c.logger.Warn("Error updating check status in Consul: ", "error", hclog.Fmt("%v", err))
+		c.logger.Warn("Error updating check status in Consul", "error", err)
 		return
 	}
 	if len(resp.Errors) > 0 {
@@ -391,7 +391,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		for _, e := range resp.Errors {
 			errs = multierror.Append(errs, errors.New(e.What))
 		}
-		c.logger.Warn("Error(s) returned from txn when updating check status in Consul: ", "error", hclog.Fmt("%v", errs))
+		c.logger.Warn("Error(s) returned from txn when updating check status in Consul", "error", errs)
 		return
 	}
 	if !ok {
@@ -399,7 +399,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		return
 	}
 
-	c.logger.Trace("Registered check status to the catalog with ID ", "CheckId", hclog.Fmt("%v", strings.TrimPrefix(string(check.CheckID), check.Node+"/")))
+	c.logger.Trace("Registered check status to the catalog with ID", "checkId", strings.TrimPrefix(string(check.CheckID), check.Node+"/"))
 
 	// Only update the local check state if we successfully updated the catalog
 	check.Status = status
@@ -447,9 +447,10 @@ func (c *CheckRunner) reapServicesInternal() {
 				Node:      check.Node,
 				ServiceID: serviceID,
 			}, nil)
-			c.logger.Info("agent: ", "", hclog.Fmt("Check %q for service %q has been critical for too long (%s | timeout: %s); deregistered service",
-				checkID, serviceID,
-				time.Since(criticalTime), timeout))
+			c.logger.Info("agent has been critical for too long, deregistered service", "checkID", checkID,
+					"serviceID", serviceID,
+					"duration", time.Since(criticalTime),
+					"timeout", timeout)
 			reaped[serviceID] = true
 		}
 	}

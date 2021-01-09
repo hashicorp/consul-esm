@@ -100,6 +100,7 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
+			Output:          LOGOUT,
 		}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
@@ -204,6 +205,7 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
+			Output:          LOGOUT,
 		}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
