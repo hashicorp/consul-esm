@@ -33,12 +33,12 @@ LEADER_WAIT:
 	}
 
 	// Wait to get the leader lock before running snapshots.
-	a.logger.Printf("[INFO] Trying to obtain leadership...")
+	a.logger.Info("Trying to obtain leadership...")
 	if lock == nil {
 		var err error
 		lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
 		if err != nil {
-			a.logger.Printf("[ERR] Error trying to create leader lock (will retry): %v", err)
+			a.logger.Error("Error trying to create leader lock (will retry)", "error", err)
 			time.Sleep(retryTime)
 			goto LEADER_WAIT
 		}
@@ -47,12 +47,12 @@ LEADER_WAIT:
 	leaderCh, err := lock.Lock(a.shutdownCh)
 	if err != nil {
 		if err == api.ErrLockHeld {
-			a.logger.Printf("[ERR] Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry): %v", err)
+			a.logger.Error("Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
 			time.Sleep(retryTime)
 			goto LEADER_WAIT
 		} else {
-			a.logger.Printf("[ERR] Error trying to get leader lock (will retry): %v", err)
+			a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
 			time.Sleep(retryTime)
 			goto LEADER_WAIT
 		}
@@ -62,7 +62,7 @@ LEADER_WAIT:
 		// we closed the shutdown channel.
 		return
 	}
-	a.logger.Printf("[INFO] Obtained leadership")
+	a.logger.Info("Obtained leadership")
 
 	// Start a goroutine for computing the node watches.
 	go a.computeWatchedNodes(leaderCh)
@@ -70,7 +70,7 @@ LEADER_WAIT:
 	for {
 		select {
 		case <-leaderCh:
-			a.logger.Print("[WARN] Lost leadership")
+			a.logger.Warn("Lost leadership")
 			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return
@@ -106,7 +106,7 @@ func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
 func (a *Agent) commitOps(ops api.KVTxnOps) bool {
 	success, results, _, err := a.client.KV().Txn(ops, nil)
 	if err != nil || !success {
-		a.logger.Printf("[ERR] Error writing state to KV store: %v, %v", err, results)
+		a.logger.Error("Error writing state to KV store", "results", results, "error", err)
 		// Try again after the wait because we got an error.
 		return false
 	}
@@ -190,7 +190,7 @@ WATCH_NODES_WAIT:
 
 		// Log a message when the balancing changes.
 		if !reflect.DeepEqual(healthNodes, prevHealthNodes) || !reflect.DeepEqual(pingNodes, prevPingNodes) {
-			a.logger.Printf("[INFO] Rebalanced %d external nodes across %d ESM instances", len(externalNodes), len(healthyInstances))
+			a.logger.Info("Rebalanced external nodes across ESM instances", "nodes", len(externalNodes), "instances", len(healthyInstances))
 			prevHealthNodes = healthNodes
 			prevPingNodes = pingNodes
 		}
@@ -225,7 +225,7 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 		// Do a blocking query for any external node changes
 		externalNodes, meta, err := a.client.Catalog().Nodes(opts)
 		if err != nil {
-			a.logger.Printf("[WARN] Error getting external node list: %v", err)
+			a.logger.Warn("Error getting external node list", "error", err)
 			continue
 		}
 		sort.Slice(externalNodes, func(a, b int) bool {
@@ -234,7 +234,7 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 
 		opts.WaitIndex = meta.LastIndex
 
-		a.logger.Printf("[INFO] Updating external node list, set to %d items", len(externalNodes))
+		a.logger.Info("Updating external node list", "items", len(externalNodes))
 
 		nodeCh <- externalNodes
 	}
@@ -263,7 +263,7 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 
 		healthyInstances, meta, err := a.client.Health().Service(a.config.Service, a.config.Tag, true, opts)
 		if err != nil {
-			a.logger.Printf("[WARN] Error querying for health check info: %v", err)
+			a.logger.Warn("[WARN] Error querying for health check info", "error", err)
 			continue
 		}
 		sort.Slice(healthyInstances, func(a, b int) bool {

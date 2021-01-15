@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"github.com/hashicorp/go-hclog"
 	"os"
 	"testing"
 	"time"
@@ -42,7 +42,12 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 	agent := &Agent{
 		client:            client,
 		config:            conf,
-		logger:            log.New(LOGOUT, "", log.LstdFlags),
+		logger:            hclog.New(&hclog.LoggerOptions{
+			Name:          "consul-esm",
+			Level:           hclog.LevelFromString("INFO"),
+			IncludeLocation: true,
+			Output:          LOGOUT,
+		}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
 	agent.updateNodeCoordinate(&api.Node{Node: "external"}, 1*time.Second)
@@ -91,7 +96,12 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	agent := &Agent{
 		client:            client,
 		config:            conf,
-		logger:            log.New(LOGOUT, "", log.LstdFlags),
+		logger:            hclog.New(&hclog.LoggerOptions{
+			Name:            "consul-esm",
+			Level:           hclog.LevelFromString("INFO"),
+			IncludeLocation: true,
+			Output:          LOGOUT,
+		}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
 	if err := agent.updateFailedNode(&api.Node{Node: "external"}, client.KV(), "testkey", nil); err != nil {
@@ -191,7 +201,12 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 	agent := &Agent{
 		client:            client,
 		config:            conf,
-		logger:            log.New(LOGOUT, "", log.LstdFlags),
+		logger:            hclog.New(&hclog.LoggerOptions{
+			Name:            "consul-esm",
+			Level:           hclog.LevelFromString("INFO"),
+			IncludeLocation: true,
+			Output:          LOGOUT,
+		}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 	}
 	agent.config.NodeReconnectTimeout = 200 * time.Millisecond

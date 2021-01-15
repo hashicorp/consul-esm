@@ -8,6 +8,7 @@ require (
 	github.com/hashicorp/consul v1.6.1
 	github.com/hashicorp/consul/api v1.2.0
 	github.com/hashicorp/consul/sdk v0.4.0
+	github.com/hashicorp/go-hclog v0.15.0
 	github.com/hashicorp/go-immutable-radix v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/hashicorp/go-retryablehttp v0.6.3 // indirect

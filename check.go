@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-hclog"
 )
 
 const externalCheckName = "externalNodeHealth"
@@ -30,7 +30,7 @@ type checkIDSet map[types.CheckID]bool
 type CheckRunner struct {
 	sync.RWMutex
 
-	logger *log.Logger
+	logger hclog.Logger
 	client *api.Client
 
 	// checks are unmodified checks as retrieved from Consul Catalog
@@ -61,7 +61,7 @@ type esmHealthCheck struct {
 	successCounter int
 }
 
-func NewCheckRunner(logger *log.Logger, client *api.Client, updateInterval,
+func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	minimumInterval time.Duration, tlsConfig *tls.Config, passingThreshold int,
 	criticalThreshold int) *CheckRunner {
 	return &CheckRunner{
@@ -107,7 +107,9 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 		Method:          definition.Method,
 		Interval:        definition.IntervalDuration,
 		Timeout:         definition.TimeoutDuration,
-		Logger:          c.logger,
+		Logger:          c.logger.StandardLogger(&hclog.StandardLoggerOptions{
+			InferLevels: true,
+		}),
 		TLSClientConfig: tlsConfig,
 	}
 
@@ -124,14 +126,14 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 			return false
 		}
 
-		c.logger.Printf("[INFO] Updating HTTP check %q", checkHash)
+		c.logger.Info("Updating HTTP check", "checkHash", checkHash)
 
 		if httpCheckExists {
 			httpCheck.Stop()
 		} else {
 			tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
 			if !tcpCheckExists {
-				c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
+				c.logger.Warn("Inconsistency check is not TCP and HTTP", "checkHash", checkHash)
 				return false
 			}
 			tcpCheck.Stop()
@@ -157,7 +159,9 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 		TCP:      definition.TCP,
 		Interval: definition.IntervalDuration,
 		Timeout:  definition.TimeoutDuration,
-		Logger:   c.logger,
+		Logger:   c.logger.StandardLogger(&hclog.StandardLoggerOptions{
+			InferLevels: true,
+		}),
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {
@@ -170,14 +174,14 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 			return false
 		}
 
-		c.logger.Printf("[INFO] Updating TCP check %q", checkHash)
+		c.logger.Info("Updating TCP check", "checkHash", checkHash)
 
 		if tcpCheckExists {
 			tcpCheck.Stop()
 		} else {
 			httpCheck, httpCheckExists := c.checksHTTP[checkHash]
 			if !httpCheckExists {
-				c.logger.Printf("[WARN] Inconsistency check %q - is not TCP and HTTP", checkHash)
+				c.logger.Warn("Inconsistency check is not TCP and HTTP", "checkHash", checkHash)
 				return false
 			}
 			httpCheck.Stop()
@@ -234,14 +238,14 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		} else if definition.TCP != "" {
 			anyUpdates = c.updateCheckTCP(check, checkHash, &definition, updated, added)
 		} else {
-			c.logger.Printf("[WARN] check %q is not a valid HTTP or TCP check", checkHash)
+			c.logger.Warn("check is not a valid HTTP or TCP check", "checkHash", checkHash)
 			continue
 		}
 
 		// if we had to fix the interval and we had to update the service, put some trace out
 		unmodifiedDef := check.Definition
 		if anyUpdates && unmodifiedDef.IntervalDuration < c.MinimumInterval {
-			c.logger.Printf("[WARN] Check interval too low at %v for check %s", unmodifiedDef.Interval, check.Name)
+			c.logger.Warn("Check interval too low", "interval", unmodifiedDef.Interval, "check", check.Name)
 		}
 
 		found[checkHash] = true
@@ -273,8 +277,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 	}
 
 	if len(added) > 0 || len(updated) > 0 || len(removed) > 0 {
-		c.logger.Printf("[INFO] Updated %d checks, found %d, added %d, updated %d, removed %d",
-			len(checks), len(found), len(added), len(updated), len(removed))
+		c.logger.Info("Updated checks", "count",
+			len(checks), "found", len(found), "added", len(added), "updated", len(updated), "removed", len(removed))
 	}
 }
 
@@ -348,7 +352,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	// consistent mode reduces convergency time particularly when services have many updates in a short time
 	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{RequireConsistent: true})
 	if err != nil {
-		c.logger.Printf("[WARN] error retrieving existing node entry: %v", err)
+		c.logger.Warn("error retrieving existing node entry", "error", err)
 		return
 	}
 	var existing *api.HealthCheck
@@ -366,7 +370,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	existing.Status = status
 	existing.Output = output
 
-	c.logger.Printf("[INFO] Updating output and status for %q", existing.CheckID)
+	c.logger.Info("Updating output and status for", "checkID", existing.CheckID)
 
 	ops := api.TxnOps{
 		&api.TxnOp{
@@ -379,7 +383,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	metrics.IncrCounter([]string{"check", "txn"}, 1)
 	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
 	if err != nil {
-		c.logger.Printf("[WARN] Error updating check status in Consul: %v", err)
+		c.logger.Warn("Error updating check status in Consul", "error", err)
 		return
 	}
 	if len(resp.Errors) > 0 {
@@ -387,15 +391,15 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		for _, e := range resp.Errors {
 			errs = multierror.Append(errs, errors.New(e.What))
 		}
-		c.logger.Printf("[WARN] Error(s) returned from txn when updating check status in Consul: %v", errs)
+		c.logger.Warn("Error(s) returned from txn when updating check status in Consul", "error", errs)
 		return
 	}
 	if !ok {
-		c.logger.Printf("[WARN] Failed to atomically update check status in Consul")
+		c.logger.Warn("Failed to atomically update check status in Consul")
 		return
 	}
 
-	c.logger.Printf("[TRACE] Registered check status to the catalog with ID %v", strings.TrimPrefix(string(check.CheckID), check.Node+"/"))
+	c.logger.Trace("Registered check status to the catalog with ID", "checkId", strings.TrimPrefix(string(check.CheckID), check.Node+"/"))
 
 	// Only update the local check state if we successfully updated the catalog
 	check.Status = status
@@ -443,9 +447,10 @@ func (c *CheckRunner) reapServicesInternal() {
 				Node:      check.Node,
 				ServiceID: serviceID,
 			}, nil)
-			c.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long (%s | timeout: %s); deregistered service",
-				checkID, serviceID,
-				time.Since(criticalTime), timeout)
+			c.logger.Info("agent has been critical for too long, deregistered service", "checkID", checkID,
+					"serviceID", serviceID,
+					"duration", time.Since(criticalTime),
+					"timeout", timeout)
 			reaped[serviceID] = true
 		}
 	}
