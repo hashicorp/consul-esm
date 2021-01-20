@@ -5,6 +5,10 @@ IMPROVEMENTS:
   * Add support for arm64 builds. [[GH-98](https://github.com/hashicorp/consul-esm/pull/98), [GH-88](https://github.com/hashicorp/consul-esm/issues/88)]
   * Update logging to structured logging using hclog. [[GH-97](https://github.com/hashicorp/consul-esm/pull/97), [GH-82](https://github.com/hashicorp/consul-esm/issues/82)]
 
+BUG FIXES:
+
+  * Fixed issue where anti-flapping counters were reset to zero when updating checks with latest from catalog. [[GH-103](https://github.com/hashicorp/consul-esm/pull/103)]
+
 ## v0.5.0 (December 7, 2020)
 
 IMPROVEMENTS:
