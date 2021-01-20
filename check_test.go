@@ -401,4 +401,22 @@ func TestCheck_NoFlapping(t *testing.T) {
 	assert.Equal(t, 0, originalCheck.failureCounter)
 	assert.Equal(t, 0, originalCheck.successCounter)
 	assert.Equal(t, api.HealthCritical, originalCheck.Status)
+
+	// test if counter values are kept after calling
+	// UpdateChecks(), which is called everytime there is
+	// a change in the consul catalog
+	runner.UpdateCheck(id, api.HealthPassing, "")
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 1, originalCheck.successCounter)
+	assert.Equal(t, api.HealthCritical, originalCheck.Status)
+
+	runner.UpdateChecks(checks)
+	currentCheck, ok := runner.checks[id]
+	if !ok {
+		t.Fatalf("Current check was not stored on runner.checks as expected. Checks: %v", runner.checks)
+	}
+
+	assert.Equal(t, 0, currentCheck.failureCounter)
+	assert.Equal(t, 1, currentCheck.successCounter)
+	assert.Equal(t, api.HealthCritical, currentCheck.Status)
 }

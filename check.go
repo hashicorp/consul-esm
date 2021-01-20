@@ -142,6 +142,7 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 
 		updated[checkHash] = true
 	} else {
+		c.logger.Debug("Added HTTP check", "checkHash", checkHash)
 		added[checkHash] = true
 	}
 
@@ -190,6 +191,8 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 
 		updated[checkHash] = true
 	} else {
+
+		c.logger.Debug("Added TCP check", "checkHash", checkHash)
 		added[checkHash] = true
 	}
 
@@ -249,17 +252,23 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		}
 
 		found[checkHash] = true
-		c.checks[checkHash] = &esmHealthCheck{
+		updatedCheck := &esmHealthCheck{
 			*check,
 			0,
 			0,
 		}
+		if previousCheck, ok := c.checks[checkHash]; ok {
+			updatedCheck.failureCounter = previousCheck.failureCounter
+			updatedCheck.successCounter = previousCheck.successCounter
+		}
+		c.checks[checkHash] = updatedCheck
 	}
 
 	// Look for removed checks
 	for _, check := range c.checks {
 		checkHash := checkHash(&check.HealthCheck)
 		if _, ok := found[checkHash]; !ok {
+			c.logger.Debug("Deleting check %q", "checkHash", checkHash)
 			delete(c.checks, checkHash)
 			delete(c.checksCritical, checkHash)
 
