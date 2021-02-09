@@ -3,7 +3,8 @@
 IMPROVEMENTS:
 
   * Add support for arm64 builds. [[GH-98](https://github.com/hashicorp/consul-esm/pull/98), [GH-88](https://github.com/hashicorp/consul-esm/issues/88)]
-  * Update logging to structured logging using hclog. [[GH-97](https://github.com/hashicorp/consul-esm/pull/97), [GH-82](https://github.com/hashicorp/consul-esm/issues/82)]
+  * Update logging to use hclog. [[GH-97](https://github.com/hashicorp/consul-esm/pull/97)]
+  * Update `-version` output to standardize with other ecosystem projects. [[GH-99](https://github.com/hashicorp/consul-esm/pull/99), [GH-87](https://github.com/hashicorp/consul-esm/issues/87)]
 
 BUG FIXES:
 
