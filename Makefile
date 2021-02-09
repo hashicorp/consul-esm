@@ -32,9 +32,9 @@ XC_EXCLUDE ?= solaris/386 darwin/arm64 freebsd/arm64 netbsd/arm64 openbsd/arm64 
 LD_FLAGS ?= \
 	-s \
 	-w \
-	-X ${PROJECT}/version.Name=${NAME} \
-	-X ${PROJECT}/version.GitCommit=${GIT_COMMIT} \
-	-X ${PROJECT}/version.GitDescribe=${GIT_DESCRIBE}
+	-X github.com/hashicorp/consul-esm/version.Name=${NAME} \
+	-X github.com/hashicorp/consul-esm/version.GitCommit=${GIT_COMMIT} \
+	-X github.com/hashicorp/consul-esm/version.GitDescribe=${GIT_DESCRIBE}
 
 # Create a cross-compile target for every os-arch pairing. This will generate
 # a make target for each os/arch like "make linux/amd64" as well as generate a
