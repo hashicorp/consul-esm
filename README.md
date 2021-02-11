@@ -159,6 +159,9 @@ enable_syslog = false
 // The syslog facility to use, if enabled.
 syslog_facility = ""
 
+// Whether to log in json format
+log_json = false
+
 // The unique id for this agent to use when registering itself with Consul.
 // If unconfigured, a UUID will be generated for the instance id.
 // Note: do not reuse the same instance id value for other agents. This id
