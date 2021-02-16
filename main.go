@@ -74,6 +74,7 @@ func main() {
 		Level:           hclog.LevelFromString(config.LogLevel),
 		Output:          logOutput,
 		IncludeLocation: true,
+		JSONFormat:      config.LogJSON,
 	})
 
 	gatedWriter.Flush()

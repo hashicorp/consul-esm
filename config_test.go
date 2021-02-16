@@ -14,6 +14,7 @@ import (
 func TestDecodeMergeConfig(t *testing.T) {
 	raw := bytes.NewBufferString(`
 log_level = "INFO"
+enable_syslog = true
 instance_id = "test-instance-id"
 consul_service = "service"
 consul_service_tag = "asdf"
@@ -65,6 +66,7 @@ telemetry {
 }
 passing_threshold = 3
 critical_threshold = 2
+log_json = true
 `)
 
 	expected := &Config{
@@ -121,6 +123,8 @@ critical_threshold = 2
 		},
 		PassingThreshold:  3,
 		CriticalThreshold: 2,
+		LogJSON:           true,
+		EnableSyslog:      true,
 	}
 
 	result := &Config{}

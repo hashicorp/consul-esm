@@ -27,6 +27,7 @@ type Config struct {
 	LogLevel       string
 	EnableSyslog   bool
 	SyslogFacility string
+	LogJSON        bool
 
 	Service string
 	Tag     string
@@ -156,6 +157,7 @@ type HumanConfig struct {
 	LogLevel       flags.StringValue `mapstructure:"log_level"`
 	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
 	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
+	LogJSON        flags.BoolValue   `mapstructure:"log_json"`
 
 	InstanceID flags.StringValue   `mapstructure:"instance_id"`
 	Service    flags.StringValue   `mapstructure:"consul_service"`
@@ -449,6 +451,8 @@ func convertTelemetry(telemetry Telemetry) (lib.TelemetryConfig, error) {
 // set by the practitioner
 func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.LogLevel.Merge(&dst.LogLevel)
+	src.LogJSON.Merge(&dst.LogJSON)
+	src.EnableSyslog.Merge(&dst.EnableSyslog)
 	src.InstanceID.Merge(&dst.InstanceID)
 	src.Service.Merge(&dst.Service)
 	src.Tag.Merge(&dst.Tag)
