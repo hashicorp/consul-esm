@@ -1,10 +1,13 @@
 package main
 
 import (
-	"github.com/hashicorp/go-hclog"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
@@ -40,10 +43,10 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client:            client,
-		config:            conf,
-		logger:            hclog.New(&hclog.LoggerOptions{
-			Name:          "consul-esm",
+		client: client,
+		config: conf,
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
 			Output:          LOGOUT,
@@ -94,9 +97,9 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client:            client,
-		config:            conf,
-		logger:            hclog.New(&hclog.LoggerOptions{
+		client: client,
+		config: conf,
+		logger: hclog.New(&hclog.LoggerOptions{
 			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
@@ -199,9 +202,9 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client:            client,
-		config:            conf,
-		logger:            hclog.New(&hclog.LoggerOptions{
+		client: client,
+		config: conf,
+		logger: hclog.New(&hclog.LoggerOptions{
 			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
@@ -303,6 +306,31 @@ func TestCoordinate_parallelPings(t *testing.T) {
 		}
 	}
 
+	// Register some nodes with custom checks
+	tcp_nodes := map[string]string{
+		// when running test with raw socket privilege
+		// "node6":  "ICMP",
+		"node7": "UDP",
+		"node8": strings.Join([]string{"tcp", strconv.Itoa(s.Config.Ports.SerfLan)}, `:`),
+		"node9": strings.Join([]string{"tcp", strconv.Itoa(s.Config.Ports.HTTP)}, `:`),
+	}
+	for node, method := range tcp_nodes {
+		meta := map[string]string{
+			"external-node":  "true",
+			"external-probe": "true",
+			"ping-type":      method,
+		}
+		_, err := client.Catalog().Register(&api.CatalogRegistration{
+			Node:       node,
+			Address:    "127.0.0.1",
+			Datacenter: "dc1",
+			NodeMeta:   meta,
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// Register an ESM agent.
 	agent1 := testAgent(t, func(c *Config) {
 		c.HTTPAddr = s.HTTPAddr
@@ -332,7 +360,30 @@ func TestCoordinate_parallelPings(t *testing.T) {
 				ModifyIndex: checks[0].ModifyIndex,
 			}
 			if err := compareHealthCheck(checks[0], expected); err != nil {
+				r.Fatalf("Node %s: %q\n", node, err)
+			}
+		}
+
+		for node, _ := range tcp_nodes {
+			checks, _, err := client.Health().Node(node, nil)
+			if err != nil {
 				r.Fatal(err)
+			}
+			if len(checks) != 1 {
+				r.Fatal("Bad number of checks; wanted 1, got ", len(checks))
+			}
+			expected := &api.HealthCheck{
+				Node:        node,
+				CheckID:     externalCheckName,
+				Name:        "External Node Status",
+				Status:      api.HealthPassing,
+				Output:      NodeAliveStatus,
+				CreateIndex: checks[0].CreateIndex,
+				ModifyIndex: checks[0].ModifyIndex,
+			}
+			if err := compareHealthCheck(checks[0], expected); err != nil {
+
+				r.Fatalf("Node %s: %q\n", node, err)
 			}
 		}
 	})

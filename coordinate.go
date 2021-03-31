@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,7 +78,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		node := nodes[index]
 		a.inflightLock.Lock()
 		if _, ok := a.inflightPings[node.Node]; ok {
-			a.logger.Warn("Error pinging node, last request still outstanding", "node", node.Node, "nodeId" , node.ID)
+			a.logger.Warn("Error pinging node, last request still outstanding", "node", node.Node, "nodeId", node.ID)
 		} else {
 			a.inflightPings[node.Node] = struct{}{}
 			go a.runNodePing(node)
@@ -95,9 +97,13 @@ func (a *Agent) runNodePing(node *api.Node) {
 		a.logger.Error("could not get critical status for node", "node", node.Node, "error", err)
 	}
 
-	// Run an ICMP ping to the node.
-	rtt, err := pingNode(node.Address, a.config.PingType)
-
+	// Run a ping to the node.
+	var rtt time.Duration
+	if pingType, ok := node.Meta["ping-type"]; ok {
+		rtt, err = pingNodeCustom(node.Address, pingType)
+	} else {
+		rtt, err = pingNode(node.Address, a.config.PingType)
+	}
 	// Update the node's health based on the results of the ping.
 	if err == nil {
 		if err := a.updateHealthyNode(node, kvClient, key, kvPair); err != nil {
@@ -171,7 +177,7 @@ func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key strin
 				Index: kvPair.ModifyIndex,
 			},
 		})
-		a.logger.Trace("Deleting KV entry",  "key", key)
+		a.logger.Trace("Deleting KV entry", "key", key)
 	}
 
 	// Batch the possible KV deletion operation with the external health check update.
@@ -363,7 +369,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	// Don't update the coordinate in the catalog if the coordinate already
 	// exists and the change is insignificant
 	if len(coords) > 0 && coord.Coord.DistanceTo(newCoord) <= time.Millisecond {
-		a.logger.Trace("Skipped update for coordinates", "node", node.Node, "distanceFromPreviousCoord",  coord.Coord.DistanceTo(newCoord))
+		a.logger.Trace("Skipped update for coordinates", "node", node.Node, "distanceFromPreviousCoord", coord.Coord.DistanceTo(newCoord))
 		return nil
 	}
 
@@ -416,4 +422,37 @@ func pingNode(addr string, method string) (time.Duration, error) {
 	} else {
 		return 0, pingErr
 	}
+}
+
+// pingNodeCustom check the ping-type in node metadata
+func pingNodeCustom(addr string, method string) (time.Duration, error) {
+	switch {
+	case strings.HasPrefix(strings.ToLower(method), PingTypeTCP):
+		tcp := strings.SplitN(method, `:`, 2)
+		port, err := strconv.ParseUint(tcp[1], 10, 16) // ensure 0 <= port <= 65535
+		if err != nil {
+			return 0, fmt.Errorf("invalid tcp port %q", method)
+		}
+		return pingNodeTCP(addr, uint16(port))
+	case strings.ToLower(method) == PingTypeUDP:
+		return pingNode(addr, PingTypeUDP)
+	case strings.ToLower(method) == PingTypeSocket || strings.ToLower(method) == "icmp":
+		return pingNode(addr, PingTypeSocket)
+	default:
+		return pingNode(addr, method)
+	}
+}
+
+// pingNodeCustom runs a TCP handshake against an address.
+// It will returns the round-trip time for establishing connection
+func pingNodeTCP(addr string, port uint16) (time.Duration, error) {
+	var tcp_timeout time.Duration = 2 * time.Second
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", strings.Join([]string{addr, fmt.Sprintf("%d", port)}, `:`), tcp_timeout)
+	if err != nil {
+		return 0, fmt.Errorf("cannot establish tcp connection %q", err)
+	}
+	elapsed := time.Since(start)
+	conn.Close()
+	return elapsed, nil
 }
