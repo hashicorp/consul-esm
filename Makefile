@@ -9,7 +9,6 @@ GOPATH=$(shell go env GOPATH)
 GOPATH := $(lastword $(subst :, ,${GOPATH}))# use last GOPATH entry
 
 # Project information
-GOVERSION := 1.13.12
 PROJECT := $(CURRENT_DIR:$(GOPATH)/src/%=%)
 NAME := $(notdir $(PROJECT))
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
@@ -65,18 +64,22 @@ define make-xc-target
 endef
 $(foreach goarch,$(XC_ARCH),$(foreach goos,$(XC_OS),$(eval $(call make-xc-target,$(goos),$(goarch),$(if $(findstring windows,$(goos)),.exe,)))))
 
-pristine:
-	@docker run \
-		--interactive \
-		--user $$(id -u):$$(id -g) \
+docker:
+	@docker build \
 		--rm \
-		--dns="8.8.8.8" \
-		--volume="${CURRENT_DIR}:/go/src/${PROJECT}" \
-		--volume="${GOPATH}/pkg/mod:/go/pkg/mod" \
-		--workdir="/go/src/${PROJECT}" \
-		--env=CGO_ENABLED="0" \
-		--env=GO111MODULE=on \
-		"golang:${GOVERSION}" env GOCACHE=/tmp make -j4 build
+		--force-rm \
+		--no-cache \
+		--compress \
+		--file="docker/Dockerfile" \
+		--build-arg="LD_FLAGS=${LD_FLAGS}" \
+		--build-arg="GOTAGS=${GOTAGS}" \
+		--tag="${OWNER}/${NAME}" \
+		--tag="${OWNER}/${NAME}:${VERSION}" \
+		"${CURRENT_DIR}"
+
+docker-push:
+	docker push "${OWNER}/${NAME}"
+	docker push "${OWNER}/${NAME}:${VERSION}"
 
 # dev builds and installs the project locally.
 dev:
