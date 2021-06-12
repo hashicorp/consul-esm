@@ -22,7 +22,7 @@ var (
 
 	// Version is the main version number that is being run at the moment.
 	// Note: our current release process does a pattern match on this variable.
-	Version = "0.5.0"
+	Version = "0.6.0"
 
 	// VersionPrerelease is a pre-release marker for the version. If this is ""
 	// (empty string) then it means that it is a final release. Otherwise, this
@@ -44,7 +44,7 @@ func init() {
 // GetHumanVersion composes the parts of the version in a way that's suitable
 // for displaying to humans.
 func GetHumanVersion() string {
-	version := fmt.Sprintf("%s v%s",Name, Version)
+	version := fmt.Sprintf("%s v%s", Name, Version)
 
 	release := VersionPrerelease
 	if GitDescribe == "" && release == "" {
