@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/hashicorp/consul-esm/version"
-	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/consul/logger"
 	"github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/cli"
@@ -22,7 +22,7 @@ const (
 
 func main() {
 	// Handle parsing the CLI flags.
-	var configFiles flags.AppendSliceValue
+	var configFiles AppendSliceValue
 	var isVersion bool
 
 	f := flag.NewFlagSet("", flag.ContinueOnError)
@@ -33,10 +33,12 @@ func main() {
 	f.BoolVar(&isVersion, "version", false, "Print the version of this daemon.")
 
 	f.Usage = func() {
-		fmt.Print(flags.Usage(usage, f))
+		fmt.Println(usage)
+		f.PrintDefaults()
 	}
 
 	err := f.Parse(os.Args[1:])
+
 	if err != nil {
 		if err != flag.ErrHelp {
 			fmt.Printf("error parsing flags: %v", err)
@@ -140,3 +142,20 @@ Usage: consul-esm [options]
 
   A config file is optional, and can be either HCL or JSON format.
 `
+
+// AppendSliceValue implements the flag.Value interface and allows multiple
+// calls to the same variable to append a list.
+type AppendSliceValue []string
+
+func (s *AppendSliceValue) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *AppendSliceValue) Set(value string) error {
+	if *s == nil {
+		*s = make([]string, 0, 1)
+	}
+
+	*s = append(*s, value)
+	return nil
+}
