@@ -44,7 +44,7 @@ func init() {
 // GetHumanVersion composes the parts of the version in a way that's suitable
 // for displaying to humans.
 func GetHumanVersion() string {
-	version := fmt.Sprintf("%s v%s",Name, Version)
+	version := fmt.Sprintf("%s v%s", Name, Version)
 
 	release := VersionPrerelease
 	if GitDescribe == "" && release == "" {

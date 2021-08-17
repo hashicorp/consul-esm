@@ -40,10 +40,10 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client:            client,
-		config:            conf,
-		logger:            hclog.New(&hclog.LoggerOptions{
-			Name:          "consul-esm",
+		client: client,
+		config: conf,
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
 			Output:          LOGOUT,
@@ -94,9 +94,9 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client:            client,
-		config:            conf,
-		logger:            hclog.New(&hclog.LoggerOptions{
+		client: client,
+		config: conf,
+		logger: hclog.New(&hclog.LoggerOptions{
 			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,
@@ -199,9 +199,9 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 	}
 
 	agent := &Agent{
-		client:            client,
-		config:            conf,
-		logger:            hclog.New(&hclog.LoggerOptions{
+		client: client,
+		config: conf,
+		logger: hclog.New(&hclog.LoggerOptions{
 			Name:            "consul-esm",
 			Level:           hclog.LevelFromString("INFO"),
 			IncludeLocation: true,

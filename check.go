@@ -14,8 +14,8 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/types"
-	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/go-multierror"
 )
 
 const externalCheckName = "externalNodeHealth"
@@ -100,14 +100,14 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	tlsConfig.InsecureSkipVerify = definition.TLSSkipVerify
 
 	http := &consulchecks.CheckHTTP{
-		Notify:          c,
-		CheckID:         checkHash,
-		HTTP:            definition.HTTP,
-		Header:          definition.Header,
-		Method:          definition.Method,
-		Interval:        definition.IntervalDuration,
-		Timeout:         definition.TimeoutDuration,
-		Logger:          c.logger.StandardLogger(&hclog.StandardLoggerOptions{
+		Notify:   c,
+		CheckID:  checkHash,
+		HTTP:     definition.HTTP,
+		Header:   definition.Header,
+		Method:   definition.Method,
+		Interval: definition.IntervalDuration,
+		Timeout:  definition.TimeoutDuration,
+		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
 			InferLevels: true,
 		}),
 		TLSClientConfig: tlsConfig,
@@ -160,7 +160,7 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 		TCP:      definition.TCP,
 		Interval: definition.IntervalDuration,
 		Timeout:  definition.TimeoutDuration,
-		Logger:   c.logger.StandardLogger(&hclog.StandardLoggerOptions{
+		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
 			InferLevels: true,
 		}),
 	}
@@ -457,9 +457,9 @@ func (c *CheckRunner) reapServicesInternal() {
 				ServiceID: serviceID,
 			}, nil)
 			c.logger.Info("agent has been critical for too long, deregistered service", "checkID", checkID,
-					"serviceID", serviceID,
-					"duration", time.Since(criticalTime),
-					"timeout", timeout)
+				"serviceID", serviceID,
+				"duration", time.Since(criticalTime),
+				"timeout", timeout)
 			reaped[serviceID] = true
 		}
 	}

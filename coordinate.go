@@ -76,7 +76,7 @@ func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
 		node := nodes[index]
 		a.inflightLock.Lock()
 		if _, ok := a.inflightPings[node.Node]; ok {
-			a.logger.Warn("Error pinging node, last request still outstanding", "node", node.Node, "nodeId" , node.ID)
+			a.logger.Warn("Error pinging node, last request still outstanding", "node", node.Node, "nodeId", node.ID)
 		} else {
 			a.inflightPings[node.Node] = struct{}{}
 			go a.runNodePing(node)
@@ -171,7 +171,7 @@ func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key strin
 				Index: kvPair.ModifyIndex,
 			},
 		})
-		a.logger.Trace("Deleting KV entry",  "key", key)
+		a.logger.Trace("Deleting KV entry", "key", key)
 	}
 
 	// Batch the possible KV deletion operation with the external health check update.
@@ -363,7 +363,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	// Don't update the coordinate in the catalog if the coordinate already
 	// exists and the change is insignificant
 	if len(coords) > 0 && coord.Coord.DistanceTo(newCoord) <= time.Millisecond {
-		a.logger.Trace("Skipped update for coordinates", "node", node.Node, "distanceFromPreviousCoord",  coord.Coord.DistanceTo(newCoord))
+		a.logger.Trace("Skipped update for coordinates", "node", node.Node, "distanceFromPreviousCoord", coord.Coord.DistanceTo(newCoord))
 		return nil
 	}
 
