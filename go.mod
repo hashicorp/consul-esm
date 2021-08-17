@@ -1,10 +1,11 @@
 module github.com/hashicorp/consul-esm
 
-go 1.13
+go 1.16
 
 require (
 	github.com/Microsoft/go-winio v0.4.5 // indirect
 	github.com/armon/go-metrics v0.3.4
+	github.com/go-ping/ping v0.0.0-20210506233800-ff8be3320020
 	github.com/hashicorp/consul v1.6.1
 	github.com/hashicorp/consul/api v1.2.0
 	github.com/hashicorp/consul/sdk v0.4.0
@@ -23,9 +24,6 @@ require (
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/prometheus/client_golang v1.4.0
-	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
 	github.com/stretchr/testify v1.4.0
-	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc // indirect
-	golang.org/x/net v0.0.0-20191003171128-d98b1b443823 // indirect
 	google.golang.org/grpc v1.25.0 // indirect
 )

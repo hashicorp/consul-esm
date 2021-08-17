@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"github.com/go-ping/ping"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/serf/coordinate"
 	"github.com/mitchellh/mapstructure"
-	"github.com/sparrc/go-ping"
 )
 
 const (
