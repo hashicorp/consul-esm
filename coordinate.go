@@ -9,7 +9,6 @@ import (
 
 	"github.com/armon/go-metrics"
 	"github.com/go-ping/ping"
-	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/serf/coordinate"
@@ -19,6 +18,8 @@ import (
 const (
 	NodeAliveStatus    = "Node alive or reachable"
 	NodeCriticalStatus = "Node not live or unreachable"
+	// needs to match consul/agent/structs' MetaSegmentKey value
+	MetaSegmentKey = "consul-network-segment"
 )
 
 var (
@@ -329,7 +330,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	} else {
 		coord = &api.CoordinateEntry{
 			Node:    node.Node,
-			Segment: node.Meta[structs.MetaSegmentKey],
+			Segment: node.Meta[MetaSegmentKey],
 			Coord:   coordinate.NewCoordinate(coordinate.DefaultConfig()),
 		}
 	}
