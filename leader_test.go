@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -165,9 +164,6 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 
 func TestLeader_divideCoordinates(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("TRAVIS") == "true" {
-		t.Skip("skip this test in Travis as pings aren't supported")
-	}
 
 	s, err := NewTestServer()
 	if err != nil {

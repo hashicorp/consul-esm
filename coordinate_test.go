@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/hashicorp/go-hclog"
-	"os"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
@@ -269,11 +269,8 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 }
 
 func TestCoordinate_parallelPings(t *testing.T) {
-	if os.Getenv("TRAVIS") == "true" {
-		t.Skip("skip this test in Travis as pings aren't supported")
-	}
-
 	t.Parallel()
+
 	s, err := NewTestServer()
 	if err != nil {
 		t.Fatal(err)
