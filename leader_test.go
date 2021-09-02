@@ -78,7 +78,7 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 
 func TestLeader_rebalanceHealthWatches(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 func TestLeader_divideCoordinates(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestLeader_divideCoordinates(t *testing.T) {
 
 func TestLeader_divideHealthChecks(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/hashicorp/go-hclog"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/hashicorp/consul/sdk/testutil/retry"
 )
@@ -42,7 +43,7 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 
 func TestAgent_registerServiceAndCheck(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestAgent_VerifyConsulCompatibility(t *testing.T) {
 	// Smoke test to test the compatibility with the current Consul version
 	// pinned in go dependency.
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestAgent_VerifyConsulCompatibility(t *testing.T) {
 func TestAgent_uniqueInstanceID(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +316,7 @@ func TestAgent_notUniqueInstanceIDFails(t *testing.T) {
 	t.Parallel()
 	notUniqueInstanceID := "not-unique-instance-id"
 
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}

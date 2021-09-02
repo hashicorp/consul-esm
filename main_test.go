@@ -34,8 +34,8 @@ func TestMain(m *testing.M) {
 // utility functions used in tests
 
 // New consul test process
-func NewTestServer() (*testutil.TestServer, error) {
-	return testutil.NewTestServerConfig(func(c *testutil.TestServerConfig) {
+func NewTestServer(t *testing.T) (*testutil.TestServer, error) {
+	return testutil.NewTestServerConfigT(t, func(c *testutil.TestServerConfig) {
 		c.Stdout = STDOUT
 		c.Stderr = STDERR
 	})

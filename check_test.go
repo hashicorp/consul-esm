@@ -2,9 +2,10 @@ package main
 
 import (
 	"crypto/tls"
-	"github.com/hashicorp/go-hclog"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
@@ -13,7 +14,7 @@ import (
 
 func TestCheck_HTTP(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +121,7 @@ func TestCheck_HTTP(t *testing.T) {
 
 func TestCheck_TCP(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +237,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 	// Confirm that a check's interval is at least the minimum interval
 
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +297,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 func TestCheck_NoFlapping(t *testing.T) {
 	// Confirm that the status flapping protections work
 
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}

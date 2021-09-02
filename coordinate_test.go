@@ -12,7 +12,7 @@ import (
 
 func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestCoordinate_updateNodeCoordinate(t *testing.T) {
 
 func TestCoordinate_updateNodeCheck(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestCoordinate_updateNodeCheck(t *testing.T) {
 
 func TestCoordinate_reapFailedNode(t *testing.T) {
 	t.Parallel()
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestCoordinate_reapFailedNode(t *testing.T) {
 func TestCoordinate_parallelPings(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewTestServer()
+	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
