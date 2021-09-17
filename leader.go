@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -256,22 +257,69 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 		case <-stopCh:
 			return
 		case <-time.After(retryTime / 10):
-			// Sleep here to limit how much load we put on the Consul servers. We can
-			// wait a lot less than the normal retry time here because the ESM service instance
-			// list is relatively small and cheap to query.
+			// Sleep here to limit how much load we put on the Consul servers.
+			// We can wait a lot less than the normal retry time here because
+			// the ESM service instance list is relatively small and cheap to
+			// query.
 		}
 
-		healthyInstances, meta, err := a.client.Health().Service(a.config.Service, a.config.Tag, true, opts)
-		if err != nil {
-			a.logger.Warn("[WARN] Error querying for health check info", "error", err)
-			continue
+		switch healthyInstances, err := a.getServiceInstances(opts); err {
+		case nil:
+			instanceCh <- healthyInstances
+		default:
+			a.logger.Warn("[WARN] Error querying for health check info",
+				"error", err)
+			continue // not needed, but nice to be explicit
 		}
-		sort.Slice(healthyInstances, func(a, b int) bool {
-			return healthyInstances[a].Service.ID < healthyInstances[b].Service.ID
-		})
-
-		opts.WaitIndex = meta.LastIndex
-
-		instanceCh <- healthyInstances
 	}
+}
+
+// getServiceInstances retuns a list of services with a 'passing' (healthy) state.
+// It loops over all available namespaces to get instances from each.
+func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry, error) {
+	var healthyInstances []*api.ServiceEntry
+	var meta *api.QueryMeta
+
+	namespaces, err := namespacesList(a.client)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ns := range namespaces {
+		if ns.Name != "" {
+			a.logger.Info("checking namespaces for services", "name", ns.Name)
+		}
+		opts.Namespace = ns.Name
+		healthy, m, err := a.client.Health().Service(a.config.Service,
+			a.config.Tag, true, opts)
+		if err != nil {
+			return nil, err
+		}
+		meta = m // keep last good meta
+		for _, h := range healthy {
+			healthyInstances = append(healthyInstances, h)
+		}
+	}
+	opts.WaitIndex = meta.LastIndex
+
+	sort.Slice(healthyInstances, func(a, b int) bool {
+		return healthyInstances[a].Service.ID < healthyInstances[b].Service.ID
+	})
+
+	return healthyInstances, nil
+}
+
+// namespacesList returns a list of all accessable namespaces.
+// Returns namespace "" (none) if none found for consul OSS compatibility.
+func namespacesList(client *api.Client) ([]*api.Namespace, error) {
+	ossErr := "Unexpected response code: 404" // error snippet OSS consul returns
+	namespaces, _, err := client.Namespaces().List(nil)
+	switch {
+	case err == nil:
+	case strings.Contains(err.Error(), ossErr):
+		namespaces = []*api.Namespace{{Name: ""}}
+	case err != nil: // default, but more explicit
+		return nil, err
+	}
+	return namespaces, nil
 }

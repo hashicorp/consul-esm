@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -415,5 +418,109 @@ func TestLeader_nodeLists(t *testing.T) {
 	if len(health) != 0 || len(ping) != 0 {
 		t.Fatalf("wrong # nodes returned; want 0, got %d (health), %d (ping)",
 			len(health), len(ping))
+	}
+}
+
+const namespacesJSON = `[
+  { "Name": "default", "Description": "Builtin Default Namespace" },
+  { "Name": "foo", "Description": "foo" }
+]`
+
+const healthserviceJSON = `[
+  { "Service": {"ID": "one", "Namespace": "foo" } },
+  { "Service": {"ID": "two", "Namespace": "default" } }
+]`
+
+func Test_namespacesList(t *testing.T) {
+	testcase := ""
+	ts := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch testcase {
+			case "ent":
+				fmt.Fprint(w, namespacesJSON)
+			case "oss":
+				http.NotFound(w, r)
+			case "err":
+				http.Error(w, "use a french-press", http.StatusTeapot)
+			default:
+				t.Fatal("unknown test case:", testcase)
+			}
+		}))
+	defer ts.Close()
+
+	//client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
+	client, err := api.NewClient(&api.Config{Address: ts.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// simulate enterprise consul
+	testcase = "ent"
+	nss, err := namespacesList(client)
+	if err != nil {
+		t.Fatal("unexpected error:", err)
+	}
+	if len(nss) != 2 || nss[0].Name != "default" || nss[1].Name != "foo" {
+		t.Fatalf("bad value for namespace names: %#v\n", nss)
+	}
+	// simulate oss consul
+	testcase = "oss"
+	nss, err = namespacesList(client)
+	if err != nil {
+		t.Fatal("unexpected error:", err)
+	}
+	if len(nss) != 1 || nss[0].Name != "" {
+		t.Fatalf("bad value for namespace names: %#v\n", len(nss))
+	}
+	// simulate other random error
+	testcase = "err"
+	nss, err = namespacesList(client)
+	if err == nil {
+		t.Fatal("unexpected error:", err)
+	}
+	if nss != nil {
+		t.Fatalf("bad value for namespace names: %#v\n", len(nss))
+	}
+}
+
+func Test_getServiceInstances(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			uri := r.RequestURI
+			switch { // ignore anything that doesn't require a return body
+			case strings.Contains(uri, "status/leader"):
+				fmt.Fprint(w, `"127.0.0.1"`)
+			case strings.Contains(uri, "namespace"):
+				fmt.Fprint(w, namespacesJSON)
+			case strings.Contains(uri, "health/service"):
+				fmt.Fprint(w, healthserviceJSON)
+			}
+		}))
+	defer ts.Close()
+
+	agent := testAgent(t, func(c *Config) {
+		c.HTTPAddr = ts.URL
+		c.InstanceID = "test-agent"
+	})
+	defer agent.Shutdown()
+
+	opts := &api.QueryOptions{}
+	serviceInstances, err := agent.getServiceInstances(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 4 because test data has 2 namespaces each with 2 services
+	if len(serviceInstances) != 4 {
+		t.Fatal("Wrong number of services", len(serviceInstances))
+	}
+	for _, si := range serviceInstances {
+		sv := si.Service
+		switch {
+		case sv.ID == "one" && sv.Namespace == "foo":
+		case sv.ID == "one" && sv.Namespace == "default":
+		case sv.ID == "two" && sv.Namespace == "foo":
+		case sv.ID == "two" && sv.Namespace == "default":
+		default:
+			t.Fatalf("Unknown service: %#v\n", si.Service)
+		}
 	}
 }
