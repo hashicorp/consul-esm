@@ -455,6 +455,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 		}
 		firstRun = false
 
+		// All ESM health checks are node checks and in the 'default' namespace
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
 			a.logger.Warn("Error querying for health check info", "error", err)
@@ -527,7 +528,7 @@ VERIFYCONSULSERVER:
 	}
 
 	// Fetch server versions
-	resp, err := a.client.Operator().AutopilotServerHealth(nil)
+	svs, _, err := a.client.Catalog().Service("consul", "", nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "429") {
 			// 429 is a warning that something is unhealthy. This may occur when ESM
@@ -542,11 +543,20 @@ VERIFYCONSULSERVER:
 
 	versions := []string{agentVersion}
 	uniqueVersions := map[string]bool{agentVersion: true}
-	for _, s := range resp.Servers {
-		if !uniqueVersions[s.Version] {
-			uniqueVersions[s.Version] = true
-			versions = append(versions, s.Version)
+	var foundServer bool
+	for _, s := range svs {
+		if v, ok := s.ServiceMeta["version"]; ok {
+			foundServer = true
+			if !uniqueVersions[v] {
+				uniqueVersions[v] = true
+				versions = append(versions, v)
+			}
 		}
+	}
+
+	if !foundServer {
+		a.logger.Warn("unable to determine Consul server version, check for " +
+			"compatibility; requires " + version.GetConsulVersionConstraint())
 	}
 
 	err = version.CheckConsulVersions(versions)

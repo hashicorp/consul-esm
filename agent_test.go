@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +37,7 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 
 	go func() {
 		if err := agent.Run(); err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 	}()
 
@@ -239,24 +242,69 @@ func TestAgent_LastKnownStatusIsExpired(t *testing.T) {
 }
 
 func TestAgent_VerifyConsulCompatibility(t *testing.T) {
-	// Smoke test to test the compatibility with the current Consul version
-	// pinned in go dependency.
-	t.Parallel()
-	s, err := NewTestServer(t)
-	if err != nil {
-		t.Fatal(err)
+	type testCase struct {
+		name, agentJSON, serviceJSON string
+		shouldPass                   bool
 	}
-	defer s.Stop()
+	testVersion := func(t *testing.T, tc testCase) {
+		ts := httptest.NewServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				uri := r.RequestURI
+				switch { // ignore anything that doesn't require a return body
+				case strings.Contains(uri, "status/leader"):
+					fmt.Fprint(w, `"127.0.0.1"`)
+				case strings.Contains(uri, "agent/self"):
+					fmt.Fprint(w, tc.agentJSON)
+				case strings.Contains(uri, "catalog/service"):
+					fmt.Fprint(w, tc.serviceJSON)
+				}
+			}))
+		defer ts.Close()
 
-	agent := testAgent(t, func(c *Config) {
-		c.HTTPAddr = s.HTTPAddr
-		c.Tag = "test"
-	})
-	defer agent.Shutdown()
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = ts.URL
+			c.InstanceID = "test-agent"
+		})
+		time.Sleep(time.Millisecond) // race with Run's go routines
+		defer agent.Shutdown()
 
-	err = agent.VerifyConsulCompatibility()
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		err := agent.VerifyConsulCompatibility()
+		switch {
+		case tc.shouldPass && err != nil:
+			t.Fatalf("unexpected error: %s", err)
+		case !tc.shouldPass && err == nil:
+			t.Fatalf("should be an error and wasn't: %#v", tc)
+		}
+	}
+	testCases := []testCase{
+		{
+			name:        "good",
+			agentJSON:   `{"Config": {"Version": "1.10.0"}}`,
+			serviceJSON: `[{"ServiceMeta" : {"version": "1.10.0"}}]`,
+			shouldPass:  true,
+		},
+		{
+			name:        "bad-agent",
+			agentJSON:   `{"Config": {"Version": "1.0.0"}}`,
+			serviceJSON: `[{"ServiceMeta" : {"version": "1.10.0"}}]`,
+		},
+		{
+			name:        "bad-server",
+			agentJSON:   `{"Config": {"Version": "1.10.0"}}`,
+			serviceJSON: `[{"ServiceMeta" : {"version": "1.0.0"}}]`,
+		},
+		{
+			name:        "no-server-version-meta",
+			agentJSON:   `{"Config": {"Version": "1.10.0"}}`,
+			serviceJSON: `[{"ServiceMeta" : {}}]`,
+			shouldPass:  true, // logs a warning
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			testVersion(t, tc)
+		})
 	}
 }
 
