@@ -1,30 +1,18 @@
-#!/usr/bin/dumb-init /bin/sh
+#!/bin/sh
+
+# Don't use dumb-init as it isn't required and the end-user has the option
+# to set it via the `--init` option.
+
 set -e
-
-# Note above that we run dumb-init as PID 1 in order to reap zombie processes
-# as well as forward signals to all processes in its session. Normally, sh
-# wouldn't do either of these functions so we'd leak zombies as well as do
-# unclean termination of all our sub-processes.
-
-# CESM_CONFIG_DIR isn't exposed as a volume but you can compose additional config
-# files in there if you use this image as a base.
-CESM_CONFIG_DIR=/consul-esm/config
 
 # If the user is trying to run consul-esm directly with some arguments,
 # then pass them to consul-esm.
-# On alpine /bin/sh is busybox which supports the bashism below.
+# On alpine /bin/sh is busybox which supports this bashism.
 if [ "${1:0:1}" = '-' ]
 then
     set -- /bin/consul-esm "$@"
 fi
 
-# Set the configuration directory
-if [ "$1" = '/bin/consul-esm' ]
-then
-  shift
-  set -- /bin/consul-esm \
-    -config-dir="$CESM_CONFIG_DIR" \
-    "$@"
-fi
-
+# MUST exec here for consul-esm to replace the shell as PID 1 in order
+# to properly propagate signals from the OS to the consul-esm process.
 exec "$@"

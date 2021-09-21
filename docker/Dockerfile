@@ -1,59 +1,40 @@
-### Builder
+# This Dockerfile creates a production release image for the project. This
+# downloads the release from releases.hashicorp.com and therefore requires that
+# the release is published before building the Docker image.
 #
-FROM golang:latest AS builder
-LABEL maintainer "John Eikenberry <jae@zhar.net>"
-
-ARG LD_FLAGS
-ARG GOTAGS
-
-WORKDIR "/go/src/github.com/hashicorp/consul-esm"
-
-COPY . .
-
-RUN ls
-
-RUN \
-  CGO_ENABLED="0" \
-  GO111MODULE=on \
-  go build -a -o "/consul-esm" \
-    -ldflags "${LD_FLAGS}" -tags "${GOTAGS}"
-
-### Final
-#
+# We don't rebuild the software because we want the exact checksums and
+# binary signatures to match the software and our builds aren't fully
+# reproducible currently.
 FROM alpine:latest
+
+# NAME and VERSION are the name of the software in releases.hashicorp.com
+# and the version to download.
+ARG NAME=consul-esm
+ARG VERSION
+
+# version label is required for build process
 LABEL maintainer "John Eikenberry <jae@zhar.net>"
+LABEL version=$VERSION
 
 # UID and GID of consul-esm user and group.
 # These are the defaults, this makes them explicit and overridable.
 ARG UID=100
 ARG GID=1000
 
-# Create a consul-esm user and group first so the IDs get set the same way,
+# Set ARGs as ENV so that they can be used in ENTRYPOINT/CMD
+ENV NAME=${NAME}
+ENV VERSION=${VERSION}
+# This is the location of the releases.
+ENV HASHICORP_RELEASES=https://releases.hashicorp.com
+
+# Create a user and group first so the IDs get set the same way,
 # even as the rest of this may change over time.
-RUN addgroup -g ${GID} consul-esm && \
-    adduser -u ${UID} -S -G consul-esm consul-esm
+RUN addgroup -g ${GID} ${NAME} && adduser -u ${UID} -S -G ${NAME} ${NAME}
 
-# Set up certificates, and dumb-init.
-RUN apk add --no-cache ca-certificates dumb-init
+# Set up certificates, base tools, and software.
+COPY fetch-n-verify.sh docker-entrypoint.sh /
+RUN /fetch-n-verify.sh # removes self when done
 
-# Install consul-esm
-COPY --from=builder "/consul-esm" "/bin/consul-esm"
-
-# The agent will be started with /consul-esm/config as the configuration
-# directory so you can add additional config files in that location.
-RUN mkdir -p /consul-esm/data && \
-    mkdir -p /consul-esm/config && \
-    chown -R consul-esm:consul-esm /consul-esm
-
-# Expose the consul-esm data directory as a volume since that's where
-# shared results should be rendered.
-VOLUME /consul-esm/data
-
-# The entry point script uses dumb-init as the top-level process to reap any
-# zombie processes created by consul-esm sub-processes.
-COPY "docker/alpine/docker-entrypoint.sh" "/bin/docker-entrypoint.sh"
-ENTRYPOINT ["/bin/docker-entrypoint.sh"]
-USER ${UID}:${GID}
-
-# Run consul-esm by default
-CMD ["/bin/consul-esm"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
+USER ${NAME}:${NAME}
+CMD /bin/${NAME}
