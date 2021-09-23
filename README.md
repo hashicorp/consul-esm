@@ -333,8 +333,6 @@ down the privileges required for ESM the following [ACL policy rules][rules]
 can be used:
 
 ```hcl
-operator = "read"
-
 agent_prefix "" {
   policy = "read"
 }
@@ -374,8 +372,6 @@ consul-esm is registered with
  parameter
 
 ```hcl
-operator = "read"
-
 agent "<consul-agent-node-name>" {
   policy = "read"
 }
@@ -403,13 +399,58 @@ session "<consul-agent-node-name>" {
 
 For context on usage of each ACL:
 
-- `operator:read` - for feature to check consul and esm version compatibility
 - `agent:read` - for features to check version compatibility and calculating network coordinates
 - `key:write` - to store assigned checks
 - `node:write` - to update the status of each node that esm monitors
 - `node:read` - to retrieve nodes that need to be monitored
 - `service:write` - to register esm service
 - `session:write` - to acquire esm cluster leader lock
+
+### Consul Namespaces (Enterprise Feature)
+
+ESM supports [Consul Enterprise Namespaces
+](https://www.consul.io/docs/enterprise/namespaces). When run with enterprise
+Consul servers it will scan all accessible Namespaces for external nodes and
+health checks to monitor. What is meant by "all accessible" is all Namespaces
+accessible via [Namespace ACL rules](
+https://www.consul.io/docs/security/acl/acl-rules) that provide `read` level
+access to the Namespace. The simplest case of wanting to access all Namespaces
+would add the below rule to the ESM ACL policy in the previous section...
+
+```hcl
+namespace_prefix "" {
+  acl = "read"
+}
+```
+
+If an ESM instance needs to monitor only a subset of existing Namespaces, the
+policy will need to grant access to each Namespace explicitly. For example lets
+say we have 3 Namespaces, "foo", "bar" and "zed" and you want this ESM to only
+monitor "foo" and "bar". Your policy would need to have these listed (or a
+common prefix would work)...
+
+```hcl
+namespace "foo" {
+  acl = "read"
+}
+namespace "bar" {
+  acl = "read"
+}
+```
+
+#### Namespaces + `consul_kv_path` config setting:
+
+* If you have multiple ESMs for HA (secondary, backup ESMs) have the **same**
+  value set to `consul_kv_path`. (in practice these configs are identical)
+
+* If you have multiple ESMs for separate Namespaces each must use a
+  **different** setting for `consul_kv_path`.
+
+ESM uses the `consul_kv_path` to determine where to keep its meta data. This
+meta data will be different for each ESM monitoring different Namespaces.
+
+Note you can have both, those in HA clusters would have the same value and each
+separate HA cluster would use different values.
 
 ## Contributing
 
