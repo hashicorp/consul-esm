@@ -1,7 +1,9 @@
-## Upcoming
+## v0.6.0 (September 23, 2021)
 
 IMPROVEMENTS:
 
+  * Add official docker image [[GH-108](https://github.com/hashicorp/consul-esm/pull/108), [GH-19](https://github.com/hashicorp/consul-esm/issues/19)]
+  * Add support for Consul Namespaces and controlling which namespaces ESM monitors. [[GH-115](https://github.com/hashicorp/consul-esm/pull/115)]
   * Add support for arm64 builds. [[GH-98](https://github.com/hashicorp/consul-esm/pull/98), [GH-88](https://github.com/hashicorp/consul-esm/issues/88)]
   * Update logging to use hclog. [[GH-97](https://github.com/hashicorp/consul-esm/pull/97)]
   * Add `log_json` configuration option to allow enabling JSON logging. [[GH-105](https://github.com/hashicorp/consul-esm/pull/105), [GH-82](https://github.com/hashicorp/consul-esm/issues/82)]
