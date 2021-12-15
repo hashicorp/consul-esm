@@ -98,6 +98,7 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
 	tlsConfig := c.tlsConfig.Clone()
 	tlsConfig.InsecureSkipVerify = definition.TLSSkipVerify
+	tlsConfig.ServerName = definition.TLSServerName
 
 	http := &consulchecks.CheckHTTP{
 		Notify:   c,
