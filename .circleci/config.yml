@@ -2,32 +2,22 @@ version: 2.1
 jobs:
   build:
     environment:
-      GO_VERSION: 1.16
       GO111MODULE: "on"
-      CONSUL_VERSION: 1.10.2
-    machine:
-      image: ubuntu-1604:201903-01
-    working_directory: ~/consul-esm
+      CONSUL_VERSION: 1.10.6
+    docker:
+      - image: docker.mirror.hashicorp.services/cimg/go:1.17
     steps:
       - checkout
       - restore_cache:
           keys:
-          - ct-modcache-v2-{{ checksum "go.mod" }}
-      - run: |
-          gopkg="go${GO_VERSION}.linux-amd64.tar.gz"
-          curl -sLo $HOME/go.tar.gz https://dl.google.com/go/$gopkg
-          tar -C $HOME/ -xzf ~/go.tar.gz
+            - ct-modcache-v1-{{ checksum "go.mod" }}
       - run: |
           curl -sLo consul.zip https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip
           unzip consul.zip
           sudo cp consul /usr/local/bin/
       - run: |
-          export GO111MODULE=on
-          export PATH="$HOME/go/bin:$PATH"
-          export GOPATH="$HOME/go"
           make test
       - save_cache:
-          key: ct-modcache-v2-{{ checksum "go.mod" }}
+          key: ct-modcache-v1-{{ checksum "go.mod" }}
           paths:
-          - /home/circleci/go/pkg/mod
-
+            - /go/pkg/mod
