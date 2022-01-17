@@ -40,6 +40,7 @@ type CheckRunner struct {
 	// They have potentially modified values from the Consul Catalog checks
 	checksHTTP map[types.CheckID]*consulchecks.CheckHTTP
 	checksTCP  map[types.CheckID]*consulchecks.CheckTCP
+	checksGRPC map[types.CheckID]*consulchecks.CheckGRPC
 
 	checksCritical map[types.CheckID]time.Time
 
@@ -70,6 +71,7 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 		checks:              make(map[types.CheckID]*esmHealthCheck),
 		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
 		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
+		checksGRPC:          make(map[types.CheckID]*consulchecks.CheckGRPC),
 		checksCritical:      make(map[types.CheckID]time.Time),
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
@@ -89,6 +91,10 @@ func (c *CheckRunner) Stop() {
 	}
 
 	for _, check := range c.checksTCP {
+		check.Stop()
+	}
+
+	for _, check := range c.checksGRPC {
 		check.Stop()
 	}
 }
@@ -132,12 +138,20 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 			httpCheck.Stop()
 		} else {
 			tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
-			if !tcpCheckExists {
-				c.logger.Warn("Inconsistency check is not TCP and HTTP", "checkHash", checkHash)
+			grpcCheck, grpcCheckExists := c.checksGRPC[checkHash]
+
+			if !tcpCheckExists && !grpcCheckExists {
+				c.logger.Warn("Inconsistency check is not TCP, HTTP or GRPC", "checkHash", checkHash)
 				return false
+			} else {
+				if tcpCheckExists {
+					tcpCheck.Stop()
+					delete(c.checksTCP, checkHash)
+				} else {
+					grpcCheck.Stop()
+					delete(c.checksGRPC, checkHash)
+				}
 			}
-			tcpCheck.Stop()
-			delete(c.checksTCP, checkHash)
 		}
 
 		updated[checkHash] = true
@@ -181,12 +195,20 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 			tcpCheck.Stop()
 		} else {
 			httpCheck, httpCheckExists := c.checksHTTP[checkHash]
-			if !httpCheckExists {
-				c.logger.Warn("Inconsistency check is not TCP and HTTP", "checkHash", checkHash)
+			grpcCheck, grpcCheckExists := c.checksGRPC[checkHash]
+
+			if !httpCheckExists && !grpcCheckExists {
+				c.logger.Warn("Inconsistency check is not TCP, HTTP or GRPC", "checkHash", checkHash)
 				return false
+			} else {
+				if httpCheckExists {
+					httpCheck.Stop()
+					delete(c.checksHTTP, checkHash)
+				} else {
+					grpcCheck.Stop()
+					delete(c.checksGRPC, checkHash)
+				}
 			}
-			httpCheck.Stop()
-			delete(c.checksHTTP, checkHash)
 		}
 
 		updated[checkHash] = true
@@ -198,6 +220,72 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 
 	tcp.Start()
 	c.checksTCP[checkHash] = tcp
+
+	return true
+}
+
+// Update a GRPC check
+func (c *CheckRunner) updateCheckGRPC(latestCheck *api.HealthCheck, checkHash types.CheckID,
+	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
+	tlsConfig := c.tlsConfig.Clone()
+	tlsConfig.InsecureSkipVerify = definition.TLSSkipVerify
+
+	grpc := &consulchecks.CheckGRPC{
+		Notify:   c,
+		CheckID:  checkHash,
+		GRPC:     definition.GRPC,
+		Interval: definition.IntervalDuration,
+		Timeout:  definition.TimeoutDuration,
+		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
+			InferLevels: true,
+		}),
+		TLSClientConfig: tlsConfig,
+	}
+
+	if check, checkExists := c.checks[checkHash]; checkExists {
+		fmt.Println("checkExists, check", check)
+		grpcCheck, grpcCheckExists := c.checksGRPC[checkHash]
+		if grpcCheckExists &&
+			grpcCheck.GRPC == grpc.GRPC &&
+			grpcCheck.Interval == grpc.Interval &&
+			grpcCheck.Timeout == grpc.Timeout &&
+			check.Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
+			fmt.Println("grpc.GRPC = ", grpc.GRPC)
+			return false
+		}
+
+		c.logger.Info("Updating GRPC check", "checkHash", checkHash)
+		fmt.Println("Updating GRPC check", "checkHash", checkHash)
+
+		if grpcCheckExists {
+			grpcCheck.Stop()
+		} else {
+			httpCheck, httpCheckExists := c.checksHTTP[checkHash]
+			tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
+
+			if !httpCheckExists && !tcpCheckExists {
+				c.logger.Warn("Inconsistency check is not TCP, HTTP or GRPC", "checkHash", checkHash)
+				return false
+			} else {
+				if httpCheckExists {
+					httpCheck.Stop()
+					delete(c.checksHTTP, checkHash)
+				} else {
+					tcpCheck.Stop()
+					delete(c.checksTCP, checkHash)
+				}
+			}
+		}
+
+		updated[checkHash] = true
+	} else {
+		c.logger.Debug("Added GRPC check", "checkHash", checkHash)
+		fmt.Println("Added GRPC check", "checkHash", checkHash)
+		added[checkHash] = true
+	}
+
+	grpc.Start()
+	c.checksGRPC[checkHash] = grpc
 
 	return true
 }
@@ -240,8 +328,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			anyUpdates = c.updateCheckHTTP(check, checkHash, &definition, updated, added)
 		} else if definition.TCP != "" {
 			anyUpdates = c.updateCheckTCP(check, checkHash, &definition, updated, added)
+		} else if definition.GRPC != "" {
+			anyUpdates = c.updateCheckGRPC(check, checkHash, &definition, updated, added)
 		} else {
-			c.logger.Warn("check is not a valid HTTP or TCP check", "checkHash", checkHash)
+			c.logger.Warn("check is not a valid HTTP, TCP or GRPC check", "checkHash", checkHash)
 			continue
 		}
 
@@ -279,6 +369,10 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			if tcpCheck, tcpCheckExists := c.checksTCP[checkHash]; tcpCheckExists {
 				tcpCheck.Stop()
 				delete(c.checksTCP, checkHash)
+			}
+			if grpcCheck, grpcCheckExists := c.checksGRPC[checkHash]; grpcCheckExists {
+				grpcCheck.Stop()
+				delete(c.checksGRPC, checkHash)
 			}
 
 			removed[checkHash] = true
