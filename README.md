@@ -200,7 +200,7 @@ node_probe_interval = "10s"
 // Controls whether or not to disable calculating and updating node coordinates
 // when doing the node probe. Defaults to false i.e. coordinate updates
 // are enabled.
-disable_coordinate_updates
+disable_coordinate_updates = false
 
 // The address of the local Consul agent. Can also be provided through the
 // CONSUL_HTTP_ADDR environment variable.
@@ -276,7 +276,7 @@ telemetry {
  	filter_default = false
  	prefix_filter = []
  	metrics_prefix = ""
- 	prometheus_retention_time = ""
+ 	prometheus_retention_time = "0"
  	statsd_address = ""
  	statsite_address = ""
 }
