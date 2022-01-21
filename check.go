@@ -231,11 +231,12 @@ func (c *CheckRunner) updateCheckGRPC(latestCheck *api.HealthCheck, checkHash ty
 	tlsConfig.InsecureSkipVerify = definition.TLSSkipVerify
 
 	grpc := &consulchecks.CheckGRPC{
-		Notify:   c,
-		CheckID:  checkHash,
-		GRPC:     definition.GRPC,
-		Interval: definition.IntervalDuration,
-		Timeout:  definition.TimeoutDuration,
+		Notify:     c,
+		CheckID:    checkHash,
+		GRPC:       definition.GRPC,
+		GRPCUseTLS: definition.GRPCUseTLS,
+		Interval:   definition.IntervalDuration,
+		Timeout:    definition.TimeoutDuration,
 		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
 			InferLevels: true,
 		}),
