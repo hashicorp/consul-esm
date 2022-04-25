@@ -46,12 +46,8 @@ func init() {
 func GetHumanVersion() string {
 	version := fmt.Sprintf("%s v%s", Name, Version)
 
-	release := VersionPrerelease
-	if GitDescribe == "" && release == "" {
-		release = "dev"
-	}
-	if release != "" {
-		version += fmt.Sprintf("-%s", release)
+	if VersionPrerelease != "" {
+		version += fmt.Sprintf("-%s", VersionPrerelease)
 	}
 	if GitCommit != "" {
 		version += fmt.Sprintf(" (%s)", GitCommit)
