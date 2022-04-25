@@ -35,6 +35,14 @@ dev:
 		go install -ldflags "${LD_FLAGS}" -tags "${GOTAGS}"
 .PHONY: dev
 
+# dev docker builds
+docker:
+	@env CGO_ENABLED="0" go build -ldflags "${LD_FLAGS}" -o $(NAME)
+	mkdir -p dist/linux/amd64/
+	cp consul-esm dist/linux/amd64/
+	env DOCKER_BUILDKIT=1 docker build -t consul-esm .
+.PHONY: docker
+
 test:
 	@echo "==> Testing ${NAME}"
 	@go test -timeout=60s -tags="${GOTAGS}" ${TESTARGS} ./...
