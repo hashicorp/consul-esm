@@ -13,7 +13,7 @@ import (
 const consulVersionConstraint = ">= 1.4.1"
 
 var (
-	Name string
+	Name string = "consul-esm"
 
 	// The git commit that was compiled. These will be filled in by the
 	// compiler.
