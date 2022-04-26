@@ -30,6 +30,7 @@ func main() {
 		"format. Can be specified multiple times.")
 	f.Var(&configFiles, "config-dir", "A directory to look for .hcl or .json config files in. "+
 		"Can be specified multiple times.")
+	f.BoolVar(&isVersion, "v", false, "")
 	f.BoolVar(&isVersion, "version", false, "Print the version of this daemon.")
 
 	f.Usage = func() {
@@ -48,8 +49,6 @@ func main() {
 
 	if isVersion {
 		fmt.Printf("%s\n", version.GetHumanVersion())
-		fmt.Printf("Compatible with Consul versions %s\n",
-			version.GetConsulVersionConstraint())
 		os.Exit(ExitCodeOK)
 	}
 
