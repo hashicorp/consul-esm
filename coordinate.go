@@ -79,11 +79,12 @@ func (a *Agent) updateCoords(nodeCh nodeChannel) {
 		a.inflightLock.Lock()
 		if _, ok := a.inflightPings[node.Node]; ok {
 			a.logger.Warn("Error pinging node, last request still outstanding", "node", node.Node, "nodeId", node.ID)
+			a.inflightLock.Unlock()
 		} else {
 			a.inflightPings[node.Node] = struct{}{}
+			a.inflightLock.Unlock()
 			go a.runNodePing(node)
 		}
-		a.inflightLock.Unlock()
 	}
 }
 
