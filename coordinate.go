@@ -26,11 +26,13 @@ var (
 	// The maximum time to wait for a ping to complete.
 	MaxRTT = 5 * time.Second
 )
+type nodeChannel <-chan []*api.Node
 
 // updateCoords is a long running goroutine that attempts to ping all external nodes
 // once per CoordinateUpdateInterval and update their statuses in Consul.
-func (a *Agent) updateCoords(nodeCh <-chan []*api.Node) {
+func (a *Agent) updateCoords(nodeCh nodeChannel) {
 	// Wait for the first node ordering
+	nodeCh = a.checkNodeTracking(nodeCh)
 	nodes := <-nodeCh
 	shuffleNodes(nodes)
 
@@ -417,4 +419,37 @@ func pingNode(addr string, method string) (time.Duration, error) {
 	} else {
 		return 0, pingErr
 	}
+}
+
+// Needed for cases of unregister->reregister, so the newly re-registered
+// node doesn't use the old status (which would stay for timed duration).
+// Also clear an inflightPings flag if present.
+func (a *Agent) checkNodeTracking(inCh nodeChannel) nodeChannel {
+	outCh := make(chan []*api.Node)
+	go func() {
+		oldNodes := []*api.Node{}
+		for nodes := range inCh {
+			inUse := make(map[string]bool, len(oldNodes))
+			for _, node := range oldNodes {
+				inUse[node.Node] = true
+			}
+			a.knownNodeStatusesLock.Lock()
+			for node := range a.knownNodeStatuses {
+				if !inUse[node] {
+					delete(a.knownNodeStatuses, node)
+				}
+			}
+			a.knownNodeStatusesLock.Unlock()
+			a.inflightLock.Lock()
+			for node := range a.inflightPings {
+				if !inUse[node] {
+					delete(a.inflightPings, node)
+				}
+			}
+			a.inflightLock.Unlock()
+			oldNodes = nodes
+			outCh <- nodes
+		}
+	}()
+	return outCh
 }

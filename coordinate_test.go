@@ -334,3 +334,28 @@ func TestCoordinate_parallelPings(t *testing.T) {
 		}
 	})
 }
+
+func TestCheckNodeTracking(t *testing.T) {
+	// context, agent has previously seen nodes "foo" and "bar"
+	// it is also in mid-ping check on "foo"
+	agent := Agent{
+		inflightPings:     map[string]struct{}{"foo": {}},
+		knownNodeStatuses: map[string]lastKnownStatus{"foo": {}, "bar": {}},
+	}
+	inCh := make(chan []*api.Node)
+	outCh := agent.checkNodeTracking(inCh)
+	// New nodes data, only "bar" registered now ("foo" unregistered)
+	inCh <- []*api.Node{{Node: "bar"}}
+	found := make(map[string]bool, 1)
+	for _, node := range <-outCh {
+		found[node.Node] = true
+	}
+	// foo should be eliminated
+	if found["foo"] {
+		t.Errorf("foo?")
+	}
+	// bar should still be there
+	if !found["bar"] {
+		t.Errorf("bar?")
+	}
+}
