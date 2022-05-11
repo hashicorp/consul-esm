@@ -22,11 +22,10 @@ const (
 	MetaSegmentKey = "consul-network-segment"
 )
 
-var (
-	// The maximum time to wait for a ping to complete.
-	MaxRTT = 5 * time.Second
-)
 type nodeChannel <-chan []*api.Node
+
+// The maximum time to wait for a ping to complete.
+var MaxRTT = 5 * time.Second
 
 // updateCoords is a long running goroutine that attempts to ping all external nodes
 // once per CoordinateUpdateInterval and update their statuses in Consul.
