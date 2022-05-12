@@ -9,7 +9,7 @@ project "consul-esm" {
   github {
     organization = "hashicorp"
     repository = "consul-esm"
-    release_branches = ["master"]
+    release_branches = ["main"]
   }
 }
 
