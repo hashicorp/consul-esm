@@ -305,6 +305,11 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
+		if status == api.HealthCritical {
+			if _, ok := c.checksCritical[checkID]; !ok {
+				c.checksCritical[checkID] = time.Now()
+			}
+		}
 		check.failureCounter = decrementCounter(check.failureCounter)
 		check.successCounter = decrementCounter(check.successCounter)
 		return
