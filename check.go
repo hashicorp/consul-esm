@@ -434,10 +434,10 @@ func (c *CheckRunner) reapServices(shutdownCh <-chan struct{}) {
 func (c *CheckRunner) reapServicesInternal() {
 	c.Lock()
 	defer c.Unlock()
-
-	reaped := make(map[string]bool)
+	reaped := make(map[string]map[string]bool)
 	for checkID, criticalTime := range c.checksCritical {
 		check := c.checks[checkID]
+		nodeName := check.Node
 		serviceID := check.ServiceID
 
 		// There's nothing to do if there's no service.
@@ -447,7 +447,7 @@ func (c *CheckRunner) reapServicesInternal() {
 
 		// There might be multiple checks for one service, so
 		// we don't need to reap multiple times.
-		if reaped[serviceID] {
+		if reaped[nodeName][serviceID] {
 			continue
 		}
 
@@ -461,7 +461,10 @@ func (c *CheckRunner) reapServicesInternal() {
 				"serviceID", serviceID,
 				"duration", time.Since(criticalTime),
 				"timeout", timeout)
-			reaped[serviceID] = true
+			if reaped[nodeName] == nil {
+				reaped[nodeName] = make(map[string]bool)
+			}
+			reaped[nodeName][serviceID] = true
 		}
 	}
 }
