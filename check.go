@@ -101,16 +101,14 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	tlsConfig.ServerName = definition.TLSServerName
 
 	http := &consulchecks.CheckHTTP{
-		Notify:   c,
-		CheckID:  checkHash,
-		HTTP:     definition.HTTP,
-		Header:   definition.Header,
-		Method:   definition.Method,
-		Interval: definition.IntervalDuration,
-		Timeout:  definition.TimeoutDuration,
-		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
-			InferLevels: true,
-		}),
+		Notify:          c,
+		CheckID:         checkHash,
+		HTTP:            definition.HTTP,
+		Header:          definition.Header,
+		Method:          definition.Method,
+		Interval:        definition.IntervalDuration,
+		Timeout:         definition.TimeoutDuration,
+		Logger:          c.logger,
 		TLSClientConfig: tlsConfig,
 	}
 
@@ -161,9 +159,7 @@ func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash typ
 		TCP:      definition.TCP,
 		Interval: definition.IntervalDuration,
 		Timeout:  definition.TimeoutDuration,
-		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
-			InferLevels: true,
-		}),
+		Logger:   c.logger,
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {

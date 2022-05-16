@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/hashicorp/consul-esm/version"
-	"github.com/hashicorp/consul/logger"
+	"github.com/hashicorp/consul/logging"
 	"github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/cli"
 )
@@ -39,7 +39,6 @@ func main() {
 	}
 
 	err := f.Parse(os.Args[1:])
-
 	if err != nil {
 		if err != flag.ErrHelp {
 			fmt.Printf("error parsing flags: %v", err)
@@ -60,26 +59,16 @@ func main() {
 	}
 
 	// Set up logging.
-	logConfig := &logger.Config{
+	logConfig := logging.Config{
+		Name:           "consul-esm",
 		LogLevel:       config.LogLevel,
 		EnableSyslog:   config.EnableSyslog,
 		SyslogFacility: config.SyslogFacility,
 	}
-	ui := &cli.BasicUi{Writer: os.Stdout, ErrorWriter: os.Stderr}
-	_, gatedWriter, _, logOutput, ok := logger.Setup(logConfig, ui)
-	if !ok {
+	logger, err := logging.Setup(logConfig, os.Stdout)
+	if err != nil {
 		os.Exit(ExitCodeError)
 	}
-	logger := hclog.New(&hclog.LoggerOptions{
-		Name:            "consul-esm",
-		Level:           hclog.LevelFromString(config.LogLevel),
-		Output:          logOutput,
-		IncludeLocation: true,
-		JSONFormat:      config.LogJSON,
-	})
-
-	gatedWriter.Flush()
-
 	agent, err := NewAgent(config, logger)
 	if err != nil {
 		panic(err)
@@ -99,6 +88,7 @@ func main() {
 	signal.Notify(signalCh)
 	go handleSignals(agent.logger, signalCh, agent)
 
+	ui := cli.BasicUi{Writer: os.Stdout, ErrorWriter: os.Stderr}
 	ui.Output("Consul ESM running!")
 	if config.Datacenter == "" {
 		ui.Info(fmt.Sprintf("            Datacenter: (default)"))
