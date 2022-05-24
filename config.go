@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/command/flags"
 	"github.com/hashicorp/consul/lib"
@@ -437,13 +438,13 @@ func convertTelemetry(telemetry Telemetry) (lib.TelemetryConfig, error) {
 		DisableHostname:                    boolVal(telemetry.DisableHostname),
 		DogstatsdAddr:                      stringVal(telemetry.DogstatsdAddr),
 		DogstatsdTags:                      telemetry.DogstatsdTags,
-		PrometheusRetentionTime:            prometheusRetentionTime,
 		FilterDefault:                      boolVal(telemetry.FilterDefault),
 		AllowedPrefixes:                    telemetryAllowedPrefixes,
 		BlockedPrefixes:                    telemetryBlockedPrefixes,
 		MetricsPrefix:                      stringVal(telemetry.MetricsPrefix),
 		StatsdAddr:                         stringVal(telemetry.StatsdAddr),
 		StatsiteAddr:                       stringVal(telemetry.StatsiteAddr),
+		PrometheusOpts:                     prometheus.PrometheusOpts{Expiration: prometheusRetentionTime},
 	}, nil
 }
 

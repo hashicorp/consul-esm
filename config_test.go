@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul/lib"
 	"github.com/stretchr/testify/assert"
 )
@@ -117,9 +118,11 @@ log_json = true
 			AllowedPrefixes:                    []string{"good", "better"},
 			BlockedPrefixes:                    []string{"bad", "worse"},
 			MetricsPrefix:                      "test",
-			PrometheusRetentionTime:            5 * time.Hour,
-			StatsdAddr:                         "example.io:8888",
-			StatsiteAddr:                       "5.6.7.8",
+			PrometheusOpts: prometheus.PrometheusOpts{
+				Expiration: 5 * time.Hour,
+			},
+			StatsdAddr:   "example.io:8888",
+			StatsiteAddr: "5.6.7.8",
 		},
 		PassingThreshold:  3,
 		CriticalThreshold: 2,
@@ -255,9 +258,11 @@ func TestConvertTelemetry(t *testing.T) {
 			},
 			false,
 			lib.TelemetryConfig{
-				AllowedPrefixes:         []string{"allow"},
-				BlockedPrefixes:         []string{"deny"},
-				PrometheusRetentionTime: 1 * time.Minute,
+				AllowedPrefixes: []string{"allow"},
+				BlockedPrefixes: []string{"deny"},
+				PrometheusOpts: prometheus.PrometheusOpts{
+					Expiration: 1 * time.Minute,
+				},
 			},
 		},
 		{

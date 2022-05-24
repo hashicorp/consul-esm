@@ -202,7 +202,7 @@ func (a *Agent) register() error {
 
 // runMetrics is a long-running goroutine that exposes an http metrics interface
 func (a *Agent) runMetrics() {
-	if a.config.Telemetry.PrometheusRetentionTime < 1 || a.config.ClientAddress == "" {
+	if a.config.Telemetry.PrometheusOpts.Expiration < 1 || a.config.ClientAddress == "" {
 		return
 	}
 
