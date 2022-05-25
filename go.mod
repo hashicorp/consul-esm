@@ -3,21 +3,21 @@ module github.com/hashicorp/consul-esm
 go 1.17
 
 require (
-	github.com/armon/go-metrics v0.3.9
+	github.com/armon/go-metrics v0.3.10
 	github.com/go-ping/ping v1.0.0
-	github.com/hashicorp/consul v1.6.1
-	github.com/hashicorp/consul/api v1.10.1
-	github.com/hashicorp/consul/sdk v0.8.0
+	github.com/hashicorp/consul v1.12.1
+	github.com/hashicorp/consul/api v1.12.0
+	github.com/hashicorp/consul/sdk v0.9.0
 	github.com/hashicorp/go-hclog v0.16.2
-	github.com/hashicorp/go-multierror v1.1.0
-	github.com/hashicorp/go-uuid v1.0.1
-	github.com/hashicorp/go-version v1.2.0
+	github.com/hashicorp/go-multierror v1.1.1
+	github.com/hashicorp/go-uuid v1.0.2
+	github.com/hashicorp/go-version v1.2.1
 	github.com/hashicorp/hcl v1.0.0
-	github.com/hashicorp/serf v0.9.5
+	github.com/hashicorp/serf v0.9.8
 	github.com/mitchellh/cli v1.1.0
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/prometheus/client_golang v1.4.0
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.7.0
 )
 
 require (
@@ -33,32 +33,34 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/go-connections v0.3.0 // indirect
 	github.com/fatih/color v1.12.0 // indirect
-	github.com/golang/protobuf v1.3.2 // indirect
-	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
+	github.com/golang/protobuf v1.5.0 // indirect
+	github.com/google/btree v1.0.0 // indirect
+	github.com/hashicorp/consul-net-rpc v0.0.0-20220307172752-3602954411b4 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
+	github.com/hashicorp/go-bexpr v0.1.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
-	github.com/hashicorp/go-retryablehttp v0.6.3 // indirect
+	github.com/hashicorp/go-retryablehttp v0.6.7 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
 	github.com/hashicorp/go-syslog v1.0.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
-	github.com/hashicorp/logutils v1.0.0 // indirect
-	github.com/hashicorp/memberlist v0.2.2 // indirect
-	github.com/hashicorp/raft v1.1.1 // indirect
-	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d // indirect
-	github.com/kr/text v0.1.0 // indirect
+	github.com/hashicorp/memberlist v0.3.1 // indirect
+	github.com/hashicorp/raft v1.3.9 // indirect
+	github.com/hashicorp/raft-autopilot v0.1.6 // indirect
+	github.com/hashicorp/yamux v0.0.0-20210826001029-26ff87cf9493 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/mattn/go-isatty v0.0.13 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
-	github.com/miekg/dns v1.1.26 // indirect
+	github.com/miekg/dns v1.1.41 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/mitchellh/go-testing-interface v1.0.0 // indirect
+	github.com/mitchellh/go-testing-interface v1.14.0 // indirect
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
-	github.com/pkg/errors v0.8.1 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
@@ -67,12 +69,14 @@ require (
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
+	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a // indirect
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6 // indirect
 	golang.org/x/text v0.3.7 // indirect
-	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55 // indirect
-	google.golang.org/grpc v1.25.0 // indirect
-	gopkg.in/yaml.v2 v2.2.8 // indirect
+	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
+	google.golang.org/genproto v0.0.0-20200623002339-fbb79eadd5eb // indirect
+	google.golang.org/grpc v1.36.0 // indirect
+	google.golang.org/protobuf v1.27.1 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )
