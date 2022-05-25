@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 
+	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
 	"github.com/stretchr/testify/assert"
@@ -348,9 +349,10 @@ func TestCheck_NoFlapping(t *testing.T) {
 
 	runner.UpdateChecks(checks)
 
-	id := checkHash(checks[0])
+	hash := checkHash(checks[0])
+	id := structs.CheckID{ID: hash}
 
-	originalCheck, ok := runner.checks[id]
+	originalCheck, ok := runner.checks[hash]
 	if !ok {
 		t.Fatalf("Check was not stored on runner.checks as expected. Checks: %v", runner.checks)
 	}
@@ -412,7 +414,7 @@ func TestCheck_NoFlapping(t *testing.T) {
 	assert.Equal(t, api.HealthCritical, originalCheck.Status)
 
 	runner.UpdateChecks(checks)
-	currentCheck, ok := runner.checks[id]
+	currentCheck, ok := runner.checks[hash]
 	if !ok {
 		t.Fatalf("Current check was not stored on runner.checks as expected. Checks: %v", runner.checks)
 	}
