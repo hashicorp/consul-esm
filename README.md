@@ -323,7 +323,7 @@ the check status will update to 'critical' and the counter will reset.
 Note: this implementation diverges from [Consul's anti-flapping thresholds][Consul Anti-Flapping], which
 counts total consecutive checks.
 
-[Consul Anti-Flapping]: https://www.consul.io/docs/agent/checks#success-failures-before-passing-critical "Consul Agent Success/Failures before passing/critical"
+[Consul Anti-Flapping]: https://www.consul.io/docs/agent/checks#success-failures-before-passing-warning-critical "Consul Agent Success/Failures before passing/warning/critical"
 
 ### Consul ACL Policies
 
