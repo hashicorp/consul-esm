@@ -373,7 +373,7 @@ func TestCheck_NoFlapping(t *testing.T) {
 
 	runner.UpdateCheck(id, api.HealthPassing, "")
 	assert.Equal(t, 0, originalCheck.failureCounter)
-	assert.Equal(t, 0, originalCheck.successCounter)
+	assert.Equal(t, 2, originalCheck.successCounter)
 	assert.Equal(t, api.HealthPassing, originalCheck.Status)
 
 	// test non-consecutive checks: non-consecutive will increment and
@@ -389,6 +389,11 @@ func TestCheck_NoFlapping(t *testing.T) {
 	assert.Equal(t, api.HealthPassing, originalCheck.Status)
 
 	runner.UpdateCheck(id, api.HealthPassing, "")
+	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 1, originalCheck.successCounter)
+	assert.Equal(t, api.HealthPassing, originalCheck.Status)
+
+	runner.UpdateCheck(id, api.HealthCritical, "")
 	assert.Equal(t, 1, originalCheck.failureCounter)
 	assert.Equal(t, 0, originalCheck.successCounter)
 	assert.Equal(t, api.HealthPassing, originalCheck.Status)
@@ -399,7 +404,7 @@ func TestCheck_NoFlapping(t *testing.T) {
 	assert.Equal(t, api.HealthPassing, originalCheck.Status)
 
 	runner.UpdateCheck(id, api.HealthCritical, "")
-	assert.Equal(t, 0, originalCheck.failureCounter)
+	assert.Equal(t, 2, originalCheck.failureCounter)
 	assert.Equal(t, 0, originalCheck.successCounter)
 	assert.Equal(t, api.HealthCritical, originalCheck.Status)
 
