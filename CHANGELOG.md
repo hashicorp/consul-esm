@@ -1,3 +1,20 @@
+## v0.6.1 (June 2, 2021)
+
+IMPROVEMENTS:
+
+  * Add support for TLSServerName for HTTP health checks [[GH-116](https://github.com/hashicorp/consul-esm/pull/116)]
+
+BUG FIXES:
+
+  * Handle case of same service ID on different nodes [[GH-135](https://github.com/hashicorp/consul-esm/pull/135)]
+  * Dependency Updates [GH-134](https://github.com/hashicorp/consul-esm/pull/134)], [GH-132](https://github.com/hashicorp/consul-esm/issues/132)]
+    * Update go-ping dependency to fix deadlock[[GH-129](https://github.com/hashicorp/consul-esm/pull/129)]
+    * Fix issue with cross signed certs [[GH-84](https://github.com/hashicorp/consul-esm/issues/84)]
+  * ESM doesn't deregister if status and output are same as before [[GH-130](https://github.com/hashicorp/consul-esm/pull/130)]
+  * Add -v and use standard version output [[GH-126](https://github.com/hashicorp/consul-esm/pull/126), [GH-125](https://github.com/hashicorp/consul-esm/issues/125)]
+  * External node checks disappear after re-registration of nodes [[GH-128](https://github.com/hashicorp/consul-esm/pull/128), [GH-119](https://github.com/hashicorp/consul-esm/issues/119)]
+
+
 ## v0.6.0 (September 23, 2021)
 
 IMPROVEMENTS:
