@@ -435,33 +435,37 @@ func (c *CheckRunner) reapServicesInternal() {
 	c.Lock()
 	defer c.Unlock()
 
-	reaped := make(map[string]bool)
+	type uniqueID struct {
+		node, service string
+	}
+
+	reaped := make(map[uniqueID]bool)
 	for checkID, criticalTime := range c.checksCritical {
 		check := c.checks[checkID]
-		serviceID := check.ServiceID
 
+		ID := uniqueID{node: check.Node, service: check.ServiceID}
 		// There's nothing to do if there's no service.
-		if serviceID == "" {
+		if ID.service == "" {
 			continue
 		}
-
 		// There might be multiple checks for one service, so
 		// we don't need to reap multiple times.
-		if reaped[serviceID] {
+		if reaped[ID] {
 			continue
 		}
 
 		timeout := check.Definition.DeregisterCriticalServiceAfterDuration
 		if timeout > 0 && timeout < time.Since(criticalTime) {
 			c.client.Catalog().Deregister(&api.CatalogDeregistration{
-				Node:      check.Node,
-				ServiceID: serviceID,
+				Node:      ID.node,
+				ServiceID: ID.service,
 			}, nil)
 			c.logger.Info("agent has been critical for too long, deregistered service", "checkID", checkID,
-				"serviceID", serviceID,
+				"nodeID", ID.node,
+				"serviceID", ID.service,
 				"duration", time.Since(criticalTime),
 				"timeout", timeout)
-			reaped[serviceID] = true
+			reaped[ID] = true
 		}
 	}
 }
