@@ -11,6 +11,7 @@ import (
 
 	"github.com/armon/go-metrics"
 	consulchecks "github.com/hashicorp/consul/agent/checks"
+	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/types"
@@ -101,17 +102,16 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	tlsConfig.ServerName = definition.TLSServerName
 
 	http := &consulchecks.CheckHTTP{
-		Notify:   c,
-		CheckID:  checkHash,
-		HTTP:     definition.HTTP,
-		Header:   definition.Header,
-		Method:   definition.Method,
-		Interval: definition.IntervalDuration,
-		Timeout:  definition.TimeoutDuration,
-		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
-			InferLevels: true,
-		}),
+		CheckID:         structs.CheckID{ID: checkHash},
+		HTTP:            definition.HTTP,
+		Header:          definition.Header,
+		Method:          definition.Method,
+		Interval:        definition.IntervalDuration,
+		Timeout:         definition.TimeoutDuration,
+		Logger:          c.logger,
 		TLSClientConfig: tlsConfig,
+		StatusHandler: consulchecks.NewStatusHandler(c, c.logger,
+			c.PassingThreshold, c.CriticalThreshold, c.CriticalThreshold),
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {
@@ -153,17 +153,18 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	return true
 }
 
-func (c *CheckRunner) updateCheckTCP(latestCheck *api.HealthCheck, checkHash types.CheckID,
-	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
+func (c *CheckRunner) updateCheckTCP(
+	latestCheck *api.HealthCheck, checkHash types.CheckID,
+	definition *api.HealthCheckDefinition, updated, added checkIDSet,
+) bool {
 	tcp := &consulchecks.CheckTCP{
-		Notify:   c,
-		CheckID:  checkHash,
+		CheckID:  structs.CheckID{ID: checkHash},
 		TCP:      definition.TCP,
 		Interval: definition.IntervalDuration,
 		Timeout:  definition.TimeoutDuration,
-		Logger: c.logger.StandardLogger(&hclog.StandardLoggerOptions{
-			InferLevels: true,
-		}),
+		Logger:   c.logger,
+		StatusHandler: consulchecks.NewStatusHandler(c, c.logger,
+			c.PassingThreshold, c.CriticalThreshold, c.CriticalThreshold),
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {
@@ -292,13 +293,22 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 	}
 }
 
+// ServiceExists is part of the consulchecks.CheckNotifier interface.
+// It is currently used as part of Consul's alias service feature.
+// This function is used to check for localality of service.
+// Unsuppported at this time, so hardcoded false return.
+func (c *CheckRunner) ServiceExists(serviceID structs.ServiceID) bool {
+	return false
+}
+
 // UpdateCheck handles the output of an HTTP/TCP check and decides whether or not
 // to push an update to the catalog.
-func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) {
+func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string) {
 	c.Lock()
 	defer c.Unlock()
 
-	check, ok := c.checks[checkID]
+	checkHash := checkID.ID
+	check, ok := c.checks[checkHash]
 	if !ok {
 		return
 	}
@@ -326,11 +336,11 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 
 	// Update the critical time tracking
 	if status == api.HealthCritical {
-		if _, ok := c.checksCritical[checkID]; !ok {
-			c.checksCritical[checkID] = time.Now()
+		if _, ok := c.checksCritical[checkHash]; !ok {
+			c.checksCritical[checkHash] = time.Now()
 		}
 	} else {
-		delete(c.checksCritical, checkID)
+		delete(c.checksCritical, checkHash)
 	}
 
 	// Defer a sync if the output has changed. This is an optimization around
@@ -339,15 +349,15 @@ func (c *CheckRunner) UpdateCheck(checkID types.CheckID, status, output string) 
 	// change we do the write immediately.
 	if c.CheckUpdateInterval > 0 && check.Status == status {
 		check.Output = output
-		if _, ok := c.deferCheck[checkID]; !ok {
+		if _, ok := c.deferCheck[checkHash]; !ok {
 			intv := time.Duration(uint64(c.CheckUpdateInterval)/2) + lib.RandomStagger(c.CheckUpdateInterval)
 			deferSync := time.AfterFunc(intv, func() {
 				c.Lock()
 				c.handleCheckUpdate(&check.HealthCheck, status, output)
-				delete(c.deferCheck, checkID)
+				delete(c.deferCheck, checkHash)
 				c.Unlock()
 			})
-			c.deferCheck[checkID] = deferSync
+			c.deferCheck[checkHash] = deferSync
 		}
 		return
 	}

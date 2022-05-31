@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
@@ -71,7 +70,7 @@ type Agent struct {
 	knownNodeStatuses     map[string]lastKnownStatus
 	knownNodeStatusesLock sync.Mutex
 
-	memSink *metrics.InmemSink
+	metrics *lib.MetricsConfig
 }
 
 func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
@@ -81,7 +80,8 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		return nil, err
 	}
 
-	memSink, err := lib.InitTelemetry(config.Telemetry)
+	// Never used locally. I think we keep the reference to avoid GC.
+	metricsConf, err := lib.InitTelemetry(config.Telemetry, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		shutdownCh:        make(chan struct{}),
 		inflightPings:     make(map[string]struct{}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
-		memSink:           memSink,
+		metrics:           metricsConf,
 	}
 
 	logger.Info("Connecting to Consul", "address", clientConf.Address)
@@ -202,7 +202,7 @@ func (a *Agent) register() error {
 
 // runMetrics is a long-running goroutine that exposes an http metrics interface
 func (a *Agent) runMetrics() {
-	if a.config.Telemetry.PrometheusRetentionTime < 1 || a.config.ClientAddress == "" {
+	if a.config.Telemetry.PrometheusOpts.Expiration < 1 || a.config.ClientAddress == "" {
 		return
 	}
 
