@@ -21,10 +21,8 @@ import (
 
 const externalCheckName = "externalNodeHealth"
 
-var (
-	// defaultInterval is the check interval to use if one is not set.
-	defaultInterval = 30 * time.Second
-)
+// defaultInterval is the check interval to use if one is not set.
+var defaultInterval = 30 * time.Second
 
 type checkIDSet map[types.CheckID]bool
 
@@ -316,8 +314,8 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
 		if status == api.HealthCritical {
-			if _, ok := c.checksCritical[checkID]; !ok {
-				c.checksCritical[checkID] = time.Now()
+			if _, ok := c.checksCritical[checkHash]; !ok {
+				c.checksCritical[checkHash] = time.Now()
 			}
 		}
 		check.failureCounter = decrementCounter(check.failureCounter)
