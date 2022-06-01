@@ -355,6 +355,7 @@ func (a *Agent) watchNodeList() {
 		kv, meta, err := a.client.KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
 		if err != nil {
 			a.logger.Warn("Error querying for node watch list", "error", err)
+			time.Sleep(retryTime)
 			continue
 		}
 
