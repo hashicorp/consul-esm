@@ -3,6 +3,7 @@
 IMPROVEMENTS:
 
   * Add support for TLSServerName for HTTP health checks [[GH-116](https://github.com/hashicorp/consul-esm/pull/116)]
+  * Add external-source Metadata when registering consul-esm as a service [[GH-95](https://github.com/hashicorp/consul-esm/pull/95)]
 
 BUG FIXES:
 
