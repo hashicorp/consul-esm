@@ -6,7 +6,7 @@ require (
 	github.com/armon/go-metrics v0.4.0
 	github.com/go-ping/ping v1.1.0
 	github.com/hashicorp/consul v1.12.1
-	github.com/hashicorp/consul/api v1.12.0
+	github.com/hashicorp/consul/api v1.13.0
 	github.com/hashicorp/consul/sdk v0.9.0
 	github.com/hashicorp/go-hclog v1.2.0
 	github.com/hashicorp/go-multierror v1.1.1
