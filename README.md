@@ -1,4 +1,6 @@
-[![CircleCI](https://circleci.com/gh/hashicorp/consul-esm/tree/master.svg?style=svg)](https://circleci.com/gh/hashicorp/consul-esm/tree/master)
+[![Go Reference](https://pkg.go.dev/badge/github.com/hashicorp/consul-esm.svg)](https://pkg.go.dev/github.com/hashicorp/consul-esm)
+[![build](https://github.com/hashicorp/consul-esm/actions/workflows/build.yml/badge.svg)](https://github.com/hashicorp/consul-esm/actions/workflows/build.yml)
+[![ci](https://github.com/hashicorp/consul-esm/actions/workflows/ci.yml/badge.svg)](https://github.com/hashicorp/consul-esm/actions/workflows/ci.yml)
 
 Consul ESM (External Service Monitor)
 ================
