@@ -34,6 +34,7 @@ func main() {
 	f.BoolVar(&isVersion, "version", false, "Print the version of this daemon.")
 
 	f.Usage = func() {
+		f.SetOutput(os.Stdout)
 		fmt.Print(usage, "\n")
 		f.PrintDefaults()
 	}
