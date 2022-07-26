@@ -8,7 +8,7 @@ require (
 	github.com/hashicorp/consul v1.12.1
 	github.com/hashicorp/consul/api v1.13.1
 	github.com/hashicorp/consul/sdk v0.10.0
-	github.com/hashicorp/go-hclog v1.2.1
+	github.com/hashicorp/go-hclog v1.2.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
 	github.com/hashicorp/go-version v1.6.0
