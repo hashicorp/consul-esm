@@ -3,7 +3,7 @@ module github.com/hashicorp/consul-esm
 go 1.17
 
 require (
-	github.com/armon/go-metrics v0.4.0
+	github.com/armon/go-metrics v0.4.1
 	github.com/go-ping/ping v1.1.0
 	github.com/hashicorp/consul v1.13.1
 	github.com/hashicorp/consul/api v1.14.0
