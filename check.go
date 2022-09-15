@@ -119,6 +119,7 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 			reflect.DeepEqual(httpCheck.Header, http.Header) &&
 			httpCheck.Method == http.Method &&
 			httpCheck.TLSClientConfig.InsecureSkipVerify == http.TLSClientConfig.InsecureSkipVerify &&
+			httpCheck.TLSClientConfig.ServerName == http.TLSClientConfig.ServerName &&
 			httpCheck.Interval == http.Interval &&
 			httpCheck.Timeout == http.Timeout &&
 			check.Definition.DeregisterCriticalServiceAfter == definition.DeregisterCriticalServiceAfter {
