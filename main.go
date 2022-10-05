@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -91,6 +92,9 @@ func main() {
 	go handleSignals(agent.logger, signalCh, agent)
 
 	ui := cli.BasicUi{Writer: os.Stdout, ErrorWriter: os.Stderr}
+	if config.LogJSON {
+		ui.Writer = io.Discard
+	}
 	ui.Output("Consul ESM running!")
 	if config.Datacenter == "" {
 		ui.Info(fmt.Sprintf("            Datacenter: (default)"))
