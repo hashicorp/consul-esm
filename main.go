@@ -65,6 +65,7 @@ func main() {
 		LogLevel:       config.LogLevel,
 		EnableSyslog:   config.EnableSyslog,
 		SyslogFacility: config.SyslogFacility,
+		LogJSON:        config.LogJSON,
 	}
 	logger, err := logging.Setup(logConfig, os.Stdout)
 	if err != nil {
