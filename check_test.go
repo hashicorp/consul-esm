@@ -286,7 +286,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 	}
 
 	// confirm that esm's modified version of check's interval is updated
-	esmCheck, ok := runner.checksHTTP[checkHash(check)]
+	esmCheck, ok := runner.checksHTTP.Load(checkHash(check))
 	if !ok {
 		t.Fatalf("HTTP check was not stored on runner.checksHTTP as expected. Checks: %v", runner.checksHTTP)
 	}
