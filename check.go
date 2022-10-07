@@ -37,8 +37,8 @@ type CheckRunner struct {
 
 	// checksHTTP & checksTCP are HTTP/TCP checks that are run by ESM.
 	// They have potentially modified values from the Consul Catalog checks
-	checksHTTP map[types.CheckID]*consulchecks.CheckHTTP
-	checksTCP  map[types.CheckID]*consulchecks.CheckTCP
+	checksHTTP checkMap[*consulchecks.CheckHTTP]
+	checksTCP  checkMap[*consulchecks.CheckTCP]
 
 	checksCritical map[types.CheckID]time.Time
 
@@ -60,15 +60,41 @@ type esmHealthCheck struct {
 	successCounter int
 }
 
+// checkMap is sync.Map with type safety and a call to stop the checks
+type stop interface{ Stop() }
+
+type checkMap[TY stop] struct {
+	sync.Map
+}
+
+func (m *checkMap[TY]) Load(k any) (ty TY, ok bool) {
+	v, ok := m.Map.Load(k)
+	if !ok {
+		return ty, ok
+	}
+	ty, ok = v.(TY)
+	return ty, ok
+}
+
+func (m *checkMap[TY]) Store(k any, v TY) {
+	m.Map.Store(k, v)
+}
+
+func (m *checkMap[TY]) StopAll() {
+	m.Map.Range(func(_, v any) bool {
+		v.(TY).Stop()
+		return true
+	})
+}
+
 func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	minimumInterval time.Duration, tlsConfig *tls.Config, passingThreshold int,
-	criticalThreshold int) *CheckRunner {
+	criticalThreshold int,
+) *CheckRunner {
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
 		checks:              make(map[types.CheckID]*esmHealthCheck),
-		checksHTTP:          make(map[types.CheckID]*consulchecks.CheckHTTP),
-		checksTCP:           make(map[types.CheckID]*consulchecks.CheckTCP),
 		checksCritical:      make(map[types.CheckID]time.Time),
 		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
@@ -80,21 +106,15 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 }
 
 func (c *CheckRunner) Stop() {
-	c.Lock()
-	defer c.Unlock()
-
-	for _, check := range c.checksHTTP {
-		check.Stop()
-	}
-
-	for _, check := range c.checksTCP {
-		check.Stop()
-	}
+	c.checksHTTP.StopAll()
+	c.checksTCP.StopAll()
 }
 
 // Update an HTTP check
-func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash types.CheckID,
-	definition *api.HealthCheckDefinition, updated, added checkIDSet) bool {
+func (c *CheckRunner) updateCheckHTTP(
+	latestCheck *api.HealthCheck, checkHash types.CheckID,
+	definition *api.HealthCheckDefinition, updated, added checkIDSet,
+) bool {
 	tlsConfig := c.tlsConfig.Clone()
 	tlsConfig.InsecureSkipVerify = definition.TLSSkipVerify
 	tlsConfig.ServerName = definition.TLSServerName
@@ -113,7 +133,7 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {
-		httpCheck, httpCheckExists := c.checksHTTP[checkHash]
+		httpCheck, httpCheckExists := c.checksHTTP.Load(checkHash)
 		if httpCheckExists &&
 			httpCheck.HTTP == http.HTTP &&
 			reflect.DeepEqual(httpCheck.Header, http.Header) &&
@@ -131,13 +151,13 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 		if httpCheckExists {
 			httpCheck.Stop()
 		} else {
-			tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
+			tcpCheck, tcpCheckExists := c.checksTCP.Load(checkHash)
 			if !tcpCheckExists {
 				c.logger.Warn("Inconsistency check is not TCP and HTTP", "checkHash", checkHash)
 				return false
 			}
 			tcpCheck.Stop()
-			delete(c.checksTCP, checkHash)
+			c.checksTCP.Delete(checkHash)
 		}
 
 		updated[checkHash] = true
@@ -147,7 +167,7 @@ func (c *CheckRunner) updateCheckHTTP(latestCheck *api.HealthCheck, checkHash ty
 	}
 
 	http.Start()
-	c.checksHTTP[checkHash] = http
+	c.checksHTTP.Store(checkHash, http)
 
 	return true
 }
@@ -167,7 +187,7 @@ func (c *CheckRunner) updateCheckTCP(
 	}
 
 	if check, checkExists := c.checks[checkHash]; checkExists {
-		tcpCheck, tcpCheckExists := c.checksTCP[checkHash]
+		tcpCheck, tcpCheckExists := c.checksTCP.Load(checkHash)
 		if tcpCheckExists &&
 			tcpCheck.TCP == tcp.TCP &&
 			tcpCheck.Interval == tcp.Interval &&
@@ -181,13 +201,13 @@ func (c *CheckRunner) updateCheckTCP(
 		if tcpCheckExists {
 			tcpCheck.Stop()
 		} else {
-			httpCheck, httpCheckExists := c.checksHTTP[checkHash]
+			httpCheck, httpCheckExists := c.checksHTTP.Load(checkHash)
 			if !httpCheckExists {
 				c.logger.Warn("Inconsistency check is not TCP and HTTP", "checkHash", checkHash)
 				return false
 			}
 			httpCheck.Stop()
-			delete(c.checksHTTP, checkHash)
+			c.checksHTTP.Delete(checkHash)
 		}
 
 		updated[checkHash] = true
@@ -198,7 +218,7 @@ func (c *CheckRunner) updateCheckTCP(
 	}
 
 	tcp.Start()
-	c.checksTCP[checkHash] = tcp
+	c.checksTCP.Store(checkHash, tcp)
 
 	return true
 }
@@ -211,7 +231,6 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 	defer c.Unlock()
 
 	found := make(checkIDSet)
-
 	added := make(checkIDSet)
 	updated := make(checkIDSet)
 	removed := make(checkIDSet)
@@ -273,13 +292,13 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			delete(c.checks, checkHash)
 			delete(c.checksCritical, checkHash)
 
-			if httpCheck, httpCheckExists := c.checksHTTP[checkHash]; httpCheckExists {
+			if httpCheck, httpCheckExists := c.checksHTTP.Load(checkHash); httpCheckExists {
 				httpCheck.Stop()
-				delete(c.checksHTTP, checkHash)
+				c.checksHTTP.Delete(checkHash)
 			}
-			if tcpCheck, tcpCheckExists := c.checksTCP[checkHash]; tcpCheckExists {
+			if tcpCheck, tcpCheckExists := c.checksTCP.Load(checkHash); tcpCheckExists {
 				tcpCheck.Stop()
-				delete(c.checksTCP, checkHash)
+				c.checksTCP.Delete(checkHash)
 			}
 
 			removed[checkHash] = true
