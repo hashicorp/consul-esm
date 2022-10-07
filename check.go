@@ -241,7 +241,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			continue
 		}
 
-		checkHash := checkHash(check)
+		checkHash := hashCheck(check)
 
 		// create a copy of the definition that will be modified
 		definition := check.Definition
@@ -286,7 +286,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 	// Look for removed checks
 	for _, check := range c.checks {
-		checkHash := checkHash(&check.HealthCheck)
+		checkHash := hashCheck(&check.HealthCheck)
 		if _, ok := found[checkHash]; !ok {
 			c.logger.Debug("Deleting check %q", "checkHash", checkHash)
 			delete(c.checks, checkHash)
@@ -503,7 +503,7 @@ func (c *CheckRunner) reapServicesInternal() {
 	}
 }
 
-func checkHash(check *api.HealthCheck) types.CheckID {
+func hashCheck(check *api.HealthCheck) types.CheckID {
 	if check.ServiceID != "" {
 		return types.CheckID(fmt.Sprintf("%s/%s/%s", check.Node, check.ServiceID, check.CheckID))
 	}
