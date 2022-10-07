@@ -68,7 +68,7 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 		a.checkRunner.RLock()
 		defer a.checkRunner.RUnlock()
 		for _, check := range ourChecks {
-			hash := checkHash(check)
+			hash := hashCheck(check)
 			if _, ok := a.checkRunner.checks[hash]; !ok {
 				r.Fatalf("missing check %v", hash)
 			}
@@ -154,7 +154,8 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 		Address:    "127.0.0.1",
 		Datacenter: "dc1",
 		NodeMeta: map[string]string{
-			"external-node": "true"},
+			"external-node": "true",
+		},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -448,7 +449,7 @@ func Test_namespacesList(t *testing.T) {
 		}))
 	defer ts.Close()
 
-	//client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
+	// client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
 	client, err := api.NewClient(&api.Config{Address: ts.URL})
 	if err != nil {
 		t.Fatal(err)
