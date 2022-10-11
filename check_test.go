@@ -423,3 +423,50 @@ func TestCheck_NoFlapping(t *testing.T) {
 	assert.Equal(t, 1, currentCheck.successCounter)
 	assert.Equal(t, api.HealthCritical, currentCheck.Status)
 }
+
+func TestHeadersAlmostEqual(t *testing.T) {
+	type headers map[string][]string
+	type testCase struct {
+		h1, h2 headers
+		equal  bool
+	}
+	testCases := []testCase{
+		{
+			h1:    headers{},
+			h2:    headers{},
+			equal: true,
+		},
+		{
+			h1:    headers{"foo": {"foo"}},
+			h2:    headers{"bar": {"bar"}},
+			equal: false,
+		},
+		{
+			h1:    headers{"User-Agent": {"foo"}},
+			h2:    headers{"Accept": {"bar"}},
+			equal: true,
+		},
+		{
+			h1:    headers{"foo": {"foo"}, "User-Agent": {"foo"}},
+			h2:    headers{"Accept": {"bar"}},
+			equal: false,
+		},
+		{
+			h1:    headers{"foo": {"foo"}, "User-Agent": {"foo"}},
+			h2:    headers{"foo": {"foo"}, "Accept": {"bar"}},
+			equal: true,
+		},
+	}
+	for _, tc := range testCases {
+		switch eq := headersAlmostEqual(tc.h1, tc.h2); tc.equal {
+		case true:
+			if !eq {
+				t.Error("headers should be equal", tc.h1, tc.h2)
+			}
+		case false:
+			if eq {
+				t.Error("headers should NOT be equal", tc.h1, tc.h2)
+			}
+		}
+	}
+}

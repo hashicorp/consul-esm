@@ -136,7 +136,7 @@ func (c *CheckRunner) updateCheckHTTP(
 		httpCheck, httpCheckExists := c.checksHTTP.Load(checkHash)
 		if httpCheckExists &&
 			httpCheck.HTTP == http.HTTP &&
-			reflect.DeepEqual(httpCheck.Header, http.Header) &&
+			headersAlmostEqual(httpCheck.Header, http.Header) &&
 			httpCheck.Method == http.Method &&
 			httpCheck.TLSClientConfig.InsecureSkipVerify == http.TLSClientConfig.InsecureSkipVerify &&
 			httpCheck.TLSClientConfig.ServerName == http.TLSClientConfig.ServerName &&
@@ -169,6 +169,22 @@ func (c *CheckRunner) updateCheckHTTP(
 	http.Start()
 	c.checksHTTP.Store(checkHash, http)
 
+	return true
+}
+
+// Compares headers, skipping ones automatically added by Consul
+// in consul/agent/checks/check.go
+func headersAlmostEqual(h1, h2 map[string][]string) bool {
+	skip := map[string]bool{"User-Agent": true, "Accept": true}
+	for k1, v1 := range h1 {
+		if skip[k1] {
+			continue
+		}
+		v2 := h2[k1]
+		if !reflect.DeepEqual(v1, v2) {
+			return false
+		}
+	}
 	return true
 }
 
