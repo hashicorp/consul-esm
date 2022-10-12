@@ -1,3 +1,12 @@
+## v0.6.2 (Oct 12, 2022)
+
+BUG FIXES:
+
+* Fix issue with spurious HTTP checks [[GH-171](https://github.com/hashicorp/consul-esm/pull/171), [GH-158](https://github.com/hashicorp/consul-esm/issues/158)]
+* Fix deadlock in check updates [[GH-170](https://github.com/hashicorp/consul-esm/pull/170), [GH-159](https://github.com/hashicorp/consul-esm/issues/159)]
+* Discard startup text when using JSON logging [[GH-169](https://github.com/hashicorp/consul-esm/pull/169), [GH-161](https://github.com/hashicorp/consul-esm/issues/161)]
+* Fix regression with log_json setting [[GH-168](https://github.com/hashicorp/consul-esm/pull/168)]
+
 ## v0.6.1 (June 2, 2021)
 
 IMPROVEMENTS:
