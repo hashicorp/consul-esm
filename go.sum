@@ -187,8 +187,8 @@ github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
-github.com/hashicorp/consul v1.13.2 h1:BmRh4xOtoqPtF7UE6pqE6DBptRD4drKbhSgqDBZY1QI=
-github.com/hashicorp/consul v1.13.2/go.mod h1:ZXMTBZSY9Q6qDfkvn6PE538cD4IU35QeWwP1bMw3wlE=
+github.com/hashicorp/consul v1.13.3 h1:MA2Z5pcJUvVmgi03L+GxmvMZSVGo2iB4D/jKOvr88Dc=
+github.com/hashicorp/consul v1.13.3/go.mod h1:Ib9ve9R7BeXZlRM83eS46QogsP9deALURLCrUjREqRM=
 github.com/hashicorp/consul-net-rpc v0.0.0-20220307172752-3602954411b4 h1:Com/5n/omNSBusX11zdyIYtidiqewLIanchbm//McZA=
 github.com/hashicorp/consul-net-rpc v0.0.0-20220307172752-3602954411b4/go.mod h1:vWEAHAeAqfOwB3pSgHMQpIu8VH1jL+Ltg54Tw0wt/NI=
 github.com/hashicorp/consul/api v1.15.2 h1:3Q/pDqvJ7udgt/60QOOW/p/PeKioQN+ncYzzCdN2av0=
