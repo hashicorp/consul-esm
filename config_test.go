@@ -15,6 +15,7 @@ import (
 func TestDecodeMergeConfig(t *testing.T) {
 	raw := bytes.NewBufferString(`
 log_level = "INFO"
+enable_debug = true
 enable_syslog = true
 instance_id = "test-instance-id"
 consul_service = "service"
@@ -72,6 +73,7 @@ log_json = true
 
 	expected := &Config{
 		LogLevel:                 "INFO",
+		EnableDebug:              true,
 		InstanceID:               "test-instance-id",
 		Service:                  "service",
 		Tag:                      "asdf",
