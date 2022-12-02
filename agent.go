@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -123,7 +124,7 @@ func (a *Agent) Run() error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		a.runMetrics()
+		a.runHTTP()
 		wg.Done()
 	}()
 	wg.Add(1)
@@ -207,34 +208,51 @@ func (a *Agent) register() error {
 	return nil
 }
 
-// runMetrics is a long-running goroutine that exposes an http metrics interface
-func (a *Agent) runMetrics() {
-	if a.config.Telemetry.PrometheusOpts.Expiration < 1 || a.config.ClientAddress == "" {
+// runHTTP is a long-running goroutine that exposes an http interface for
+// metrics and/or pprof.
+func (a *Agent) runHTTP() {
+	if a.config.ClientAddress == "" {
+		return
+	}
+
+	enableMetrics := a.config.Telemetry.PrometheusOpts.Expiration >= 1
+	if !enableMetrics && !a.config.EnableDebug {
 		return
 	}
 
 	mux := http.NewServeMux()
 	srv := &http.Server{Addr: a.config.ClientAddress, Handler: mux}
-	handlerOptions := promhttp.HandlerOpts{
-		ErrorLog: a.logger.StandardLogger(&hclog.StandardLoggerOptions{
-			InferLevels: true,
-		}),
-		ErrorHandling: promhttp.ContinueOnError,
+
+	if enableMetrics {
+		handlerOptions := promhttp.HandlerOpts{
+			ErrorLog: a.logger.StandardLogger(&hclog.StandardLoggerOptions{
+				InferLevels: true,
+			}),
+			ErrorHandling: promhttp.ContinueOnError,
+		}
+		mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOptions))
 	}
 
-	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOptions))
+	if a.config.EnableDebug {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+
 	go func() {
 		<-a.shutdownCh
 		deadline := time.Now().Add(5 * time.Second)
 		ctx, cancel := context.WithDeadline(context.Background(), deadline)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
-			a.logger.Error("Failed to shutdown metrics interface", "error", err)
+			a.logger.Error("Failed to shutdown http interface", "error", err)
 		}
 	}()
 
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		a.logger.Error("Failed to open metrics interface", "error", err)
+		a.logger.Error("Failed to open http interface", "error", err)
 	}
 }
 

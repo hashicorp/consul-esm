@@ -26,6 +26,7 @@ const (
 
 type Config struct {
 	LogLevel       string
+	EnableDebug    bool
 	EnableSyslog   bool
 	SyslogFacility string
 	LogJSON        bool
@@ -156,6 +157,7 @@ type Telemetry struct {
 // HumanConfig contains configuration that the practitioner can set
 type HumanConfig struct {
 	LogLevel       flags.StringValue `mapstructure:"log_level"`
+	EnableDebug    flags.BoolValue   `mapstructure:"enable_debug"`
 	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
 	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
 	LogJSON        flags.BoolValue   `mapstructure:"log_json"`
@@ -453,6 +455,7 @@ func convertTelemetry(telemetry Telemetry) (lib.TelemetryConfig, error) {
 func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.LogLevel.Merge(&dst.LogLevel)
 	src.LogJSON.Merge(&dst.LogJSON)
+	src.EnableDebug.Merge(&dst.EnableDebug)
 	src.EnableSyslog.Merge(&dst.EnableSyslog)
 	src.InstanceID.Merge(&dst.InstanceID)
 	src.Service.Merge(&dst.Service)
