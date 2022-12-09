@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -10,7 +12,9 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/stretchr/testify/require"
 
+	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
 )
 
@@ -40,6 +44,9 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 			panic(err)
 		}
 	}()
+
+	// make sure test agent is ready before continuing
+	<-agent.ready
 
 	return agent
 }
@@ -112,7 +119,7 @@ func TestAgent_registerServiceAndCheck(t *testing.T) {
 	go func() {
 		time.Sleep(time.Second)
 		if err := agent.client.Agent().ServiceDeregister(serviceID); err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 	}()
 
@@ -426,4 +433,137 @@ func TestAgent_notUniqueInstanceIDFails(t *testing.T) {
 	default:
 		t.Fatalf("Unexpected error type. Wanted an alreadyExistsError type. Error: '%v'", e)
 	}
+}
+
+// XXX and YYY indicate values that need replacing
+var xxxHealthCheck = api.HealthCheck{
+	CheckID: "XXX_ck", Name: "XXX_ck1", ServiceID: "XXX1", ServiceName: "XXX",
+	Namespace: "YYY",
+	Node:      "foo", Status: "passing", Type: "http",
+	Definition: api.HealthCheckDefinition{
+		Interval: *api.NewReadableDuration(time.Second * 2),
+		Timeout:  *api.NewReadableDuration(time.Second * 5),
+		HTTP:     "https://www.hashicorp.com/robots.txt",
+	},
+}
+
+func testHealthChecks(ns string) string {
+	hc := xxxHealthCheck
+	name := "test_svc"
+	if ns != "" {
+		name = ns + "_svc"
+	}
+	hc.ServiceName, hc.ServiceID = name, name+"1"
+	hc.CheckID, hc.Name = name+"_ck", name+"_ck1"
+	hc.Namespace = ns
+	hcs := api.HealthChecks{&hc}
+	j, err := json.Marshal(hcs)
+	if err != nil {
+		panic(err)
+	}
+	return string(j)
+}
+
+func testNamespaces() string {
+	ns := []*api.Namespace{{Name: "default"}, {Name: "ns1"}, {Name: "ns2"}}
+	j, err := json.Marshal(ns)
+	if err != nil {
+		panic(err)
+	}
+	return string(j)
+}
+
+func TestAgent_getHealthChecks(t *testing.T) {
+	// case 1: w/o namespaces
+	t.Run("no-namespaces", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/namespaces":
+					w.WriteHeader(404)
+					fmt.Fprint(w, "no namespaces in OSS version")
+				case "/v1/health/state/any":
+					fmt.Fprint(w, testHealthChecks(""))
+				default:
+					// t.Log("unhandled:", r.URL.EscapedPath())
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.Tag = "test"
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"foo": true}
+
+		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		if len(ourChecks) != 1 {
+			t.Error("should be 1 checks, got", len(ourChecks))
+		}
+		check := ourChecks[0]
+		if check.CheckID != "test_svc_ck" {
+			t.Error("Wrong check id:", check.CheckID)
+		}
+		if check.Namespace != "" {
+			t.Error("Namespace should be empty, got:", check.Namespace)
+		}
+	})
+	// case 2: w/ namespaces
+	t.Run("with-namespaces", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/namespaces":
+					fmt.Fprint(w, testNamespaces())
+				case "/v1/health/state/any":
+					namespace := r.URL.Query()["ns"][0]
+					if namespace == "default" {
+						fmt.Fprint(w, "[]")
+					}
+					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
+				default:
+					// t.Log("unhandled:", r.URL.EscapedPath())
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.Tag = "test"
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"foo": true}
+
+		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		if len(ourChecks) != 2 {
+			t.Error("should be 2 checks, got", len(ourChecks))
+		}
+		ns1check := ourChecks[0]
+		ns2check := ourChecks[1]
+		if ns1check.CheckID != "ns1_svc_ck" {
+			t.Error("Wrong check id:", ns1check.CheckID)
+		}
+		if ns2check.CheckID != "ns2_svc_ck" {
+			t.Error("Wrong check id:", ns1check.CheckID)
+		}
+	})
 }
