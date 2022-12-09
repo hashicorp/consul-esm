@@ -1,3 +1,13 @@
+## v0.7.0 (Dec 09, 2022)
+
+IMPROVEMENTS:
+* Enable ESM single instance to monitor all namespaces [[GH-191](https://github.com/hashicorp/consul-esm/pull/191), [GH-143](https://github.com/hashicorp/consul-esm/issues/143)]
+* Add support for pprof endpoints [[GH-189](https://github.com/hashicorp/consul-esm/pull/189)]
+
+BUG FIXES:
+* Fix deadlock on checkrunner [[GH-193](https://github.com/hashicorp/consul-esm/pull/193), [GH-192](https://github.com/hashicorp/consul-esm/issues/192)]
+* Fix USER setting in docker config [[GH-176](https://github.com/hashicorp/consul-esm/pull/176)]
+
 ## v0.6.2 (Oct 12, 2022)
 
 BUG FIXES:
