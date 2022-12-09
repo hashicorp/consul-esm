@@ -277,7 +277,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 	runner.UpdateChecks(checks)
 
 	// confirm that the original check's interval is unmodified
-	originalCheck, ok := runner.checks[hashCheck(check)]
+	originalCheck, ok := runner.checks.Load(hashCheck(check))
 	if !ok {
 		t.Fatalf("Check was not stored on runner.checks as expected. Checks: %v", runner.checks)
 	}
@@ -352,7 +352,7 @@ func TestCheck_NoFlapping(t *testing.T) {
 	hash := hashCheck(checks[0])
 	id := structs.CheckID{ID: hash}
 
-	originalCheck, ok := runner.checks[hash]
+	originalCheck, ok := runner.checks.Load(hash)
 	if !ok {
 		t.Fatalf("Check was not stored on runner.checks as expected. Checks: %v", runner.checks)
 	}
@@ -414,7 +414,7 @@ func TestCheck_NoFlapping(t *testing.T) {
 	assert.Equal(t, api.HealthCritical, originalCheck.Status)
 
 	runner.UpdateChecks(checks)
-	currentCheck, ok := runner.checks[hash]
+	currentCheck, ok := runner.checks.Load(hash)
 	if !ok {
 		t.Fatalf("Current check was not stored on runner.checks as expected. Checks: %v", runner.checks)
 	}

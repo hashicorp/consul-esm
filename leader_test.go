@@ -65,15 +65,16 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 
 		// Make sure the check runner is watching all the health checks on the
 		// expected nodes and nothing else.
-		a.checkRunner.RLock()
-		defer a.checkRunner.RUnlock()
 		for _, check := range ourChecks {
 			hash := hashCheck(check)
-			if _, ok := a.checkRunner.checks[hash]; !ok {
+			if _, ok := a.checkRunner.checks.Load(hash); !ok {
 				r.Fatalf("missing check %v", hash)
 			}
 		}
-		if len(ourChecks) != len(a.checkRunner.checks) {
+		var checksLen int
+		a.checkRunner.checks.Range(
+			func(_, _ any) bool { checksLen++; return true })
+		if len(ourChecks) != checksLen {
 			r.Fatalf("checks do not match: %+v, %+v", ourChecks, a.checkRunner.checks)
 		}
 	})

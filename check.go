@@ -27,23 +27,21 @@ var defaultInterval = 30 * time.Second
 type checkIDSet map[types.CheckID]bool
 
 type CheckRunner struct {
-	sync.RWMutex
-
 	logger hclog.Logger
 	client *api.Client
 
 	// checks are unmodified checks as retrieved from Consul Catalog
-	checks map[types.CheckID]*esmHealthCheck
+	checks checkMap[types.CheckID, *esmHealthCheck]
 
 	// checksHTTP & checksTCP are HTTP/TCP checks that are run by ESM.
 	// They have potentially modified values from the Consul Catalog checks
-	checksHTTP checkMap[*consulchecks.CheckHTTP]
-	checksTCP  checkMap[*consulchecks.CheckTCP]
+	checksHTTP stopMap[types.CheckID, *consulchecks.CheckHTTP]
+	checksTCP  stopMap[types.CheckID, *consulchecks.CheckTCP]
 
-	checksCritical map[types.CheckID]time.Time
+	checksCritical checkMap[types.CheckID, time.Time]
 
 	// Used to track checks that are being deferred
-	deferCheck map[types.CheckID]*time.Timer
+	deferCheck checkMap[types.CheckID, *time.Timer]
 
 	CheckUpdateInterval time.Duration
 	MinimumInterval     time.Duration
@@ -60,29 +58,43 @@ type esmHealthCheck struct {
 	successCounter int
 }
 
-// checkMap is sync.Map with type safety and a call to stop the checks
-type stop interface{ Stop() }
-
-type checkMap[TY stop] struct {
+// checkMap is sync.Map with type safety
+type checkMap[K comparable, V any] struct {
 	sync.Map
 }
 
-func (m *checkMap[TY]) Load(k any) (ty TY, ok bool) {
-	v, ok := m.Map.Load(k)
+func (m *checkMap[K, V]) Load(k K) (v V, ok bool) {
+	_v, ok := m.Map.Load(k)
 	if !ok {
-		return ty, ok
+		return v, ok
 	}
-	ty, ok = v.(TY)
-	return ty, ok
+	v, ok = _v.(V)
+	return v, ok
 }
 
-func (m *checkMap[TY]) Store(k any, v TY) {
+func (m *checkMap[K, V]) LoadAndDelete(k K) (v V, ok bool) {
+	_v, ok := m.Map.LoadAndDelete(k)
+	if !ok {
+		return v, ok
+	}
+	v, ok = _v.(V)
+	return v, ok
+}
+
+func (m *checkMap[K, V]) Store(k K, v V) {
 	m.Map.Store(k, v)
 }
 
-func (m *checkMap[TY]) StopAll() {
+// extends checkMap to require a Stop method
+type stop interface{ Stop() }
+
+type stopMap[K comparable, V stop] struct {
+	checkMap[K, V]
+}
+
+func (m *stopMap[K, V]) StopAll() {
 	m.Map.Range(func(_, v any) bool {
-		v.(TY).Stop()
+		v.(V).Stop()
 		return true
 	})
 }
@@ -94,9 +106,6 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	return &CheckRunner{
 		logger:              logger,
 		client:              client,
-		checks:              make(map[types.CheckID]*esmHealthCheck),
-		checksCritical:      make(map[types.CheckID]time.Time),
-		deferCheck:          make(map[types.CheckID]*time.Timer),
 		CheckUpdateInterval: updateInterval,
 		MinimumInterval:     minimumInterval,
 		tlsConfig:           tlsConfig,
@@ -132,7 +141,7 @@ func (c *CheckRunner) updateCheckHTTP(
 			c.PassingThreshold, c.CriticalThreshold, c.CriticalThreshold),
 	}
 
-	if check, checkExists := c.checks[checkHash]; checkExists {
+	if check, checkExists := c.checks.Load(checkHash); checkExists {
 		httpCheck, httpCheckExists := c.checksHTTP.Load(checkHash)
 		if httpCheckExists &&
 			httpCheck.HTTP == http.HTTP &&
@@ -202,7 +211,7 @@ func (c *CheckRunner) updateCheckTCP(
 			c.PassingThreshold, c.CriticalThreshold, c.CriticalThreshold),
 	}
 
-	if check, checkExists := c.checks[checkHash]; checkExists {
+	if check, checkExists := c.checks.Load(checkHash); checkExists {
 		tcpCheck, tcpCheckExists := c.checksTCP.Load(checkHash)
 		if tcpCheckExists &&
 			tcpCheck.TCP == tcp.TCP &&
@@ -243,8 +252,6 @@ func (c *CheckRunner) updateCheckTCP(
 // our list of running checks to match.
 func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 	defer metrics.MeasureSince([]string{"checks", "update"}, time.Now())
-	c.Lock()
-	defer c.Unlock()
 
 	found := make(checkIDSet)
 	added := make(checkIDSet)
@@ -293,20 +300,21 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 			0,
 			0,
 		}
-		if previousCheck, ok := c.checks[checkHash]; ok {
+		if previousCheck, ok := c.checks.LoadAndDelete(checkHash); ok {
 			updatedCheck.failureCounter = previousCheck.failureCounter
 			updatedCheck.successCounter = previousCheck.successCounter
 		}
-		c.checks[checkHash] = updatedCheck
+		c.checks.Store(checkHash, updatedCheck)
 	}
 
 	// Look for removed checks
-	for _, check := range c.checks {
+	c.checks.Range(func(_, _check any) bool {
+		check := _check.(*esmHealthCheck)
 		checkHash := hashCheck(&check.HealthCheck)
 		if _, ok := found[checkHash]; !ok {
 			c.logger.Debug("Deleting check %q", "checkHash", checkHash)
-			delete(c.checks, checkHash)
-			delete(c.checksCritical, checkHash)
+			c.checks.Delete(checkHash)
+			c.checksCritical.Delete(checkHash)
 
 			if httpCheck, httpCheckExists := c.checksHTTP.Load(checkHash); httpCheckExists {
 				httpCheck.Stop()
@@ -319,7 +327,8 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 			removed[checkHash] = true
 		}
-	}
+		return true
+	})
 
 	if len(added) > 0 || len(updated) > 0 || len(removed) > 0 {
 		c.logger.Info("Updated checks", "count",
@@ -338,20 +347,18 @@ func (c *CheckRunner) ServiceExists(serviceID structs.ServiceID) bool {
 // UpdateCheck handles the output of an HTTP/TCP check and decides whether or not
 // to push an update to the catalog.
 func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string) {
-	c.Lock()
-	defer c.Unlock()
-
 	checkHash := checkID.ID
-	check, ok := c.checks[checkHash]
+	check, ok := c.checks.LoadAndDelete(checkHash)
 	if !ok {
 		return
 	}
+	defer func() { c.checks.Store(checkHash, check) }()
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
 		if status == api.HealthCritical {
-			if _, ok := c.checksCritical[checkHash]; !ok {
-				c.checksCritical[checkHash] = time.Now()
+			if _, ok := c.checksCritical.Load(checkHash); !ok {
+				c.checksCritical.Store(checkHash, time.Now())
 			}
 		}
 		check.failureCounter = decrementCounter(check.failureCounter)
@@ -375,11 +382,11 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 
 	// Update the critical time tracking
 	if status == api.HealthCritical {
-		if _, ok := c.checksCritical[checkHash]; !ok {
-			c.checksCritical[checkHash] = time.Now()
+		if _, ok := c.checksCritical.Load(checkHash); !ok {
+			c.checksCritical.Store(checkHash, time.Now())
 		}
 	} else {
-		delete(c.checksCritical, checkHash)
+		c.checksCritical.Delete(checkHash)
 	}
 
 	// Defer a sync if the output has changed. This is an optimization around
@@ -388,15 +395,13 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	// change we do the write immediately.
 	if c.CheckUpdateInterval > 0 && check.Status == status {
 		check.Output = output
-		if _, ok := c.deferCheck[checkHash]; !ok {
+		if _, ok := c.deferCheck.Load(checkHash); !ok {
 			intv := time.Duration(uint64(c.CheckUpdateInterval)/2) + lib.RandomStagger(c.CheckUpdateInterval)
 			deferSync := time.AfterFunc(intv, func() {
-				c.Lock()
 				c.handleCheckUpdate(&check.HealthCheck, status, output)
-				delete(c.deferCheck, checkHash)
-				c.Unlock()
+				c.deferCheck.Delete(checkHash)
 			})
-			c.deferCheck[checkHash] = deferSync
+			c.deferCheck.Store(checkHash, deferSync)
 		}
 		return
 	}
@@ -481,26 +486,29 @@ func (c *CheckRunner) reapServices(shutdownCh <-chan struct{}) {
 
 // reapServicesInternal does a single pass, looking for services to reap.
 func (c *CheckRunner) reapServicesInternal() {
-	c.Lock()
-	defer c.Unlock()
-
 	type uniqueID struct {
 		node, service string
 	}
 
 	reaped := make(map[uniqueID]bool)
-	for checkID, criticalTime := range c.checksCritical {
-		check := c.checks[checkID]
+	c.checksCritical.Range(func(_checkID, _criticalTime any) bool {
+		checkID := _checkID.(types.CheckID)
+		criticalTime := _criticalTime.(time.Time)
+
+		check, ok := c.checks.Load(checkID)
+		if !ok {
+			return true
+		}
 
 		ID := uniqueID{node: check.Node, service: check.ServiceID}
 		// There's nothing to do if there's no service.
 		if ID.service == "" {
-			continue
+			return true
 		}
 		// There might be multiple checks for one service, so
 		// we don't need to reap multiple times.
 		if reaped[ID] {
-			continue
+			return true
 		}
 
 		timeout := check.Definition.DeregisterCriticalServiceAfterDuration
@@ -516,7 +524,8 @@ func (c *CheckRunner) reapServicesInternal() {
 				"timeout", timeout)
 			reaped[ID] = true
 		}
-	}
+		return true
+	})
 }
 
 func hashCheck(check *api.HealthCheck) types.CheckID {
