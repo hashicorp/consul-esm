@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/consul/api"
@@ -312,13 +311,10 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 // namespacesList returns a list of all accessable namespaces.
 // Returns namespace "" (none) if none found for consul OSS compatibility.
 func namespacesList(client *api.Client) ([]*api.Namespace, error) {
-	ossErr := "Unexpected response code: 404" // error snippet OSS consul returns
 	namespaces, _, err := client.Namespaces().List(nil)
-	switch {
-	case err == nil:
-	case strings.Contains(err.Error(), ossErr):
+	if e, ok := err.(api.StatusError); ok && e.Code == 404 {
 		namespaces = []*api.Namespace{{Name: ""}}
-	case err != nil: // default, but more explicit
+	} else if err != nil {
 		return nil, err
 	}
 	return namespaces, nil
