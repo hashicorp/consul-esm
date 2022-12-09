@@ -62,6 +62,7 @@ type Agent struct {
 
 	shutdownCh chan struct{}
 	shutdown   bool
+	ready      chan struct{}
 
 	inflightPings map[string]struct{}
 	inflightLock  sync.Mutex
@@ -93,6 +94,7 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		id:                config.InstanceID,
 		logger:            logger,
 		shutdownCh:        make(chan struct{}),
+		ready:             make(chan struct{}, 1),
 		inflightPings:     make(map[string]struct{}),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 		metrics:           metricsConf,
@@ -148,6 +150,13 @@ func (a *Agent) Run() error {
 		wg.Done()
 	}()
 
+	a.ready <- struct{}{} // used for testing
+	defer func() {        // be sure to drain it between calls
+		select {
+		case <-a.ready:
+		default:
+		}
+	}()
 	// Wait for shutdown.
 	<-a.shutdownCh
 	wg.Wait()
@@ -433,16 +442,6 @@ func (a *Agent) kvNodeListPath() string {
 // all health checks on nodes marked with the external node metadata
 // identifier and sends any updates through the given updateCh.
 func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
-	opts := &api.QueryOptions{
-		NodeMeta: a.config.NodeMeta,
-	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts = opts.WithContext(ctx)
-	go func() {
-		<-a.shutdownCh
-		cancelFunc()
-	}()
-
 	// Initialize a tlsConfig struct
 	tlsConfig := api.TLSConfig{
 		CAFile:   a.config.HTTPSCAFile,
@@ -459,50 +458,85 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	a.checkRunner = NewCheckRunner(a.logger, a.client, a.config.CheckUpdateInterval, minimumInterval,
+	a.checkRunner = NewCheckRunner(a.logger, a.client,
+		a.config.CheckUpdateInterval, minimumInterval,
 		tlsClientConfig, a.config.PassingThreshold, a.config.CriticalThreshold)
 	go a.checkRunner.reapServices(a.shutdownCh)
 	defer a.checkRunner.Stop()
 
-	ourNodes := <-nodeListCh
+	var ourNodes map[string]bool
+	var waitIndex uint64
 	checkCount := 0
-	firstRun := true
 	for {
-		if !firstRun {
-			select {
-			case <-a.shutdownCh:
-				return
-			case ourNodes = <-nodeListCh:
-				// Re-run if there's a change to the watched node list.
-				opts.WaitIndex = 0
-			case <-time.After(retryTime):
-				// Sleep here to limit how much load we put on the Consul servers.
-			}
+		select {
+		case <-a.shutdownCh:
+			return
+		case ourNodes = <-nodeListCh:
+			// Re-run if there's a change to the watched node list.
+			waitIndex = 0
+		case <-time.After(retryTime):
+			// Sleep here to limit how much load we put on the Consul servers.
 		}
-		firstRun = false
+		if len(ourNodes) == 0 {
+			continue
+		}
 
-		// All ESM health checks are node checks and in the 'default' namespace
+		ourChecks, lastIndex := a.getHealthChecks(waitIndex, ourNodes)
+		if len(ourChecks) == 0 {
+			continue
+		}
+
+		waitIndex = lastIndex
+		a.checkRunner.UpdateChecks(ourChecks)
+
+		if checkCount != len(ourChecks) {
+			checkCount = len(ourChecks)
+			a.logger.Info("Health check counts changed",
+				"healthChecks", checkCount, "nodes", len(ourNodes))
+		}
+	}
+}
+
+func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
+	namespaces, err := namespacesList(a.client)
+	if err != nil {
+		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
+		namespaces = []*api.Namespace{{Name: ""}}
+	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	opts := (&api.QueryOptions{
+		NodeMeta:  a.config.NodeMeta,
+		WaitIndex: waitIndex,
+	}).WithContext(ctx)
+	go func() {
+		<-a.shutdownCh
+		cancelFunc()
+	}()
+
+	ourChecks := make(api.HealthChecks, 0)
+	var lastIndex uint64
+	for _, ns := range namespaces {
+		opts.Namespace = ns.Name
+		if ns.Name != "" { // ns.Name only set on enterprise version
+			a.logger.Info("checking namespaces for services", "name", ns.Name)
+		}
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
 			a.logger.Warn("Error querying for health check info", "error", err)
 			continue
 		}
+		lastIndex = meta.LastIndex
 
-		ourChecks := make(api.HealthChecks, 0)
 		for _, c := range checks {
-			if ourNodes[c.Node] && c.CheckID != externalCheckName {
+			if nodes[c.Node] && c.CheckID != externalCheckName {
 				ourChecks = append(ourChecks, c)
+				a.logger.Info("found check", "name", c.Name)
 			}
 		}
-
-		opts.WaitIndex = meta.LastIndex
-		a.checkRunner.UpdateChecks(ourChecks)
-
-		if checkCount != len(ourChecks) {
-			checkCount = len(ourChecks)
-			a.logger.Info("Health check counts changed", "healthChecks", checkCount, "nodes", len(ourNodes))
-		}
 	}
+
+	return ourChecks, lastIndex
 }
 
 // Check last visible node status.
