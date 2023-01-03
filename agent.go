@@ -509,9 +509,13 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
 	}).WithContext(ctx)
+	defer cancelFunc()
 	go func() {
-		<-a.shutdownCh
-		cancelFunc()
+		select {
+		case <-a.shutdownCh:
+			cancelFunc()
+		case <-ctx.Done():
+		}
 	}()
 
 	ourChecks := make(api.HealthChecks, 0)
