@@ -1,3 +1,8 @@
+## v0.7.1 (Jan 09, 2023)
+
+BUG FIXES:
+* fix goroutine/memory leak [[GH-196](https://github.com/hashicorp/consul-esm/pull/196), [GH-194](https://github.com/hashicorp/consul-esm/issues/194)]
+
 ## v0.7.0 (Dec 09, 2022)
 
 IMPROVEMENTS:
