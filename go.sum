@@ -82,8 +82,8 @@ github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+
 github.com/google/uuid v1.2.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
 github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/hashicorp/consul v1.14.3 h1:yLzSeTkNxA8/CK2hk+46dNpH6EcPz+mArv7BhKysPmM=
-github.com/hashicorp/consul v1.14.3/go.mod h1:Z5y7CF1XypSFeuAyg0w7om/GvFytQwqGl30yLSiIH4c=
+github.com/hashicorp/consul v1.14.4 h1:J0vswrenFVdzJL2TkHTADX6A8n4D4o8aVvtuKWuYRlQ=
+github.com/hashicorp/consul v1.14.4/go.mod h1:1o63wWM9t0gzBhnA9b52CEJ3TO1/a6JWz90Osj0UTEo=
 github.com/hashicorp/consul-net-rpc v0.0.0-20221205195236-156cfab66a69 h1:wzWurXrxfSyG1PHskIZlfuXlTSCj1Tsyatp9DtaasuY=
 github.com/hashicorp/consul-net-rpc v0.0.0-20221205195236-156cfab66a69/go.mod h1:svUZZDvotY8zTODknUePc6mZ9pX8nN0ViGwWcUSOBEA=
 github.com/hashicorp/consul/api v1.18.0 h1:R7PPNzTCeN6VuQNDwwhZWJvzCtGSrNpJqfb22h3yH9g=
