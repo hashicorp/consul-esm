@@ -7,7 +7,7 @@ require (
 	github.com/go-ping/ping v1.1.0
 	github.com/hashicorp/consul v1.14.3
 	github.com/hashicorp/consul/api v1.18.0
-	github.com/hashicorp/consul/sdk v0.13.0
+	github.com/hashicorp/consul/sdk v0.13.1
 	github.com/hashicorp/go-hclog v1.4.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
