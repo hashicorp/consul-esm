@@ -39,7 +39,7 @@ LEADER_WAIT:
 	a.logger.Info("Trying to obtain leadership...")
 	if lock == nil {
 		var err error
-		lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
+		lock, err = a.getClient().LockKey(a.config.KVPath + LeaderKey)
 		if err != nil {
 			a.logger.Error("Error trying to create leader lock (will retry)", "error", err)
 			time.Sleep(retryTime)
@@ -107,7 +107,7 @@ func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
 }
 
 func (a *Agent) commitOps(ops api.KVTxnOps) bool {
-	success, results, _, err := a.client.KV().Txn(ops, nil)
+	success, results, _, err := a.getClient().KV().Txn(ops, nil)
 	if err != nil || !success {
 		a.logger.Error("Error writing state to KV store", "results", results, "error", err)
 		// Try again after the wait because we got an error.
@@ -226,7 +226,7 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 		firstRun = false
 
 		// Do a blocking query for any external node changes
-		externalNodes, meta, err := a.client.Catalog().Nodes(opts)
+		externalNodes, meta, err := a.getClient().Catalog().Nodes(opts)
 		if err != nil {
 			a.logger.Warn("Error getting external node list", "error", err)
 			continue
@@ -292,7 +292,7 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 			a.logger.Info("checking namespaces for services", "name", ns.Name)
 		}
 		opts.Namespace = ns.Name
-		healthy, m, err := a.client.Health().Service(a.config.Service,
+		healthy, m, err := a.getClient().Health().Service(a.config.Service,
 			a.config.Tag, true, opts)
 		if err != nil {
 			return nil, err
