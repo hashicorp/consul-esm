@@ -282,7 +282,7 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
 
-	namespaces, err := namespacesList(a.client)
+	namespaces, err := namespacesList(a.getClient())
 	if err != nil {
 		return nil, err
 	}

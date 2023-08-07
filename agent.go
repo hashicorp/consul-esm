@@ -193,6 +193,9 @@ func (a *Agent) Reload(new *Config) error {
 		a.client = client
 		a.clientLock.Unlock()
 		a.triggerReload()
+		if a.checkRunner != nil {
+			a.checkRunner.setClient(a.client)
+		}
 	}
 	a.config = new
 	return nil
@@ -515,7 +518,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	a.checkRunner = NewCheckRunner(a.logger, a.client,
+	a.checkRunner = NewCheckRunner(a.logger, a.getClient(),
 		a.config.CheckUpdateInterval, minimumInterval,
 		tlsClientConfig, a.config.PassingThreshold, a.config.CriticalThreshold)
 	go a.checkRunner.reapServices(a.shutdownCh)
@@ -555,7 +558,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
-	namespaces, err := namespacesList(a.client)
+	namespaces, err := namespacesList(a.getClient())
 	if err != nil {
 		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
 		namespaces = []*api.Namespace{{Name: ""}}
@@ -623,7 +626,7 @@ func (a *Agent) updateLastKnownNodeStatus(node string, newStatus string) {
 // VerifyConsulCompatibility queries Consul for local agent and all server versions to verify
 // compatibility with ESM.
 func (a *Agent) VerifyConsulCompatibility() error {
-	if a.client == nil {
+	if a.getClient() == nil {
 		return fmt.Errorf("unable to check version compatibility without Consul client initialized")
 	}
 
