@@ -253,7 +253,6 @@ func (c *CheckRunner) updateCheckTCP(
 
 		updated[checkHash] = true
 	} else {
-
 		c.logger.Debug("Added TCP check", "checkHash", checkHash)
 		added[checkHash] = true
 	}

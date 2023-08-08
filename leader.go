@@ -22,6 +22,9 @@ func (a *Agent) runLeaderLoop() {
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
 	var lock *api.Lock
+	var reload bool
+	var stopLockCh, cancelCh chan struct{}
+	var reloadCh <-chan struct{}
 	defer func() {
 		if lock != nil {
 			lock.Unlock()
@@ -37,7 +40,7 @@ LEADER_WAIT:
 
 	// Wait to get the leader lock before running snapshots.
 	a.logger.Info("Trying to obtain leadership...")
-	if lock == nil {
+	if lock == nil || reload {
 		var err error
 		lock, err = a.getClient().LockKey(a.config.KVPath + LeaderKey)
 		if err != nil {
@@ -45,21 +48,42 @@ LEADER_WAIT:
 			time.Sleep(retryTime)
 			goto LEADER_WAIT
 		}
+		reload = false
 	}
 
-	leaderCh, err := lock.Lock(a.shutdownCh)
+	stopLockCh = make(chan struct{})
+	cancelCh = make(chan struct{})
+	reloadCh = a.reloadWatcher()
+	go func() {
+		select {
+		case <-a.shutdownCh:
+		case <-a.reloadCh:
+		case <-cancelCh:
+		}
+		close(stopLockCh)
+	}()
+
+	leaderCh, err := lock.Lock(stopLockCh)
 	if err != nil {
 		if err == api.ErrLockHeld {
 			a.logger.Error("Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
 		} else {
 			a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
 		}
+		close(cancelCh)
+		time.Sleep(retryTime)
+		goto LEADER_WAIT
 	}
+
+	select {
+	// we exited Lock due to reload
+	case <-reloadCh:
+		reload = true
+		goto LEADER_WAIT
+	default:
+	}
+
 	if leaderCh == nil {
 		// This is how the Lock() call lets us know that it quit because
 		// we closed the shutdown channel.
@@ -74,6 +98,12 @@ LEADER_WAIT:
 		select {
 		case <-leaderCh:
 			a.logger.Warn("Lost leadership")
+			close(cancelCh)
+			goto LEADER_WAIT
+		case <-a.reloadWatcher():
+			reload = true
+			a.logger.Info("Giving up leadership")
+			lock.Unlock()
 			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return

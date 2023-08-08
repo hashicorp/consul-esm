@@ -583,7 +583,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	for _, ns := range namespaces {
 		opts.Namespace = ns.Name
 		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
+			a.logger.Info("checking namespaces for checks", "name", ns.Name)
 		}
 		checks, meta, err := a.getClient().Health().State(api.HealthAny, opts)
 		if err != nil {
