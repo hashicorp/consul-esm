@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"sort"
 	"time"
@@ -258,7 +259,9 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 		// Do a blocking query for any external node changes
 		externalNodes, meta, err := a.getClient().Catalog().Nodes(opts)
 		if err != nil {
-			a.logger.Warn("Error getting external node list", "error", err)
+			if !errors.Is(err, context.Canceled) {
+				a.logger.Warn("Error getting external node list", "error", err)
+			}
 			continue
 		}
 		sort.Slice(externalNodes, func(a, b int) bool {
@@ -299,8 +302,9 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 		case nil:
 			instanceCh <- healthyInstances
 		default:
-			a.logger.Warn("[WARN] Error querying for health check info",
-				"error", err)
+			if !errors.Is(err, context.Canceled) {
+				a.logger.Warn("Error querying for health check info", "error", err)
+			}
 			continue // not needed, but nice to be explicit
 		}
 	}
