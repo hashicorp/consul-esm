@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -245,7 +244,7 @@ var configDecodeHook = mapstructure.ComposeDecodeHookFunc(
 // configuration struct
 func DecodeConfig(r io.Reader) (*HumanConfig, error) {
 	// Parse the file (could be HCL or JSON)
-	bytes, err := ioutil.ReadAll(r)
+	bytes, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
