@@ -5,8 +5,8 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -18,7 +18,7 @@ import (
 )
 
 // Change as needed to see log/consul-agent output
-var output = ioutil.Discard
+var output = io.Discard
 var LOGOUT = output
 var STDOUT = output
 var STDERR = output
