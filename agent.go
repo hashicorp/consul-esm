@@ -59,13 +59,16 @@ func (s lastKnownStatus) isExpired(ttl time.Duration, now time.Time) bool {
 type Agent struct {
 	config      *Config
 	client      *api.Client
+	clientLock  sync.RWMutex
 	logger      hclog.Logger
 	checkRunner *CheckRunner
 	id          string
 
-	shutdownCh chan struct{}
-	shutdown   bool
-	ready      chan struct{}
+	reloadCh     chan struct{}
+	reloadChLock sync.Mutex
+	shutdownCh   chan struct{}
+	shutdown     bool
+	ready        chan struct{}
 
 	inflightPings map[string]struct{}
 	inflightLock  sync.Mutex
@@ -96,6 +99,7 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		client:            client,
 		id:                config.InstanceID,
 		logger:            logger,
+		reloadCh:          make(chan struct{}),
 		shutdownCh:        make(chan struct{}),
 		ready:             make(chan struct{}, 1),
 		inflightPings:     make(map[string]struct{}),
@@ -122,7 +126,7 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 
 func (a *Agent) Run() error {
 	// Do the initial service registration.
-	if err := a.register(); err != nil {
+	if err := a.register(false); err != nil {
 		return err
 	}
 
@@ -165,7 +169,7 @@ func (a *Agent) Run() error {
 	wg.Wait()
 
 	// Clean up.
-	if err := a.client.Agent().ServiceDeregister(a.serviceID()); err != nil {
+	if err := a.getClient().Agent().ServiceDeregister(a.serviceID()); err != nil {
 		a.logger.Warn("Failed to deregister service", "error", err)
 	}
 
@@ -176,6 +180,50 @@ func (a *Agent) Shutdown() {
 	if !a.shutdown {
 		a.shutdown = true
 		close(a.shutdownCh)
+	}
+}
+
+func (a *Agent) Reload(new *Config) error {
+	if consulConfigHasChanged(a.config, new) {
+		a.clientLock.Lock()
+		client, err := api.NewClient(new.ClientConfig())
+		if err != nil {
+			return err
+		}
+		a.client = client
+		a.clientLock.Unlock()
+		a.triggerReload()
+		if a.checkRunner != nil {
+			a.checkRunner.setClient(a.client)
+		}
+	}
+	a.config = new
+	return nil
+}
+
+func (a *Agent) getClient() *api.Client {
+	a.clientLock.RLock()
+	defer a.clientLock.RUnlock()
+	return a.client
+}
+
+func (a *Agent) reloadWatcher() <-chan struct{} {
+	a.reloadChLock.Lock()
+	defer a.reloadChLock.Unlock()
+
+	if a.reloadCh == nil {
+		a.reloadCh = make(chan struct{})
+	}
+
+	return a.reloadCh
+}
+
+func (a *Agent) triggerReload() {
+	a.reloadChLock.Lock()
+	defer a.reloadChLock.Unlock()
+	if a.reloadCh != nil {
+		close(a.reloadCh)
+		a.reloadCh = nil
 	}
 }
 
@@ -198,10 +246,13 @@ func (e *alreadyExistsError) Error() string {
 }
 
 // register is used to register this agent with Consul service discovery.
-func (a *Agent) register() error {
-	// agent ids need to be unique to disambiguate different instances on same host
-	if existing, _, _ := a.client.Agent().Service(a.serviceID(), nil); existing != nil {
-		return &alreadyExistsError{a.serviceID()}
+func (a *Agent) register(reregister bool) error {
+	// If are reregistering we can't check for duplicates as there will be
+	if !reregister {
+		// agent ids need to be unique to disambiguate different instances on same host
+		if existing, _, _ := a.getClient().Agent().Service(a.serviceID(), nil); existing != nil {
+			return &alreadyExistsError{a.serviceID()}
+		}
 	}
 
 	service := &api.AgentServiceRegistration{
@@ -212,7 +263,7 @@ func (a *Agent) register() error {
 	if a.config.Tag != "" {
 		service.Tags = []string{a.config.Tag}
 	}
-	if err := a.client.Agent().ServiceRegister(service); err != nil {
+	if err := a.getClient().Agent().ServiceRegister(service); err != nil {
 		return err
 	}
 	a.logger.Debug("Registered ESM service with Consul")
@@ -273,28 +324,33 @@ func (a *Agent) runHTTP() {
 func (a *Agent) runRegister() {
 	serviceID := a.serviceID()
 	for {
-	REGISTER_CHECK:
+		var reregister bool
 		select {
 		case <-a.shutdownCh:
 			return
-
+		case <-a.reloadWatcher():
+			a.logger.Info("Reload triggered. Reregistering service")
+			reregister = true
 		case <-time.After(agentTTL):
-			services, err := a.client.Agent().Services()
+		}
+		if !reregister {
+			services, err := a.getClient().Agent().Services()
 			if err != nil {
 				a.logger.Error("Failed to check services (will retry)", "error", err)
 				time.Sleep(retryTime)
-				goto REGISTER_CHECK
+				continue
 			}
-
-			if _, ok := services[serviceID]; !ok {
-				a.logger.Warn("Service registration was lost, reregistering")
-				if err := a.register(); err != nil {
-					a.logger.Error("Failed to reregister service (will retry)", "error", err)
-					time.Sleep(retryTime)
-					goto REGISTER_CHECK
-				}
+			if _, ok := services[serviceID]; ok {
+				continue
 			}
+			a.logger.Warn("Service registration was lost, reregistering")
 		}
+		if err := a.register(reregister); err != nil {
+			a.logger.Error("Failed to reregister service (will retry)", "error", err)
+			time.Sleep(retryTime)
+			continue
+		}
+		reregister = false
 	}
 }
 
@@ -323,7 +379,7 @@ REGISTER:
 			DeregisterCriticalServiceAfter: deregisterTime.String(),
 		},
 	}
-	if err := a.client.Agent().CheckRegister(check); err != nil {
+	if err := a.getClient().Agent().CheckRegister(check); err != nil {
 		a.logger.Error("Failed to register TTL check (will retry)", "error", err)
 		time.Sleep(retryTime)
 		goto REGISTER
@@ -334,9 +390,10 @@ REGISTER:
 		select {
 		case <-a.shutdownCh:
 			return
-
+		case <-a.reloadWatcher():
+			goto REGISTER
 		case <-time.After(agentTTL / 2):
-			if err := a.client.Agent().UpdateTTL(ttlID, "", api.HealthPassing); err != nil {
+			if err := a.getClient().Agent().UpdateTTL(ttlID, "", api.HealthPassing); err != nil {
 				a.logger.Error("Failed to refresh agent TTL check (will reregister)", "error", err)
 				time.Sleep(retryTime)
 				goto REGISTER
@@ -382,7 +439,7 @@ func (a *Agent) watchNodeList() {
 		}
 
 		// Get the KV entry for this agent's node list.
-		kv, meta, err := a.client.KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
+		kv, meta, err := a.getClient().KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
 		if err != nil {
 			a.logger.Warn("Error querying for node watch list", "error", err)
 			time.Sleep(retryTime)
@@ -413,7 +470,7 @@ func (a *Agent) watchNodeList() {
 			pingNodes[node] = true
 		}
 
-		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{NodeMeta: a.config.NodeMeta})
+		nodes, _, err := a.getClient().Catalog().Nodes(&api.QueryOptions{NodeMeta: a.config.NodeMeta})
 		if err != nil {
 			a.logger.Warn("Error querying for node list", "error", err)
 			continue
@@ -461,7 +518,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 	// Start a check runner to track and run the health checks we're responsible for and call
 	// UpdateChecks when we get an update from watchHealthChecks.
-	a.checkRunner = NewCheckRunner(a.logger, a.client,
+	a.checkRunner = NewCheckRunner(a.logger, a.getClient(),
 		a.config.CheckUpdateInterval, minimumInterval,
 		tlsClientConfig, a.config.PassingThreshold, a.config.CriticalThreshold)
 	go a.checkRunner.reapServices(a.shutdownCh)
@@ -501,7 +558,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
-	namespaces, err := namespacesList(a.client)
+	namespaces, err := namespacesList(a.getClient())
 	if err != nil {
 		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
 		namespaces = []*api.Namespace{{Name: ""}}
@@ -526,9 +583,9 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	for _, ns := range namespaces {
 		opts.Namespace = ns.Name
 		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
+			a.logger.Info("checking namespaces for checks", "name", ns.Name)
 		}
-		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+		checks, meta, err := a.getClient().Health().State(api.HealthAny, opts)
 		if err != nil {
 			a.logger.Warn("Error querying for health check info", "error", err)
 			continue
@@ -569,12 +626,12 @@ func (a *Agent) updateLastKnownNodeStatus(node string, newStatus string) {
 // VerifyConsulCompatibility queries Consul for local agent and all server versions to verify
 // compatibility with ESM.
 func (a *Agent) VerifyConsulCompatibility() error {
-	if a.client == nil {
+	if a.getClient() == nil {
 		return fmt.Errorf("unable to check version compatibility without Consul client initialized")
 	}
 
 	// Fetch local agent version
-	agentInfo, err := a.client.Agent().Self()
+	agentInfo, err := a.getClient().Agent().Self()
 	if err != nil {
 		// ESM blocks in NewAgent() until agent is available. At this point
 		// /agent/self endpoint should be available and an error would not be useful
@@ -595,7 +652,7 @@ VERIFYCONSULSERVER:
 	}
 
 	// Fetch server versions
-	svs, _, err := a.client.Catalog().Service("consul", "", nil)
+	svs, _, err := a.getClient().Catalog().Service("consul", "", nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "429") {
 			// 429 is a warning that something is unhealthy. This may occur when ESM

@@ -92,7 +92,7 @@ func main() {
 	// Set up shutdown and signal handling.
 	signalCh := make(chan os.Signal, 10)
 	signal.Notify(signalCh)
-	go handleSignals(agent.logger, signalCh, agent)
+	go handleSignals(agent.logger, signalCh, agent, configFiles)
 
 	ui := cli.BasicUi{Writer: os.Stdout, ErrorWriter: os.Stderr}
 	if config.LogJSON {
@@ -123,13 +123,23 @@ func main() {
 	os.Exit(ExitCodeOK)
 }
 
-func handleSignals(logger hclog.Logger, signalCh chan os.Signal, agent *Agent) {
+func handleSignals(logger hclog.Logger, signalCh chan os.Signal, agent *Agent, configFiles AppendSliceValue) {
 	for sig := range signalCh {
 		logger.Debug("Caught signal:" + sig.String())
 		switch sig {
 		case syscall.SIGINT, syscall.SIGTERM:
 			logger.Info("Shutting down...")
 			agent.Shutdown()
+		case syscall.SIGHUP:
+			logger.Info("Reloading config")
+			config, err := BuildConfig([]string(configFiles))
+			if err != nil {
+				logger.Error("Error reading configuration files: %s", err)
+				continue
+			}
+			if err = agent.Reload(config); err != nil {
+				logger.Error("Error reloading configuration: %s", err)
+			}
 		default:
 		}
 	}

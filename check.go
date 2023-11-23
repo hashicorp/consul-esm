@@ -30,8 +30,9 @@ var defaultInterval = 30 * time.Second
 type checkIDSet map[types.CheckID]bool
 
 type CheckRunner struct {
-	logger hclog.Logger
-	client *api.Client
+	logger     hclog.Logger
+	client     *api.Client
+	clientLock sync.RWMutex
 
 	// checks are unmodified checks as retrieved from Consul Catalog
 	checks checkMap[types.CheckID, *esmHealthCheck]
@@ -120,6 +121,18 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 func (c *CheckRunner) Stop() {
 	c.checksHTTP.StopAll()
 	c.checksTCP.StopAll()
+}
+
+func (c *CheckRunner) setClient(client *api.Client) {
+	c.clientLock.Lock()
+	c.client = client
+	c.clientLock.Unlock()
+}
+
+func (c *CheckRunner) getClient() *api.Client {
+	c.clientLock.RLock()
+	defer c.clientLock.RUnlock()
+	return c.client
 }
 
 // Update an HTTP check
@@ -240,7 +253,6 @@ func (c *CheckRunner) updateCheckTCP(
 
 		updated[checkHash] = true
 	} else {
-
 		c.logger.Debug("Added TCP check", "checkHash", checkHash)
 		added[checkHash] = true
 	}
@@ -417,7 +429,7 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
 	// Exit early if the check or node have been deregistered.
 	// consistent mode reduces convergency time particularly when services have many updates in a short time
-	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{RequireConsistent: true})
+	checks, _, err := c.getClient().Health().Node(check.Node, &api.QueryOptions{RequireConsistent: true})
 	if err != nil {
 		c.logger.Warn("error retrieving existing node entry", "error", err)
 		return
@@ -448,7 +460,7 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		},
 	}
 	metrics.IncrCounter([]string{"check", "txn"}, 1)
-	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
+	ok, resp, _, err := c.getClient().Txn().Txn(ops, nil)
 	if err != nil {
 		c.logger.Warn("Error updating check status in Consul", "error", err)
 		return
@@ -516,7 +528,7 @@ func (c *CheckRunner) reapServicesInternal() {
 
 		timeout := check.Definition.DeregisterCriticalServiceAfterDuration
 		if timeout > 0 && timeout < time.Since(criticalTime) {
-			c.client.Catalog().Deregister(&api.CatalogDeregistration{
+			c.getClient().Catalog().Deregister(&api.CatalogDeregistration{
 				Node:      ID.node,
 				ServiceID: ID.service,
 			}, nil)
