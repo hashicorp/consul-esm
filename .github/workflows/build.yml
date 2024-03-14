@@ -151,7 +151,7 @@ jobs:
         uses: hashicorp/actions-packaging-linux@v1
         with:
           name: ${{ github.event.repository.name }}
-          description: "Template rendering, notifier, and supervisor for @hashicorp Consul, Nomad and Vault data. "
+          description: "External service monitoring for Consul. "
           arch: ${{ matrix.goarch }}
           version: ${{ needs.get-product-version.outputs.product-version }}
           maintainer: "HashiCorp"
