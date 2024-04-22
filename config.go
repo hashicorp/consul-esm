@@ -495,3 +495,13 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.CriticalThreshold.Merge(&dst.CriticalThreshold)
 	return nil
 }
+
+func consulConfigHasChanged(old, new *Config) bool {
+	if old.Token != new.Token {
+		return true
+	}
+	if old.CAFile != new.CAFile || old.CertFile != new.CertFile || old.KeyFile != new.KeyFile {
+		return true
+	}
+	return false
+}

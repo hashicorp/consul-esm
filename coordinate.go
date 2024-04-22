@@ -94,7 +94,7 @@ func (a *Agent) updateCoords(nodeCh nodeChannel) {
 // runNodePing pings a node and updates its status in Consul accordingly.
 func (a *Agent) runNodePing(node *api.Node) {
 	// Get the critical status of the node.
-	kvClient := a.client.KV()
+	kvClient := a.getClient().KV()
 	key := fmt.Sprintf("%sprobes/%s", a.config.KVPath, node.Node)
 	kvPair, _, err := kvClient.Get(key, nil)
 	if err != nil {
@@ -243,7 +243,7 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 
 			// If the node still exists in the catalog, add an atomic delete on the node to
 			// the list of operations to run.
-			existing, _, err := a.client.Catalog().Node(node.Node, nil)
+			existing, _, err := a.getClient().Catalog().Node(node.Node, nil)
 			if err != nil {
 				return fmt.Errorf("could not fetch existing node %q: %v", node.Node, err)
 			}
@@ -294,7 +294,7 @@ func (a *Agent) updateNodeCheck(node *api.Node, ops api.TxnOps, status, output s
 // runClientTxn runs the given transaction using the configured Consul client and
 // returns any errors encountered.
 func (a *Agent) runClientTxn(ops api.TxnOps) error {
-	ok, resp, _, err := a.client.Txn().Txn(ops, nil)
+	ok, resp, _, err := a.getClient().Txn().Txn(ops, nil)
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	}
 
 	// Get coordinate info for the node.
-	coords, _, err := a.client.Coordinate().Node(node.Node, nil)
+	coords, _, err := a.getClient().Coordinate().Node(node.Node, nil)
 	if err != nil && !strings.Contains(err.Error(), "Unexpected response code: 404") {
 		return fmt.Errorf("error getting coordinate for node %q: %v, skipping update", node.Node, err)
 	}
@@ -341,7 +341,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 	}
 
 	// Get the local agent's coordinate info.
-	self, err := a.client.Agent().Self()
+	self, err := a.getClient().Agent().Self()
 	if err != nil {
 		return fmt.Errorf("could not retrieve local agent's coordinate info: %v", err)
 	}
@@ -373,7 +373,7 @@ func (a *Agent) updateNodeCoordinate(node *api.Node, rtt time.Duration) error {
 		return nil
 	}
 
-	_, err = a.client.Coordinate().Update(&api.CoordinateEntry{
+	_, err = a.getClient().Coordinate().Update(&api.CoordinateEntry{
 		Node:    coord.Node,
 		Segment: coord.Segment,
 		Coord:   newCoord,
