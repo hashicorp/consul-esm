@@ -417,7 +417,10 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
 	// Exit early if the check or node have been deregistered.
 	// consistent mode reduces convergency time particularly when services have many updates in a short time
-	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{RequireConsistent: true})
+	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{
+		Namespace:         check.Namespace,
+		RequireConsistent: true,
+	})
 	if err != nil {
 		c.logger.Warn("error retrieving existing node entry", "error", err)
 		return
