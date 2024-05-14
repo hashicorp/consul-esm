@@ -13,11 +13,12 @@ ARG BIN_NAME=consul-esm
 ENV BIN_NAME=$BIN_NAME
 ARG PRODUCT_VERSION
 ARG PRODUCT_REVISION
-ARG PRODUCT_NAME=$BIN_NAME
+ENV PRODUCT_NAME=$BIN_NAME
 # TARGETARCH and TARGETOS are set automatically when --platform is provided.
 ARG TARGETOS TARGETARCH
 
-LABEL maintainer="John Eikenberry <jae@zhar.net>"
+LABEL maintainer="John Eikenberry <jae@zhar.net>" \
+          org.opencontainers.image.licenses="MPL-2.0"
 # version label is required for build process
 LABEL version=$PRODUCT_VERSION
 LABEL revision=$PRODUCT_REVISION
@@ -29,6 +30,7 @@ ARG GID=1000
 RUN addgroup -g ${GID} ${BIN_NAME} \
     && adduser -u ${UID} -S -G ${BIN_NAME} ${BIN_NAME}
 
+COPY LICENSE /usr/share/doc/$PRODUCT_NAME/LICENSE.txt
 # where the build system stores the builds
 COPY ./dist/$TARGETOS/$TARGETARCH/$BIN_NAME /bin/
 
