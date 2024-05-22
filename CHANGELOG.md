@@ -1,3 +1,8 @@
+## v0.7.2 (May 22, 2024)
+
+BUG FIXES:
+* fix updates for checks in namespaces [[GH-259](https://github.com/hashicorp/consul-esm/pull/259)]
+
 ## v0.7.1 (Jan 09, 2023)
 
 BUG FIXES:
