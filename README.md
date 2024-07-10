@@ -199,6 +199,12 @@ node_reconnect_timeout = "72h"
 // update the coordinates for all nodes it is watching every 10 seconds.
 node_probe_interval = "10s"
 
+// The length of time to wait before updating the health status of a node.
+// Note that the reaping process due to failed pings wont be triggered after
+// the health status is updated, so if node_reconnect_timeout is lower than
+// this parameter, it won't be triggered until this interval has expired.
+node_health_refresh_interval = "1h"
+
 // Controls whether or not to disable calculating and updating node coordinates
 // when doing the node probe. Defaults to false i.e. coordinate updates
 // are enabled.
