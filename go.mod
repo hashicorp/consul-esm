@@ -8,8 +8,8 @@ require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/go-ping/ping v1.1.0
 	github.com/hashicorp/consul v1.16.1
-	github.com/hashicorp/consul/api v1.28.3
-	github.com/hashicorp/consul/sdk v0.15.0
+	github.com/hashicorp/consul/api v1.29.4
+	github.com/hashicorp/consul/sdk v0.16.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
@@ -49,7 +49,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/consul-net-rpc v0.0.0-20240430162428-577c8c7c7d01 // indirect
 	github.com/hashicorp/consul/envoyextensions v0.6.1 // indirect
-	github.com/hashicorp/consul/proto-public v0.6.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-bexpr v0.1.14 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
