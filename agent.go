@@ -199,15 +199,19 @@ func (e *alreadyExistsError) Error() string {
 
 // register is used to register this agent with Consul service discovery.
 func (a *Agent) register() error {
+	opts := &api.QueryOptions{
+		Partition: a.config.Partition,
+	}
 	// agent ids need to be unique to disambiguate different instances on same host
-	if existing, _, _ := a.client.Agent().Service(a.serviceID(), nil); existing != nil {
+	if existing, _, _ := a.client.Agent().Service(a.serviceID(), opts); existing != nil {
 		return &alreadyExistsError{a.serviceID()}
 	}
 
 	service := &api.AgentServiceRegistration{
-		ID:   a.serviceID(),
-		Name: a.config.Service,
-		Meta: a.serviceMeta(),
+		ID:        a.serviceID(),
+		Name:      a.config.Service,
+		Meta:      a.serviceMeta(),
+		Partition: a.config.Partition,
 	}
 	if a.config.Tag != "" {
 		service.Tags = []string{a.config.Tag}
@@ -501,7 +505,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
-	namespaces, err := namespacesList(a.client)
+	namespaces, err := namespacesList(a.client, a.config)
 	if err != nil {
 		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
 		namespaces = []*api.Namespace{{Name: ""}}
@@ -511,6 +515,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	opts := (&api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
+		Partition: a.config.Partition,
 	}).WithContext(ctx)
 	defer cancelFunc()
 	go func() {

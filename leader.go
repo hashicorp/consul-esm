@@ -107,7 +107,10 @@ func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
 }
 
 func (a *Agent) commitOps(ops api.KVTxnOps) bool {
-	success, results, _, err := a.client.KV().Txn(ops, nil)
+	qops := &api.QueryOptions{
+		Partition: a.config.Partition,
+	}
+	success, results, _, err := a.client.KV().Txn(ops, qops)
 	if err != nil || !success {
 		a.logger.Error("Error writing state to KV store", "results", results, "error", err)
 		// Try again after the wait because we got an error.
@@ -159,8 +162,9 @@ WATCH_NODES_WAIT:
 		// Write the KV update as a transaction.
 		ops := api.KVTxnOps{
 			&api.KVTxnOp{
-				Verb: api.KVDeleteTree,
-				Key:  a.kvNodeListPath(),
+				Verb:      api.KVDeleteTree,
+				Key:       a.kvNodeListPath(),
+				Partition: a.config.Partition,
 			},
 		}
 		for _, agent := range healthyInstances {
@@ -169,9 +173,10 @@ WATCH_NODES_WAIT:
 				Probes: pingNodes[agent.Service.ID],
 			})
 			op := &api.KVTxnOp{
-				Verb:  api.KVSet,
-				Key:   a.kvNodeListPath() + agent.Service.ID,
-				Value: bytes,
+				Verb:      api.KVSet,
+				Key:       a.kvNodeListPath() + agent.Service.ID,
+				Value:     bytes,
+				Partition: a.config.Partition,
 			}
 			ops = append(ops, op)
 
@@ -204,7 +209,8 @@ WATCH_NODES_WAIT:
 // back through nodeCh as a sorted list.
 func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct{}) {
 	opts := &api.QueryOptions{
-		NodeMeta: a.config.NodeMeta,
+		NodeMeta:  a.config.NodeMeta,
+		Partition: a.config.Partition,
 	}
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts = opts.WithContext(ctx)
@@ -282,10 +288,12 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
 
-	namespaces, err := namespacesList(a.client)
+	namespaces, err := namespacesList(a.client, a.config)
 	if err != nil {
 		return nil, err
 	}
+
+	opts.Partition = a.config.Partition
 
 	for _, ns := range namespaces {
 		if ns.Name != "" {
@@ -313,8 +321,11 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 
 // namespacesList returns a list of all accessable namespaces.
 // Returns namespace "" (none) if none found for consul OSS compatibility.
-func namespacesList(client *api.Client) ([]*api.Namespace, error) {
-	namespaces, _, err := client.Namespaces().List(nil)
+func namespacesList(client *api.Client, config *Config) ([]*api.Namespace, error) {
+	opts := &api.QueryOptions{
+		Partition: config.Partition,
+	}
+	namespaces, _, err := client.Namespaces().List(opts)
 	if e, ok := err.(api.StatusError); ok && e.Code == 404 {
 		namespaces = []*api.Namespace{{Name: ""}}
 	} else if err != nil {

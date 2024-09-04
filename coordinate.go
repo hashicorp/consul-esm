@@ -172,9 +172,10 @@ func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key strin
 	if kvPair != nil {
 		ops = append(ops, &api.TxnOp{
 			KV: &api.KVTxnOp{
-				Verb:  api.KVDeleteCAS,
-				Key:   key,
-				Index: kvPair.ModifyIndex,
+				Verb:      api.KVDeleteCAS,
+				Key:       key,
+				Index:     kvPair.ModifyIndex,
+				Partition: a.config.Partition,
 			},
 		})
 		a.logger.Trace("Deleting KV entry", "key", key)
@@ -214,9 +215,10 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 		bytes, _ := time.Now().UTC().GobEncode()
 		ops = append(ops, &api.TxnOp{
 			KV: &api.KVTxnOp{
-				Verb:  api.KVSet,
-				Key:   key,
-				Value: bytes,
+				Verb:      api.KVSet,
+				Key:       key,
+				Value:     bytes,
+				Partition: a.config.Partition,
 			},
 		})
 		a.logger.Trace("Writing KV entry for key", "key", key)
@@ -235,9 +237,10 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 			// Clear the KV entry.
 			ops = append(ops, &api.TxnOp{
 				KV: &api.KVTxnOp{
-					Verb:  api.KVDeleteCAS,
-					Key:   key,
-					Index: kvPair.ModifyIndex,
+					Verb:      api.KVDeleteCAS,
+					Key:       key,
+					Index:     kvPair.ModifyIndex,
+					Partition: a.config.Partition,
 				},
 			})
 
