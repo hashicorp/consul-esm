@@ -280,11 +280,12 @@ func (a *Agent) updateNodeCheck(node *api.Node, ops api.TxnOps, status, output s
 		Check: &api.CheckTxnOp{
 			Verb: api.CheckSet,
 			Check: api.HealthCheck{
-				Node:    node.Node,
-				CheckID: externalCheckName,
-				Name:    "External Node Status",
-				Status:  status,
-				Output:  output,
+				Node:      node.Node,
+				CheckID:   externalCheckName,
+				Name:      "External Node Status",
+				Status:    status,
+				Output:    output,
+				Partition: a.config.Partition,
 			},
 		},
 	})

@@ -321,6 +321,7 @@ REGISTER:
 		Name:      "Consul External Service Monitor Alive",
 		Notes:     "This check is periodically updated as long as the agent is alive.",
 		ServiceID: serviceID,
+		Partition: a.config.Partition,
 		AgentServiceCheck: api.AgentServiceCheck{
 			TTL:                            agentTTL.String(),
 			Status:                         api.HealthPassing,
