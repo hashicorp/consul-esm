@@ -165,7 +165,7 @@ func (a *Agent) Run() error {
 	wg.Wait()
 
 	// Clean up.
-	if err := a.client.Agent().ServiceDeregister(a.serviceID()); err != nil {
+	if err := a.client.Agent().ServiceDeregisterOpts(a.serviceID(), &api.QueryOptions{Partition: a.config.Partition}); err != nil {
 		a.logger.Warn("Failed to deregister service", "error", err)
 	}
 
