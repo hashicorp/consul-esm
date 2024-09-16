@@ -88,8 +88,6 @@ func (c *Config) ClientConfig() *api.Config {
 
 	if c.Partition != "" {
 		conf.Partition = c.Partition
-	} else {
-		conf.Partition = "default"
 	}
 
 	if c.CAFile != "" {
@@ -135,6 +133,7 @@ func DefaultConfig() (*Config, error) {
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
 		DisableCoordinateUpdates:  false,
+		Partition:                 "",
 	}, nil
 }
 

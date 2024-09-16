@@ -165,7 +165,7 @@ func (a *Agent) Run() error {
 	wg.Wait()
 
 	// Clean up.
-	if err := a.client.Agent().ServiceDeregisterOpts(a.serviceID(), &api.QueryOptions{Partition: a.config.Partition}); err != nil {
+	if err := a.client.Agent().ServiceDeregisterOpts(a.serviceID(), a.ConsulQueryOption()); err != nil {
 		a.logger.Warn("Failed to deregister service", "error", err)
 	}
 
@@ -199,20 +199,20 @@ func (e *alreadyExistsError) Error() string {
 
 // register is used to register this agent with Consul service discovery.
 func (a *Agent) register() error {
-	opts := &api.QueryOptions{
-		Partition: a.config.Partition,
-	}
 	// agent ids need to be unique to disambiguate different instances on same host
-	if existing, _, _ := a.client.Agent().Service(a.serviceID(), opts); existing != nil {
+	if existing, _, _ := a.client.Agent().Service(a.serviceID(), a.ConsulQueryOption()); existing != nil {
 		return &alreadyExistsError{a.serviceID()}
 	}
 
 	service := &api.AgentServiceRegistration{
-		ID:        a.serviceID(),
-		Name:      a.config.Service,
-		Meta:      a.serviceMeta(),
-		Partition: a.config.Partition,
+		ID:   a.serviceID(),
+		Name: a.config.Service,
+		Meta: a.serviceMeta(),
 	}
+	a.HasPartition(func(partition string) {
+		service.Partition = partition
+	})
+
 	if a.config.Tag != "" {
 		service.Tags = []string{a.config.Tag}
 	}
@@ -321,13 +321,15 @@ REGISTER:
 		Name:      "Consul External Service Monitor Alive",
 		Notes:     "This check is periodically updated as long as the agent is alive.",
 		ServiceID: serviceID,
-		Partition: a.config.Partition,
 		AgentServiceCheck: api.AgentServiceCheck{
 			TTL:                            agentTTL.String(),
 			Status:                         api.HealthPassing,
 			DeregisterCriticalServiceAfter: deregisterTime.String(),
 		},
 	}
+	a.HasPartition(func(partition string) {
+		check.Partition = partition
+	})
 	if err := a.client.Agent().CheckRegister(check); err != nil {
 		a.logger.Error("Failed to register TTL check (will retry)", "error", err)
 		time.Sleep(retryTime)
@@ -513,11 +515,14 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	}
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts := (&api.QueryOptions{
+	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
-		Partition: a.config.Partition,
-	}).WithContext(ctx)
+	}
+	opts = opts.WithContext(ctx)
+	a.HasPartition(func(partition string) {
+		opts.Partition = partition
+	})
 	defer cancelFunc()
 	go func() {
 		select {
@@ -640,4 +645,38 @@ VERIFYCONSULSERVER:
 
 	a.logger.Debug("Consul agent and all servers are running compatible versions with ESM")
 	return nil
+}
+
+// PartitionOrEmpty returns the partition if it exists, otherwise returns an empty string.
+func (a *Agent) PartitionOrEmpty() string {
+	if a.config == nil || a.config.Partition == "" {
+		return ""
+	}
+	return a.config.Partition
+}
+
+// HasPartition checks if the partition is valid and calls the callback with the partition if it has any.
+func (a *Agent) HasPartition(callback func(partition string)) {
+	partition := a.PartitionOrEmpty()
+
+	if partition == "" || strings.ToLower(partition) == "default" {
+		// Ignore empty or default partitions
+		return
+	}
+
+	callback(a.config.Partition)
+}
+
+// ConsulQueryOption constructs and returns a new api.QueryOptions object.
+// If the Agent has a valid partition, it sets the partition in the QueryOptions.
+//
+// Returns:
+//   *api.QueryOptions: A new QueryOptions object with the partition set if applicable.
+
+func (a *Agent) ConsulQueryOption() *api.QueryOptions {
+	opts := &api.QueryOptions{}
+	a.HasPartition(func(partition string) {
+		opts.Partition = partition
+	})
+	return opts
 }

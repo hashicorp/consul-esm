@@ -309,6 +309,66 @@ func TestConvertTelemetry(t *testing.T) {
 	}
 }
 
+func TestPartition(t *testing.T) {
+	cases := []struct {
+		name           string
+		config         string
+		expectedConfig Config
+		expectError    bool
+	}{
+		{
+			"Partition not defined",
+			"",
+			Config{
+				Partition: "",
+			},
+			false,
+		},
+		{
+			"Partition is empty",
+			"partition = \"\"",
+			Config{
+				Partition: "",
+			},
+			false,
+		},
+		{
+			"Partition is default",
+			"partition = \"default\"",
+			Config{
+				Partition: "default",
+			},
+			false,
+		},
+		{
+			"Partition is default",
+			"partition = \"admin\"",
+			Config{
+				Partition: "admin",
+			},
+			false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := bytes.NewBufferString(tc.config)
+			humanConfig, err := DecodeConfig(raw)
+			if tc.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			result := &Config{}
+			MergeConfig(result, humanConfig)
+
+			// comparing partition only string
+			assert.Equal(t, tc.expectedConfig.Partition, result.Partition)
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func stringPointer(s string) *string {
 	if len(s) == 0 {
 		return nil

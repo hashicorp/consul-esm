@@ -107,10 +107,7 @@ func nodeLists(nodes []*api.Node, insts []*api.ServiceEntry,
 }
 
 func (a *Agent) commitOps(ops api.KVTxnOps) bool {
-	qops := &api.QueryOptions{
-		Partition: a.config.Partition,
-	}
-	success, results, _, err := a.client.KV().Txn(ops, qops)
+	success, results, _, err := a.client.KV().Txn(ops, a.ConsulQueryOption())
 	if err != nil || !success {
 		a.logger.Error("Error writing state to KV store", "results", results, "error", err)
 		// Try again after the wait because we got an error.
@@ -160,12 +157,15 @@ WATCH_NODES_WAIT:
 		healthNodes, pingNodes := nodeLists(externalNodes, healthyInstances)
 
 		// Write the KV update as a transaction.
+		kvOps := &api.KVTxnOp{
+			Verb: api.KVDeleteTree,
+			Key:  a.kvNodeListPath(),
+		}
+		a.HasPartition(func(partition string) {
+			kvOps.Partition = partition
+		})
 		ops := api.KVTxnOps{
-			&api.KVTxnOp{
-				Verb:      api.KVDeleteTree,
-				Key:       a.kvNodeListPath(),
-				Partition: a.config.Partition,
-			},
+			kvOps,
 		}
 		for _, agent := range healthyInstances {
 			bytes, _ := json.Marshal(NodeWatchList{
@@ -173,11 +173,13 @@ WATCH_NODES_WAIT:
 				Probes: pingNodes[agent.Service.ID],
 			})
 			op := &api.KVTxnOp{
-				Verb:      api.KVSet,
-				Key:       a.kvNodeListPath() + agent.Service.ID,
-				Value:     bytes,
-				Partition: a.config.Partition,
+				Verb:  api.KVSet,
+				Key:   a.kvNodeListPath() + agent.Service.ID,
+				Value: bytes,
 			}
+			a.HasPartition(func(partition string) {
+				op.Partition = partition
+			})
 			ops = append(ops, op)
 
 			// Flush any ops if we're nearing a transaction limit
@@ -209,9 +211,12 @@ WATCH_NODES_WAIT:
 // back through nodeCh as a sorted list.
 func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct{}) {
 	opts := &api.QueryOptions{
-		NodeMeta:  a.config.NodeMeta,
-		Partition: a.config.Partition,
+		NodeMeta: a.config.NodeMeta,
 	}
+	a.HasPartition(func(partition string) {
+		opts.Partition = partition
+	})
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts = opts.WithContext(ctx)
 	go func() {
@@ -255,6 +260,9 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 	var opts *api.QueryOptions
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts = opts.WithContext(ctx)
+	a.HasPartition(func(partition string) {
+		opts.Partition = partition
+	})
 	go func() {
 		<-stopCh
 		cancelFunc()
@@ -292,8 +300,6 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 	if err != nil {
 		return nil, err
 	}
-
-	opts.Partition = a.config.Partition
 
 	for _, ns := range namespaces {
 		if ns.Name != "" {

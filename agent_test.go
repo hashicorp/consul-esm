@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hashicorp/consul/api"
@@ -569,4 +570,89 @@ func TestAgent_getHealthChecks(t *testing.T) {
 			t.Error("Wrong check id:", ns1check.CheckID)
 		}
 	})
+}
+
+func TestAgent_PartitionOrEmpty(t *testing.T) {
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, partition, expected string
+	}{
+		{"No partition", "", ""},
+		{"default partition", "default", "default"},
+		{"admin partition", "admin", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf.Partition = tc.partition
+
+			agent := &Agent{
+				config: conf,
+			}
+
+			assert.Equal(t, tc.expected, agent.PartitionOrEmpty())
+		})
+	}
+}
+
+func TestAgent_HasPartition(t *testing.T) {
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, partition, expected string
+	}{
+		{"No partition", "", ""},
+		{"default partition", "default", ""},
+		{"admin partition", "admin", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf.Partition = tc.partition
+
+			agent := &Agent{
+				config: conf,
+			}
+
+			actualPartition := ""
+			agent.HasPartition(func(partition string) {
+				actualPartition = partition
+			})
+
+			assert.Equal(t, tc.expected, actualPartition)
+		})
+	}
+}
+
+func TestAgent_ConsulQueryOptions(t *testing.T) {
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, partition, expected string
+	}{
+		{"No partition", "", ""},
+		{"default partition", "default", ""},
+		{"admin partition", "admin", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf.Partition = tc.partition
+
+			agent := &Agent{
+				config: conf,
+			}
+
+			opts := agent.ConsulQueryOption()
+
+			assert.Equal(t, tc.expected, opts.Partition)
+		})
+	}
 }
