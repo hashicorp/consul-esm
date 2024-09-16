@@ -458,9 +458,11 @@ func Test_namespacesList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	config := &Config{Partition: "default"}
 	// simulate enterprise consul
 	testcase = "ent"
-	nss, err := namespacesList(client)
+	nss, err := namespacesList(client, config)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
@@ -469,7 +471,7 @@ func Test_namespacesList(t *testing.T) {
 	}
 	// simulate oss consul
 	testcase = "oss"
-	nss, err = namespacesList(client)
+	nss, err = namespacesList(client, config)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
@@ -478,7 +480,7 @@ func Test_namespacesList(t *testing.T) {
 	}
 	// simulate other random error
 	testcase = "err"
-	nss, err = namespacesList(client)
+	nss, err = namespacesList(client, config)
 	if err == nil {
 		t.Fatal("unexpected error:", err)
 	}
