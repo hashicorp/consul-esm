@@ -216,7 +216,7 @@ token = ""
 datacenter = "dc1"
 
 // The target Admin Partition to use.
-partition = "prod"
+partition = ""
 
 // The CA file to use for talking to Consul over TLS. Can also be provided
 // though the CONSUL_CACERT environment variable.

@@ -283,7 +283,7 @@ func (a *Agent) runRegister() {
 			return
 
 		case <-time.After(agentTTL):
-			services, err := a.client.Agent().Services()
+			services, err := a.client.Agent().ServicesWithFilterOpts("", a.ConsulQueryOption())
 			if err != nil {
 				a.logger.Error("Failed to check services (will retry)", "error", err)
 				time.Sleep(retryTime)
@@ -330,7 +330,7 @@ REGISTER:
 	a.HasPartition(func(partition string) {
 		check.Partition = partition
 	})
-	if err := a.client.Agent().CheckRegister(check); err != nil {
+	if err := a.client.Agent().CheckRegisterOpts(check, a.ConsulQueryOption()); err != nil {
 		a.logger.Error("Failed to register TTL check (will retry)", "error", err)
 		time.Sleep(retryTime)
 		goto REGISTER
@@ -343,7 +343,7 @@ REGISTER:
 			return
 
 		case <-time.After(agentTTL / 2):
-			if err := a.client.Agent().UpdateTTL(ttlID, "", api.HealthPassing); err != nil {
+			if err := a.client.Agent().UpdateTTLOpts(ttlID, "", api.HealthPassing, a.ConsulQueryOption()); err != nil {
 				a.logger.Error("Failed to refresh agent TTL check (will reregister)", "error", err)
 				time.Sleep(retryTime)
 				goto REGISTER
@@ -606,7 +606,7 @@ VERIFYCONSULSERVER:
 	}
 
 	// Fetch server versions
-	svs, _, err := a.client.Catalog().Service("consul", "", nil)
+	svs, _, err := a.client.Catalog().Service("consul", "", a.ConsulQueryOption())
 	if err != nil {
 		if strings.Contains(err.Error(), "429") {
 			// 429 is a warning that something is unhealthy. This may occur when ESM

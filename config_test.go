@@ -341,7 +341,7 @@ func TestPartition(t *testing.T) {
 			false,
 		},
 		{
-			"Partition is default",
+			"Partition is non-default",
 			"partition = \"admin\"",
 			Config{
 				Partition: "admin",

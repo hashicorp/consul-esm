@@ -255,7 +255,7 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 
 			// If the node still exists in the catalog, add an atomic delete on the node to
 			// the list of operations to run.
-			existing, _, err := a.client.Catalog().Node(node.Node, nil)
+			existing, _, err := a.client.Catalog().Node(node.Node, a.ConsulQueryOption())
 			if err != nil {
 				return fmt.Errorf("could not fetch existing node %q: %v", node.Node, err)
 			}
