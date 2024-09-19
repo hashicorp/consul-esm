@@ -491,6 +491,7 @@ func Test_namespacesList(t *testing.T) {
 }
 
 func Test_getServiceInstances(t *testing.T) {
+	partitionQueryParamKey := "partition"
 	// parameterized test
 	cases := []struct {
 		name, partition string
@@ -506,13 +507,13 @@ func Test_getServiceInstances(t *testing.T) {
 					uri := r.RequestURI
 					switch { // ignore anything that doesn't require a return body
 					case strings.Contains(uri, "status/leader"):
-						assert.Equal(t, tc.partition, r.URL.Query().Get("partition"))
+						assert.Equal(t, tc.partition, r.URL.Query().Get(partitionQueryParamKey))
 						fmt.Fprint(w, `"127.0.0.1"`)
 					case strings.Contains(uri, "namespace"):
-						assert.Equal(t, tc.partition, r.URL.Query().Get("partition"))
+						assert.Equal(t, tc.partition, r.URL.Query().Get(partitionQueryParamKey))
 						fmt.Fprint(w, namespacesJSON)
 					case strings.Contains(uri, "health/service"):
-						assert.Equal(t, tc.partition, r.URL.Query().Get("partition"))
+						assert.Equal(t, tc.partition, r.URL.Query().Get(partitionQueryParamKey))
 						fmt.Fprint(w, healthserviceJSON)
 					}
 				}))

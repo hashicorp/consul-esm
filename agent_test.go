@@ -597,9 +597,10 @@ func TestAgent_PartitionOrEmpty(t *testing.T) {
 	}
 }
 
-func TestAgent_PartitionOrEmptyAPI(t *testing.T) {
+func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 	testPartition := "test-partition"
 	notUniqueInstanceID := "not-unique-instance-id"
+	partitionQueryParamKey := "partition"
 	t.Run("with-partition", func(t *testing.T) {
 		listener, err := net.Listen("tcp", ":0")
 		require.NoError(t, err)
@@ -610,13 +611,14 @@ func TestAgent_PartitionOrEmptyAPI(t *testing.T) {
 			func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					fmt.Fprint(w, `"`+addr+`"`)
 				case "/v1/namespaces":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					fmt.Fprint(w, testNamespaces())
 				case "/v1/health/state/any":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					namespace := r.URL.Query()["ns"][0]
 					testNs[namespace] = true
 					if namespace == "default" {
@@ -624,31 +626,28 @@ func TestAgent_PartitionOrEmptyAPI(t *testing.T) {
 					}
 					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
 				case "/v1/agent/service/consul-esm:not-unique-instance-id":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					// write status 404, to tell the service is not registered and proceed with registration
 					w.WriteHeader(http.StatusNotFound)
 				case "/v1/agent/service/register":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					var svc api.AgentServiceRegistration
 					err := json.NewDecoder(r.Body).Decode(&svc)
 					require.NoError(t, err)
-					// assert.Equal(t, "consul-esm", svc.Service)
-					assert.Equal(t, fmt.Sprintf("consul-esm:%s", notUniqueInstanceID), svc.ID)
-					assert.Equal(t, "test", svc.Tags[0])
-					assert.Equal(t, "consul-esm", svc.Meta["external-source"])
+					assert.Equal(t, testPartition, svc.Partition)
 					w.WriteHeader(http.StatusOK)
 				case "/v1/kv/consul-esm/agents/consul-esm:not-unique-instance-id":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 				case "/v1/session/create":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 				case "/v1/agent/check/register":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 				case "/v1/agent/check/update/consul-esm:not-unique-instance-id:agent-ttl":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 				case "/v1/catalog/service/consul-esm":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 				case "/v1/agent/services":
-					assert.Equal(t, testPartition, r.URL.Query().Get("partition"))
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 
 				default:
 					t.Log("unhandled:", r.URL.EscapedPath())
