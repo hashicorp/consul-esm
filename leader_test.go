@@ -15,6 +15,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
+	"github.com/stretchr/testify/assert"
 )
 
 func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNodes []string) {
@@ -458,9 +459,11 @@ func Test_namespacesList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	config := &Config{Partition: "default"}
 	// simulate enterprise consul
 	testcase = "ent"
-	nss, err := namespacesList(client)
+	nss, err := namespacesList(client, config)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
@@ -469,7 +472,7 @@ func Test_namespacesList(t *testing.T) {
 	}
 	// simulate oss consul
 	testcase = "oss"
-	nss, err = namespacesList(client)
+	nss, err = namespacesList(client, config)
 	if err != nil {
 		t.Fatal("unexpected error:", err)
 	}
@@ -478,7 +481,7 @@ func Test_namespacesList(t *testing.T) {
 	}
 	// simulate other random error
 	testcase = "err"
-	nss, err = namespacesList(client)
+	nss, err = namespacesList(client, config)
 	if err == nil {
 		t.Fatal("unexpected error:", err)
 	}
@@ -488,44 +491,70 @@ func Test_namespacesList(t *testing.T) {
 }
 
 func Test_getServiceInstances(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			uri := r.RequestURI
-			switch { // ignore anything that doesn't require a return body
-			case strings.Contains(uri, "status/leader"):
-				fmt.Fprint(w, `"127.0.0.1"`)
-			case strings.Contains(uri, "namespace"):
-				fmt.Fprint(w, namespacesJSON)
-			case strings.Contains(uri, "health/service"):
-				fmt.Fprint(w, healthserviceJSON)
+	partitionQueryParamKey := "partition"
+	// parameterized test
+	cases := []struct {
+		name, partition string
+	}{
+		{"No partition", ""},
+		{"default partition", "default"},
+		{"admin partition", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					uri := r.RequestURI
+					switch { // ignore anything that doesn't require a return body
+					case strings.Contains(uri, "status/leader"):
+						assert.Equal(t, tc.partition, r.URL.Query().Get(partitionQueryParamKey))
+						fmt.Fprint(w, `"127.0.0.1"`)
+					case strings.Contains(uri, "namespace"):
+						assert.Equal(t, tc.partition, r.URL.Query().Get(partitionQueryParamKey))
+						fmt.Fprint(w, namespacesJSON)
+					case strings.Contains(uri, "health/service"):
+						assert.Equal(t, tc.partition, r.URL.Query().Get(partitionQueryParamKey))
+						fmt.Fprint(w, healthserviceJSON)
+					}
+				}))
+			defer ts.Close()
+
+			var agent *Agent
+			if tc.partition == "" {
+				agent = testAgent(t, func(c *Config) {
+					c.HTTPAddr = ts.URL
+					c.InstanceID = "test-agent"
+				})
+			} else {
+				agent = testAgent(t, func(c *Config) {
+					c.HTTPAddr = ts.URL
+					c.InstanceID = "test-agent"
+					c.Partition = tc.partition
+				})
 			}
-		}))
-	defer ts.Close()
 
-	agent := testAgent(t, func(c *Config) {
-		c.HTTPAddr = ts.URL
-		c.InstanceID = "test-agent"
-	})
-	defer agent.Shutdown()
+			defer agent.Shutdown()
 
-	opts := &api.QueryOptions{}
-	serviceInstances, err := agent.getServiceInstances(opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// 4 because test data has 2 namespaces each with 2 services
-	if len(serviceInstances) != 4 {
-		t.Fatal("Wrong number of services", len(serviceInstances))
-	}
-	for _, si := range serviceInstances {
-		sv := si.Service
-		switch {
-		case sv.ID == "one" && sv.Namespace == "foo":
-		case sv.ID == "one" && sv.Namespace == "default":
-		case sv.ID == "two" && sv.Namespace == "foo":
-		case sv.ID == "two" && sv.Namespace == "default":
-		default:
-			t.Fatalf("Unknown service: %#v\n", si.Service)
-		}
+			opts := &api.QueryOptions{}
+			serviceInstances, err := agent.getServiceInstances(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// 4 because test data has 2 namespaces each with 2 services
+			if len(serviceInstances) != 4 {
+				t.Fatal("Wrong number of services", len(serviceInstances))
+			}
+			for _, si := range serviceInstances {
+				sv := si.Service
+				switch {
+				case sv.ID == "one" && sv.Namespace == "foo":
+				case sv.ID == "one" && sv.Namespace == "default":
+				case sv.ID == "two" && sv.Namespace == "foo":
+				case sv.ID == "two" && sv.Namespace == "default":
+				default:
+					t.Fatalf("Unknown service: %#v\n", si.Service)
+				}
+			}
+		})
 	}
 }

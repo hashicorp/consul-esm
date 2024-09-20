@@ -170,12 +170,16 @@ func (a *Agent) updateHealthyNodeTxn(node *api.Node, kvClient *api.KV, key strin
 	// If a critical node went back to passing, delete the KV entry for it.
 	var ops api.TxnOps
 	if kvPair != nil {
+		kvOps := &api.KVTxnOp{
+			Verb:  api.KVDeleteCAS,
+			Key:   key,
+			Index: kvPair.ModifyIndex,
+		}
+		a.HasPartition(func(partition string) {
+			kvOps.Partition = partition
+		})
 		ops = append(ops, &api.TxnOp{
-			KV: &api.KVTxnOp{
-				Verb:  api.KVDeleteCAS,
-				Key:   key,
-				Index: kvPair.ModifyIndex,
-			},
+			KV: kvOps,
 		})
 		a.logger.Trace("Deleting KV entry", "key", key)
 	}
@@ -212,12 +216,16 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 	var ops api.TxnOps
 	if kvPair == nil {
 		bytes, _ := time.Now().UTC().GobEncode()
+		kvOps := &api.KVTxnOp{
+			Verb:  api.KVSet,
+			Key:   key,
+			Value: bytes,
+		}
+		a.HasPartition(func(partition string) {
+			kvOps.Partition = partition
+		})
 		ops = append(ops, &api.TxnOp{
-			KV: &api.KVTxnOp{
-				Verb:  api.KVSet,
-				Key:   key,
-				Value: bytes,
-			},
+			KV: kvOps,
 		})
 		a.logger.Trace("Writing KV entry for key", "key", key)
 	} else {
@@ -233,17 +241,21 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 				node.Node, "failureTimeout", a.config.NodeReconnectTimeout.String())
 
 			// Clear the KV entry.
+			kvOps := &api.KVTxnOp{
+				Verb:  api.KVDeleteCAS,
+				Key:   key,
+				Index: kvPair.ModifyIndex,
+			}
+			a.HasPartition(func(partition string) {
+				kvOps.Partition = partition
+			})
 			ops = append(ops, &api.TxnOp{
-				KV: &api.KVTxnOp{
-					Verb:  api.KVDeleteCAS,
-					Key:   key,
-					Index: kvPair.ModifyIndex,
-				},
+				KV: kvOps,
 			})
 
 			// If the node still exists in the catalog, add an atomic delete on the node to
 			// the list of operations to run.
-			existing, _, err := a.client.Catalog().Node(node.Node, nil)
+			existing, _, err := a.client.Catalog().Node(node.Node, a.ConsulQueryOption())
 			if err != nil {
 				return fmt.Errorf("could not fetch existing node %q: %v", node.Node, err)
 			}
@@ -273,16 +285,20 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 func (a *Agent) updateNodeCheck(node *api.Node, ops api.TxnOps, status, output string) error {
 	metrics.IncrCounter([]string{"coord", "txn"}, 1)
 	// Update the external health check status.
+	healthCheck := api.HealthCheck{
+		Node:    node.Node,
+		CheckID: externalCheckName,
+		Name:    "External Node Status",
+		Status:  status,
+		Output:  output,
+	}
+	a.HasPartition(func(partition string) {
+		healthCheck.Partition = partition
+	})
 	ops = append(ops, &api.TxnOp{
 		Check: &api.CheckTxnOp{
-			Verb: api.CheckSet,
-			Check: api.HealthCheck{
-				Node:    node.Node,
-				CheckID: externalCheckName,
-				Name:    "External Node Status",
-				Status:  status,
-				Output:  output,
-			},
+			Verb:  api.CheckSet,
+			Check: healthCheck,
 		},
 	})
 

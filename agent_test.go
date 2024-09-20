@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hashicorp/consul/api"
@@ -36,7 +37,6 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 	if cb != nil {
 		cb(conf)
 	}
-
 	agent, err := NewAgent(conf, logger)
 	if err != nil {
 		t.Fatal(err)
@@ -569,4 +569,176 @@ func TestAgent_getHealthChecks(t *testing.T) {
 			t.Error("Wrong check id:", ns1check.CheckID)
 		}
 	})
+}
+
+func TestAgent_PartitionOrEmpty(t *testing.T) {
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, partition, expected string
+	}{
+		{"No partition", "", ""},
+		{"default partition", "default", "default"},
+		{"admin partition", "admin", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf.Partition = tc.partition
+
+			agent := &Agent{
+				config: conf,
+			}
+
+			assert.Equal(t, tc.expected, agent.PartitionOrEmpty())
+		})
+	}
+}
+
+func TestAgent_getHealthChecksWithPartition(t *testing.T) {
+	testPartition := "test-partition"
+	notUniqueInstanceID := "not-unique-instance-id"
+	partitionQueryParamKey := "partition"
+	t.Run("with-partition", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		testNs := map[string]bool{}
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/namespaces":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+					fmt.Fprint(w, testNamespaces())
+				case "/v1/health/state/any":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+					namespace := r.URL.Query()["ns"][0]
+					testNs[namespace] = true
+					if namespace == "default" {
+						fmt.Fprint(w, "[]")
+					}
+					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
+				case "/v1/agent/service/consul-esm:not-unique-instance-id":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+					// write status 404, to tell the service is not registered and proceed with registration
+					w.WriteHeader(http.StatusNotFound)
+				case "/v1/agent/service/register":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+					var svc api.AgentServiceRegistration
+					err := json.NewDecoder(r.Body).Decode(&svc)
+					require.NoError(t, err)
+					assert.Equal(t, testPartition, svc.Partition)
+					w.WriteHeader(http.StatusOK)
+				case "/v1/kv/consul-esm/agents/consul-esm:not-unique-instance-id":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+				case "/v1/session/create":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+				case "/v1/agent/check/register":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+				case "/v1/agent/check/update/consul-esm:not-unique-instance-id:agent-ttl":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+				case "/v1/catalog/service/consul-esm":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+				case "/v1/agent/services":
+					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
+
+				default:
+					t.Log("unhandled:", r.URL.EscapedPath())
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.Tag = "test"
+			c.Partition = testPartition
+			c.InstanceID = notUniqueInstanceID
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"foo": true}
+		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		if len(ourChecks) != 2 {
+			t.Error("should be 2 checks, got", len(ourChecks))
+		}
+		ns1check := ourChecks[0]
+		ns2check := ourChecks[1]
+		if ns1check.CheckID != "ns1_svc_ck" {
+			t.Error("Wrong check id:", ns1check.CheckID)
+		}
+		if ns2check.CheckID != "ns2_svc_ck" {
+			t.Error("Wrong check id:", ns1check.CheckID)
+		}
+
+		// test the state API is called for each namespace in an agent's partition
+		assert.Len(t, testNs, 3)
+	})
+}
+
+func TestAgent_HasPartition(t *testing.T) {
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, partition, expected string
+	}{
+		{"No partition", "", ""},
+		{"default partition", "default", ""},
+		{"admin partition", "admin", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf.Partition = tc.partition
+
+			agent := &Agent{
+				config: conf,
+			}
+
+			actualPartition := ""
+			agent.HasPartition(func(partition string) {
+				actualPartition = partition
+			})
+
+			assert.Equal(t, tc.expected, actualPartition)
+		})
+	}
+}
+
+func TestAgent_ConsulQueryOptions(t *testing.T) {
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, partition, expected string
+	}{
+		{"No partition", "", ""},
+		{"default partition", "default", ""},
+		{"admin partition", "admin", "admin"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf.Partition = tc.partition
+
+			agent := &Agent{
+				config: conf,
+			}
+
+			opts := agent.ConsulQueryOption()
+
+			assert.Equal(t, tc.expected, opts.Partition)
+		})
+	}
 }

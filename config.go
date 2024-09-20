@@ -33,9 +33,10 @@ type Config struct {
 	SyslogFacility string
 	LogJSON        bool
 
-	Service string
-	Tag     string
-	KVPath  string
+	Partition string
+	Service   string
+	Tag       string
+	KVPath    string
 
 	InstanceID                string
 	NodeMeta                  map[string]string
@@ -84,6 +85,11 @@ func (c *Config) ClientConfig() *api.Config {
 	if c.Datacenter != "" {
 		conf.Datacenter = c.Datacenter
 	}
+
+	if c.Partition != "" {
+		conf.Partition = c.Partition
+	}
+
 	if c.CAFile != "" {
 		conf.TLSConfig.CAFile = c.CAFile
 	}
@@ -127,6 +133,7 @@ func DefaultConfig() (*Config, error) {
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
 		DisableCoordinateUpdates:  false,
+		Partition:                 "",
 	}, nil
 }
 
@@ -169,6 +176,7 @@ type HumanConfig struct {
 	Tag        flags.StringValue   `mapstructure:"consul_service_tag"`
 	KVPath     flags.StringValue   `mapstructure:"consul_kv_path"`
 	NodeMeta   []map[string]string `mapstructure:"external_node_meta"`
+	Partition  flags.StringValue   `mapstructure:"partition"`
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
 	NodeProbeInterval    flags.DurationValue `mapstructure:"node_probe_interval"`
@@ -461,6 +469,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.EnableSyslog.Merge(&dst.EnableSyslog)
 	src.InstanceID.Merge(&dst.InstanceID)
 	src.Service.Merge(&dst.Service)
+	src.Partition.Merge(&dst.Partition)
 	src.Tag.Merge(&dst.Tag)
 	src.KVPath.Merge(&dst.KVPath)
 	if len(src.NodeMeta) == 1 {
