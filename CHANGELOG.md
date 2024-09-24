@@ -4,7 +4,8 @@ IMPROVEMENTS:
 * Add support for Admin-Partitions [[GH-259](https://github.com/hashicorp/consul-esm/pull/281)]
 
 SECURITY FIXES:
-* Updated go modules `github.com/hashicorp/go-retryablehttp`  and `github.com/hashicorp/go-retryablehttp` to fix the security vulnerability GO-2024-2947, GO-2024-2948, GHSA-xr7q-jx4m-x55m and GHSA-v6v8-xj6m-xwqh
+* Upgrade go module `go-retryablehttp` to address [CVE-2024-6104](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-6104)
+* Upgrade go module `grpc` to address [GO-2024-2978](https://pkg.go.dev/vuln/GO-2024-2978) 
 
 ## v0.7.2 (May 22, 2024)
 
