@@ -25,7 +25,7 @@ var (
 
 	// Version is the main version number that is being run at the moment.
 	// Note: our current release process does a pattern match on this variable.
-	Version = "0.7.2"
+	Version = "0.8.0"
 
 	// VersionPrerelease is a pre-release marker for the version. If this is ""
 	// (empty string) then it means that it is a final release. Otherwise, this

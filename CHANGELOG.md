@@ -1,3 +1,8 @@
+## v0.8.0 (Sep 24, 2024)
+
+IMPROVEMENTS:
+* Add support for Admin-Partitions [[GH-259](https://github.com/hashicorp/consul-esm/pull/281)]
+
 ## v0.7.2 (May 22, 2024)
 
 BUG FIXES:
