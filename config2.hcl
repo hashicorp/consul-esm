@@ -1,0 +1,6 @@
+log_level = "DEBUG"
+instance_id = "agent-two"
+http_addr = "localhost:8500"
+token = "a234daab-bfd1-cbd3-1f83-abf24e094b39"
+// instance_id = "a36ca779-ff11-dc3d-c610-31c017ab7156"
+consul_service_tag = "vpc:vpc2"

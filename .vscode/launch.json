@@ -8,6 +8,14 @@
             "mode": "auto",
             "program": "${workspaceFolder}",
             "args": ["--config-file=${workspaceFolder}/config.hcl"]
+        },
+        {
+            "name": "Launch Consul ESM with partition",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "args": ["--config-file=${workspaceFolder}/config3.hcl"]
         }
     ]
 }

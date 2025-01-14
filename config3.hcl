@@ -1,0 +1,12 @@
+log_level = "DEBUG"
+instance_id = "agent-three"
+// http_addr = "localhost:8500"
+//http_addr = "consulserver-1805099012.us-west-2.elb.amazonaws.com:8500"
+http_addr = "52.36.169.149:8500"
+//http_addr = "localhost:8500"
+// token = "a234daab-bfd1-cbd3-1f83-abf24e094b39"
+// scoped token
+token = "52e7af34-4d54-43bf-8548-4861c39bdd5b"
+// instance_id = "a36ca779-ff11-dc3d-c610-31c017ab7156"
+consul_service_tag = "vpc:vpc2"
+partition = "billing"

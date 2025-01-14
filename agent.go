@@ -85,6 +85,7 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		return nil, err
 	}
 
+	client.AddHeader("X-Consul-Agent-Type", "esm")
 	// Never used locally. I think we keep the reference to avoid GC.
 	metricsConf, err := lib.InitTelemetry(config.Telemetry, logger)
 	if err != nil {
@@ -211,6 +212,14 @@ func (a *Agent) register() error {
 	}
 	a.HasPartition(func(partition string) {
 		service.Partition = partition
+
+		service.Check = &api.AgentServiceCheck{
+			CheckID:                        "SerfHealth",
+			Name:                           "Serf Health Status",
+			Status:                         api.HealthPassing,
+			DeregisterCriticalServiceAfter: "120s",
+			TTL:                            "9999s",
+		}
 	})
 
 	if a.config.Tag != "" {
