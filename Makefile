@@ -3,8 +3,8 @@ MKFILE_PATH := $(lastword $(MAKEFILE_LIST))
 CURRENT_DIR := $(patsubst %/,%,$(dir $(realpath $(MKFILE_PATH))))
 
 # System information
-GOOS=$(shell go env GOOS)
-GOARCH=$(shell go env GOARCH)
+GOOS?=$(shell go env GOOS)
+GOARCH?=$(shell go env GOARCH)
 
 # Project information
 NAME := "consul-esm"
@@ -62,3 +62,10 @@ clean:
 dev-tree:
 	@true
 .PHONY: dev-tree
+
+
+build:
+	mkdir -p dist/linux/amd64/
+	env CGO_ENABLED="0" \
+		go build -ldflags "${LD_FLAGS}" -o dist/linux/amd64/$(NAME)
+.PHONY: build
