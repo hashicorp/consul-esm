@@ -6,16 +6,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/hashicorp/consul-esm/version"
+	"github.com/hashicorp/consul/logging"
+	"github.com/hashicorp/go-hclog"
+	"github.com/mitchellh/cli"
 	"io"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-
-	"github.com/hashicorp/consul-esm/version"
-	"github.com/hashicorp/consul/logging"
-	"github.com/hashicorp/go-hclog"
-	"github.com/mitchellh/cli"
 )
 
 const (
@@ -65,11 +64,15 @@ func main() {
 
 	// Set up logging.
 	logConfig := logging.Config{
-		Name:           "consul-esm",
-		LogLevel:       config.LogLevel,
-		EnableSyslog:   config.EnableSyslog,
-		SyslogFacility: config.SyslogFacility,
-		LogJSON:        config.LogJSON,
+		Name:              "consul-esm",
+		LogLevel:          config.LogLevel,
+		EnableSyslog:      config.EnableSyslog,
+		SyslogFacility:    config.SyslogFacility,
+		LogJSON:           config.LogJSON,
+		LogFilePath:       config.LogFile,
+		LogRotateBytes:    config.LogRotateBytes,
+		LogRotateMaxFiles: config.LogRotateMaxFiles,
+		LogRotateDuration: config.LogRotateDuration,
 	}
 	logger, err := logging.Setup(logConfig, os.Stdout)
 	if err != nil {

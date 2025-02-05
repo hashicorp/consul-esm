@@ -27,11 +27,15 @@ const (
 )
 
 type Config struct {
-	LogLevel       string
-	EnableDebug    bool
-	EnableSyslog   bool
-	SyslogFacility string
-	LogJSON        bool
+	LogLevel          string
+	EnableDebug       bool
+	EnableSyslog      bool
+	SyslogFacility    string
+	LogJSON           bool
+	LogFile           string
+	LogRotateBytes    int
+	LogRotateMaxFiles int
+	LogRotateDuration time.Duration
 
 	Partition string
 	Service   string
@@ -134,6 +138,10 @@ func DefaultConfig() (*Config, error) {
 		PingType:                  PingTypeUDP,
 		DisableCoordinateUpdates:  false,
 		Partition:                 "",
+		LogFile:                   "",
+		LogRotateBytes:            0,
+		LogRotateMaxFiles:         0,
+		LogRotateDuration:         0,
 	}, nil
 }
 
@@ -165,11 +173,15 @@ type Telemetry struct {
 
 // HumanConfig contains configuration that the practitioner can set
 type HumanConfig struct {
-	LogLevel       flags.StringValue `mapstructure:"log_level"`
-	EnableDebug    flags.BoolValue   `mapstructure:"enable_debug"`
-	EnableSyslog   flags.BoolValue   `mapstructure:"enable_syslog"`
-	SyslogFacility flags.StringValue `mapstructure:"syslog_facility"`
-	LogJSON        flags.BoolValue   `mapstructure:"log_json"`
+	LogLevel          flags.StringValue   `mapstructure:"log_level"`
+	EnableDebug       flags.BoolValue     `mapstructure:"enable_debug"`
+	EnableSyslog      flags.BoolValue     `mapstructure:"enable_syslog"`
+	SyslogFacility    flags.StringValue   `mapstructure:"syslog_facility"`
+	LogJSON           flags.BoolValue     `mapstructure:"log_json"`
+	LogFile           flags.StringValue   `mapstructure:"log_file"`
+	LogRotateBytes    intValue            `mapstructure:"log_rotate_bytes"`
+	LogRotateMaxFiles intValue            `mapstructure:"log_rotate_max_files"`
+	LogRotateDuration flags.DurationValue `mapstructure:"log_rotate_duration"`
 
 	InstanceID flags.StringValue   `mapstructure:"instance_id"`
 	Service    flags.StringValue   `mapstructure:"consul_service"`
@@ -502,5 +514,10 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 
 	src.PassingThreshold.Merge(&dst.PassingThreshold)
 	src.CriticalThreshold.Merge(&dst.CriticalThreshold)
+
+	src.LogFile.Merge(&dst.LogFile)
+	src.LogRotateBytes.Merge(&dst.LogRotateBytes)
+	src.LogRotateMaxFiles.Merge(&dst.LogRotateMaxFiles)
+	src.LogRotateDuration.Merge(&dst.LogRotateDuration)
 	return nil
 }
