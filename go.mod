@@ -2,7 +2,7 @@ module github.com/hashicorp/consul-esm
 
 go 1.22
 
-toolchain go1.22.4
+toolchain go1.22.5
 
 require (
 	github.com/armon/go-metrics v0.4.1
