@@ -22,6 +22,8 @@ require (
 	github.com/stretchr/testify v1.9.0
 )
 
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.11.0-alpha.0.20250224064958-b295f4614b0e
+
 require (
 	cel.dev/expr v0.16.0 // indirect
 	github.com/DataDog/datadog-go v4.8.3+incompatible // indirect
