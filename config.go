@@ -75,6 +75,8 @@ type Config struct {
 
 	PassingThreshold  int
 	CriticalThreshold int
+
+	AgentLess bool
 }
 
 func (c *Config) ClientConfig() *api.Config {
