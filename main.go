@@ -62,9 +62,6 @@ func main() {
 		os.Exit(ExitCodeError)
 	}
 
-	// flag
-	config.AgentLess = true
-
 	// Set up logging.
 	logConfig := logging.Config{
 		Name:              "consul-esm",

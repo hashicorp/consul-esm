@@ -524,7 +524,7 @@ func (c *CheckRunner) reapServicesInternal() {
 				ServiceID: ID.service,
 			}, nil)
 			c.logger.Info("agent has been critical for too long, deregistered service", "checkID", checkID,
-				"nodeID", ID.node,
+				"agentlessNodeID", ID.node,
 				"serviceID", ID.service,
 				"duration", time.Since(criticalTime),
 				"timeout", timeout)

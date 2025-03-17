@@ -133,11 +133,11 @@ func (a *Agent) isAgentLess() bool {
 	if a.config == nil {
 		return false
 	}
-	return a.config.AgentLess
+	return a.config.EnableAgentless
 }
 
 func (a *Agent) Run() error {
-
+	// initial registration
 	if a.isAgentLess() {
 		// register ESM as catalog service instead of agent
 		if err := a.registerCatalog(); err != nil {
@@ -158,13 +158,18 @@ func (a *Agent) Run() error {
 	}()
 	wg.Add(1)
 	go func() {
-		a.runRegister()
+		// re-registration loop
+		if a.isAgentLess() {
+			a.runAgentlessRegister()
+		} else {
+			a.runRegister()
+		}
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
 		if a.isAgentLess() {
-			a.runTTLAgentless()
+			a.runAgentlessSession()
 		} else {
 			a.runTTL()
 		}
@@ -239,33 +244,28 @@ func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.
 	// Define service details
 	serviceID := a.serviceID()
 	serviceName := a.config.Service
-	nodeName := a.nodeID()
+	nodeName := a.agentlessNodeID()
 	address := fmt.Sprintf("esm-%s", serviceID)
 
 	// Node does not exist, register it
 	reg := &api.CatalogRegistration{
 		Node:    nodeName,
 		Address: address,
-		NodeMeta: map[string]string{
-			"external-source": "consul-esm",
-			//"external-probe":   "true",
-			//"external-node":    "true",
-			"enforce-session":  "true",
-			"session-check-id": a.ttlCheckID(),
-			"session-key":      fmt.Sprintf("%s:session", serviceID),
-		},
 	}
 
 	if addChecks {
 		reg.Checks = api.HealthChecks{
 			{
 				Node:    nodeName,
-				CheckID: a.ttlCheckID(),
-				Name:    a.ttlCheckID(),
-				Status:  api.HealthPassing,
-				//ServiceID:   serviceID,
-				//ServiceName: serviceName,
-				Type: "ttl",
+				CheckID: a.agentlessCheckID(),
+				Name:    a.agentlessCheckID(),
+				Status:  api.HealthCritical,
+				Definition: api.HealthCheckDefinition{
+					SessionName:                    fmt.Sprintf("%s:session", serviceID),
+					DeregisterCriticalServiceAfter: api.ReadableDuration(1 * time.Minute),
+				},
+				// This type of check is a session checked
+				Type: "session",
 			},
 		}
 	}
@@ -274,8 +274,6 @@ func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.
 		reg.Service = &api.AgentService{
 			ID:      serviceID,
 			Service: serviceName,
-			//Port:    8080,
-			//Address: "127.0.0.2",
 		}
 	}
 	return reg
@@ -283,18 +281,17 @@ func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.
 
 // register ESM as service in Catalog
 func (a *Agent) registerCatalog() error {
-	// agent ids need to be unique to disambiguate different instances on same host
-	// check if service already exists in agent mode
-	if existing, _, _ := a.client.Agent().Service(a.serviceID(), a.ConsulQueryOption()); existing != nil {
-		return &alreadyExistsError{a.serviceID()}
-	}
-
 	// check if the instance is not already registered as service in catalog
-	if services, _, _ := a.client.Catalog().Service(a.serviceID(), "", a.ConsulQueryOption()); len(services) > 0 {
+	services, _, err := a.client.Catalog().Service(a.config.Service, "", a.ConsulQueryOption())
+	if err != nil {
+		return err
+	}
+
+	if containsService(a.serviceID(), services) && false {
 		return &alreadyExistsError{a.serviceID()}
 	}
 
-	nodeName := a.nodeID()
+	nodeName := a.agentlessNodeID()
 	// Check if the node exists
 	node, _, err := a.client.Catalog().Node(nodeName, nil)
 	if err != nil {
@@ -302,33 +299,6 @@ func (a *Agent) registerCatalog() error {
 	}
 
 	if node == nil {
-		//// Node does not exist, register it
-		//reg := &api.CatalogRegistration{
-		//	Node:    nodeName,
-		//	Address: fmt.Sprintf("esm-%s", a.serviceID()),
-		//	NodeMeta: map[string]string{
-		//		"external-source": "consul-esm",
-		//		"external-probe":  "true",
-		//		"external-node":   "true",
-		//	},
-		//	Checks: api.HealthChecks{
-		//		{
-		//			Node:        nodeName,
-		//			CheckID:     a.ttlCheckID(),
-		//			Name:        a.ttlCheckID(),
-		//			Status:      api.HealthPassing,
-		//			ServiceID:   a.serviceID(),
-		//			ServiceName: a.config.Service,
-		//			Type:        "ttl",
-		//			Definition: api.HealthCheckDefinition{
-		//				IntervalDuration:               time.Duration(30 * time.Second),
-		//				TimeoutDuration:                time.Duration(2 * time.Second),
-		//				DeregisterCriticalServiceAfter: api.ReadableDuration(10 * time.Minute),
-		//			},
-		//		},
-		//	},
-		//}
-
 		_, err := a.client.Catalog().Register(a.createCatalogRegistration(false, false), &api.WriteOptions{
 			Datacenter: a.config.Datacenter,
 			Partition:  a.PartitionOrEmpty(),
@@ -343,81 +313,13 @@ func (a *Agent) registerCatalog() error {
 	}
 
 	// Register the ESM service
-	// Check if the service already exists
-	service, _, err := a.client.Catalog().Service(a.serviceID(), "", a.ConsulQueryOption())
+	_, err = a.client.Catalog().Register(a.createCatalogRegistration(true, true), &api.WriteOptions{
+		Datacenter: a.config.Datacenter,
+		Partition:  a.PartitionOrEmpty(),
+	})
+
 	if err != nil {
 		return err
-	}
-
-	if len(service) <= 0 {
-		// Service does not exist, register it
-
-		// Define service details
-		//serviceID := a.serviceID()
-		//serviceName := a.config.Service
-
-		// Register the service in the Consul catalog
-		//reg := &api.CatalogRegistration{
-		//	Node:    nodeName, // The node where this service is registered
-		//	Address: "127.0.0.2",
-		//	Service: &api.AgentService{
-		//		ID:      serviceID,
-		//		Service: serviceName,
-		//		Port:    8080,
-		//		Address: "127.0.0.2",
-		//	},
-		//	NodeMeta: map[string]string{
-		//		"enforce-session":  "true",
-		//		"session-check-id": a.ttlCheckID(),
-		//		"session-key":      fmt.Sprintf("%s:session", a.serviceID()),
-		//	},
-		//	Checks: api.HealthChecks{
-		//		{
-		//			Node:        nodeName,
-		//			CheckID:     a.ttlCheckID(),
-		//			Name:        a.ttlCheckID(),
-		//			Status:      api.HealthPassing,
-		//			ServiceID:   serviceID,
-		//			ServiceName: a.config.Service,
-		//			Type:        "ttl",
-		//			Definition: api.HealthCheckDefinition{
-		//				IntervalDuration:               time.Duration(30 * time.Second),
-		//				TimeoutDuration:                time.Duration(2 * time.Second),
-		//				DeregisterCriticalServiceAfter: api.ReadableDuration(10 * time.Minute),
-		//			},
-		//		},
-		//	},
-		//}
-
-		_, err = a.client.Catalog().Register(a.createCatalogRegistration(true, true), &api.WriteOptions{
-			Datacenter: a.config.Datacenter,
-			Partition:  a.PartitionOrEmpty(),
-		})
-
-		if err != nil {
-			return err
-		}
-
-		//// 2️⃣ Register TTL-based health check using Agent API
-		//check := &api.AgentCheckRegistration{
-		//	ID:        "ttl-check-" + serviceID,
-		//	Name:      "TTL Health Check",
-		//	ServiceID: serviceID, // Linking the check to our service
-		//	AgentServiceCheck: api.AgentServiceCheck{
-		//		Status:                         api.HealthPassing, // Initially healthy
-		//		Interval:                       "5s",              // How often to run the check
-		//		Timeout:                        "1s",              // How long before the check times out
-		//		DeregisterCriticalServiceAfter: "1m",              // Consul will remove the service if this check is critical for more than 1m
-		//		TTL:                            "10s",             // Consul expects TTL updates within 10s
-		//	},
-		//}
-		//
-		//err = client.Agent().CheckRegister(check)
-		//if err != nil {
-		//	log.Fatalf("Failed to register TTL health check: %v", err)
-		//}
-		//log.Println("✅ TTL health check registered in Consul")
-
 	}
 
 	return nil
@@ -437,20 +339,6 @@ func (a *Agent) register() error {
 	}
 	a.HasPartition(func(partition string) {
 		service.Partition = partition
-
-		// we already have `agent-ttl` check for agent health, we just need this check to enable the registration of the agent
-		// Note: This check will be removed by regular ttl check
-		service.Check = &api.AgentServiceCheck{
-			CheckID:                        "SerfHealth",
-			Name:                           "SerfHealth",
-			Notes:                          "",
-			TTL:                            "31556926s",
-			Status:                         api.HealthPassing,
-			DeregisterCriticalServiceAfter: deregisterTime.String(),
-		}
-
-		// Marker to identify ESM Service and Check
-		service.Tags = []string{agentTypeESM}
 	})
 
 	if a.config.Tag != "" {
@@ -464,11 +352,15 @@ func (a *Agent) register() error {
 	return nil
 }
 
-func (a *Agent) ttlCheckID() string {
-	return fmt.Sprintf("%s:agent-ttl", a.serviceID())
+func (a *Agent) agentlessCheckID() string {
+	return fmt.Sprintf("%s:session-check", a.serviceID())
 }
 
-func (a *Agent) nodeID() string {
+func (a *Agent) agentlessSessionID() string {
+	return fmt.Sprintf("%s:session", a.serviceID())
+}
+
+func (a *Agent) agentlessNodeID() string {
 	return fmt.Sprintf("%s:node", a.serviceID())
 }
 
@@ -550,9 +442,40 @@ func (a *Agent) runRegister() {
 	}
 }
 
-func (a *Agent) runTTLAgentless() {
+// runAgentlessRegister is a long-running goroutine that ensures this service is registered
+// with Consul's service discovery. It will run until the shutdownCh is closed.
+func (a *Agent) runAgentlessRegister() {
+	for {
+	REGISTER_CHECK:
+		select {
+		case <-a.shutdownCh:
+			return
+
+		case <-time.After(agentTTL):
+			// check if the instance is not already registered as service in catalog
+			services, _, err := a.client.Catalog().Service(a.config.Service, "", a.ConsulQueryOption())
+			if err != nil {
+				a.logger.Error("Failed to check services (will retry)", "error", err)
+				time.Sleep(retryTime)
+				goto REGISTER_CHECK
+			}
+
+			if !containsService(a.serviceID(), services) {
+				a.logger.Warn("Service registration was lost, re-registering")
+				if err := a.registerCatalog(); err != nil {
+					a.logger.Error("Failed to re-register service (will retry)", "error", err)
+					time.Sleep(retryTime)
+					goto REGISTER_CHECK
+				}
+			}
+			// found the service
+		}
+	}
+}
+
+func (a *Agent) runAgentlessSession() {
 	// registering a session to monitor the health of the agent
-	sessionKey := fmt.Sprintf("%s:session", a.serviceID())
+	sessionKey := a.agentlessSessionID()
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
 	var lock *api.Lock
@@ -562,14 +485,14 @@ func (a *Agent) runTTLAgentless() {
 		}
 	}()
 
-LEADER_WAIT:
+LOCK_WAIT:
 	select {
 	case <-a.shutdownCh:
 		return
 	default:
 	}
 
-	// Wait to get the leader lock before running snapshots.
+	// Wait to get the session lock before running snapshots.
 	a.logger.Info("Agent: Trying to obtain health check session...")
 	if lock == nil {
 		var err error
@@ -579,84 +502,75 @@ LEADER_WAIT:
 		}
 		lock, err = a.client.LockOpts(opts)
 		opts.SessionOpts = &api.SessionEntry{
-			Node:       a.nodeID(),
+			Node:       a.agentlessNodeID(),
+			ID:         a.agentlessNodeID(),
 			Name:       opts.SessionName,
 			TTL:        opts.SessionTTL,
 			LockDelay:  opts.LockDelay,
-			NodeChecks: []string{a.ttlCheckID()},
-			Checks:     []string{a.ttlCheckID()},
+			NodeChecks: []string{a.agentlessCheckID()},
+			Checks:     []string{a.agentlessCheckID()},
 		}
 
 		if err != nil {
-			a.logger.Error("Agent: Error trying to create leader lock (will retry)", "error", err)
+			a.logger.Error("Agent: Error trying to create session lock (will retry)", "error", err)
 			time.Sleep(retryTime)
-			goto LEADER_WAIT
+			goto LOCK_WAIT
 		}
 	}
 
-	leaderCh, err := lock.Lock(a.shutdownCh)
+	// Before registering make sure we reset the health check if not passing
+	//healthChecks, _, err := a.client.Health().Node(a.agentlessNodeID(), a.ConsulQueryOption())
+	//if err != nil {
+	//	a.logger.Error("Agent: Error trying to get health checks for node", "error", err)
+	//	time.Sleep(retryTime)
+	//	goto LOCK_WAIT
+	//}
+
+	//for _, check := range healthChecks {
+	//	if check.CheckID == a.agentlessCheckID() && check.Status != api.HealthPassing {
+	//		_, err := a.client.Catalog().Register(a.createCatalogHealthCheck(api.HealthPassing), &api.WriteOptions{
+	//			Datacenter: a.config.Datacenter,
+	//			Partition:  a.PartitionOrEmpty(),
+	//		})
+	//
+	//		if err != nil {
+	//			a.logger.Error("Agent: Error trying to reset health check", "error", err)
+	//			time.Sleep(retryTime)
+	//			goto LOCK_WAIT
+	//		}
+	//	}
+	//}
+
+	// register the session
+	lockCh, err := lock.Lock(a.shutdownCh)
 	if err != nil {
 		if err == api.ErrLockHeld {
-			a.logger.Error("Agent: Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
+			a.logger.Error("Agent: Unable to use session lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
 			time.Sleep(retryTime)
-			goto LEADER_WAIT
+			goto LOCK_WAIT
 		} else {
-			a.logger.Error("Agent: Error trying to get leader lock (will retry)", "error", err)
+			a.logger.Error("Agent: Error trying to get session lock (will retry)", "error", err)
 			time.Sleep(retryTime)
-
-			//// making the service healthy briefly to register the service
-			//reg := &api.CatalogRegistration{
-			//	SkipNodeUpdate: true,
-			//	Node:           a.nodeID(), // The node where this service is registered
-			//	Address:        "127.0.0.2",
-			//	NodeMeta: map[string]string{
-			//		"enforce-session":  "true",
-			//		"session-check-id": a.ttlCheckID(),
-			//		"session-key":      fmt.Sprintf("%s:session", a.serviceID()),
-			//	},
-			//	Checks: api.HealthChecks{
-			//		{
-			//			Node:        a.nodeID(),
-			//			CheckID:     a.ttlCheckID(),
-			//			Name:        a.ttlCheckID(),
-			//			Status:      api.HealthPassing,
-			//			ServiceID:   a.serviceID(),
-			//			ServiceName: a.config.Service,
-			//			Type:        "ttl",
-			//			Definition: api.HealthCheckDefinition{
-			//				IntervalDuration:               time.Duration(30 * time.Second),
-			//				TimeoutDuration:                time.Duration(2 * time.Second),
-			//				DeregisterCriticalServiceAfter: api.ReadableDuration(10 * time.Minute),
-			//			},
-			//		},
-			//	},
-			//}
-
-			_, err = a.client.Catalog().Register(a.createCatalogHealthCheck(api.HealthPassing), &api.WriteOptions{
-				Datacenter: a.config.Datacenter,
-				Partition:  a.PartitionOrEmpty(),
-			})
-
 			if err != nil {
-				a.logger.Error("Agent: nested error trying to get leader lock (will retry)", "error", err)
+				a.logger.Error("Agent: nested error trying to get session lock (will retry)", "error", err)
 			}
 
-			goto LEADER_WAIT
+			goto LOCK_WAIT
 		}
 	}
-	if leaderCh == nil {
+	if lockCh == nil {
 		// This is how the Lock() call lets us know that it quit because
 		// we closed the shutdown channel.
 		return
 	}
-	a.logger.Info("Agent: Obtained leadership")
+	a.logger.Info("Agent: Obtained lock")
 
 	for {
 		select {
-		case <-leaderCh:
-			a.logger.Warn("Agent: Lost leadership")
-			goto LEADER_WAIT
+		case <-lockCh:
+			a.logger.Warn("Agent: Lost the lock")
+			goto LOCK_WAIT
 		case <-a.shutdownCh:
 			return
 		}
@@ -667,7 +581,7 @@ LEADER_WAIT:
 // check and services it periodically. It will run until the shutdownCh is closed.
 func (a *Agent) runTTL() {
 	serviceID := a.serviceID()
-	ttlID := a.ttlCheckID()
+	ttlID := a.agentlessCheckID()
 
 REGISTER:
 	select {
@@ -1045,4 +959,14 @@ func (a *Agent) ConsulQueryOption() *api.QueryOptions {
 		opts.Partition = partition
 	})
 	return opts
+}
+
+// find the service instance in the list of services
+func containsService(serviceID string, services []*api.CatalogService) bool {
+	for _, service := range services {
+		if service.ServiceID == serviceID {
+			return true
+		}
+	}
+	return false
 }

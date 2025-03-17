@@ -69,12 +69,12 @@ LEADER_WAIT:
 			lock, err = a.client.LockOpts(opts)
 			//checkID := fmt.Sprintf("%s:agent-ttl", a.serviceID())
 			opts.SessionOpts = &api.SessionEntry{
-				Node:       a.nodeID(),
+				Node:       a.agentlessNodeID(),
 				Name:       opts.SessionName,
 				TTL:        opts.SessionTTL,
 				LockDelay:  opts.LockDelay,
-				NodeChecks: []string{a.ttlCheckID()},
-				Checks:     []string{a.ttlCheckID()},
+				NodeChecks: []string{a.agentlessCheckID()},
+				Checks:     []string{a.agentlessCheckID()},
 			}
 
 		} else {

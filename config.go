@@ -30,6 +30,7 @@ type Config struct {
 	LogLevel          string
 	EnableDebug       bool
 	EnableSyslog      bool
+	EnableAgentless   bool
 	SyslogFacility    string
 	LogJSON           bool
 	LogFile           string
@@ -75,8 +76,6 @@ type Config struct {
 
 	PassingThreshold  int
 	CriticalThreshold int
-
-	AgentLess bool
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -144,6 +143,8 @@ func DefaultConfig() (*Config, error) {
 		LogRotateBytes:            0,
 		LogRotateMaxFiles:         0,
 		LogRotateDuration:         0,
+
+		EnableAgentless: false,
 	}, nil
 }
 
@@ -178,6 +179,7 @@ type HumanConfig struct {
 	LogLevel          flags.StringValue   `mapstructure:"log_level"`
 	EnableDebug       flags.BoolValue     `mapstructure:"enable_debug"`
 	EnableSyslog      flags.BoolValue     `mapstructure:"enable_syslog"`
+	EnableAgentless   flags.BoolValue     `mapstructure:"enable_agentless"`
 	SyslogFacility    flags.StringValue   `mapstructure:"syslog_facility"`
 	LogJSON           flags.BoolValue     `mapstructure:"log_json"`
 	LogFile           flags.StringValue   `mapstructure:"log_file"`
@@ -521,5 +523,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.LogRotateBytes.Merge(&dst.LogRotateBytes)
 	src.LogRotateMaxFiles.Merge(&dst.LogRotateMaxFiles)
 	src.LogRotateDuration.Merge(&dst.LogRotateDuration)
+
+	src.EnableAgentless.Merge(&dst.EnableAgentless)
 	return nil
 }
