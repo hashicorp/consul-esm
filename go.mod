@@ -8,7 +8,7 @@ require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/go-ping/ping v1.1.0
 	github.com/hashicorp/consul v1.16.1
-	github.com/hashicorp/consul/api v1.29.4
+	github.com/hashicorp/consul/api v1.32.0
 	github.com/hashicorp/consul/sdk v0.16.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
@@ -21,8 +21,6 @@ require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.9.0
 )
-
-replace github.com/hashicorp/consul/api => ../consul-enterprise/api
 
 require (
 	cel.dev/expr v0.16.0 // indirect
