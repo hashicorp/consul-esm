@@ -54,6 +54,167 @@ func testAgent(t *testing.T, cb func(*Config)) *Agent {
 	return agent
 }
 
+func TestAgent_AgentLess(t *testing.T) {
+	t.Parallel()
+	s, err := NewTestServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	agent := testAgent(t, func(c *Config) {
+		c.EnableAgentless = true
+		c.HTTPAddr = s.HTTPAddr
+		c.Tag = "test"
+	})
+	defer agent.Shutdown()
+	// Lower these retry intervals
+	serviceID := fmt.Sprintf("%s:%s", agent.config.Service, agent.id)
+	nodeID := agent.agentlessNodeID()
+
+	// Make sure the ESM service and TTL check are registered
+	ensureRegistered := func(r *retry.R) {
+		services, _, err := agent.client.Catalog().Service(agent.config.Service, "", nil)
+		if err != nil {
+			r.Fatal(err)
+		}
+		if len(services) != 1 {
+			r.Fatalf("bad: %v", services)
+		}
+		if got, want := services[0].ServiceID, serviceID; got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := services[0].ServiceName, agent.config.Service; got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := services[0].ServiceTags, []string{"test"}; !reflect.DeepEqual(got, want) {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := services[0].ServiceMeta, map[string]string{"external-source": "consul-esm"}; !reflect.DeepEqual(got, want) {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+
+		// ESM heath is dependent on node health since it is agentless
+		checks, _, err := agent.client.Health().Node(services[0].Node, nil)
+		if err != nil {
+			r.Fatal(err)
+		}
+		if len(checks) != 1 {
+			r.Fatalf("bad: %v", checks)
+		}
+		if got, want := checks[0].CheckID, agent.agentlessCheckID(); got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := checks[0].Name, "Consul External Service Monitor Alive"; got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+		if got, want := checks[0].Status, "critical"; got != want {
+			r.Fatalf("got %q, want %q", got, want)
+		}
+
+	}
+	retry.Run(t, ensureRegistered)
+
+	// Make sure the service and check are deregistered, we may need to try de-registering multiple times since ESM is re-registering the service
+	ensureDeregistered := func(r *retry.R) {
+		// Deregister the service
+		time.Sleep(time.Second)
+		dereg := &api.CatalogDeregistration{
+			Node:      nodeID,
+			ServiceID: serviceID,
+		}
+		// deregister the service from catalog
+		if _, err := agent.client.Catalog().Deregister(dereg, nil); err != nil {
+			panic(err)
+		}
+
+		services, _, err := agent.client.Catalog().Service(agent.config.Service, "", nil)
+		if err != nil {
+			r.Fatal(err)
+		}
+		if len(services) != 0 {
+			r.Fatalf("bad: %v", services[0])
+		}
+
+		checks, _, err := agent.client.Health().Checks(agent.config.Service, nil)
+		if err != nil {
+			r.Fatal(err)
+		}
+		if len(checks) != 0 {
+			r.Fatalf("bad: %v", checks)
+		}
+	}
+	retry.RunWith(&retry.Timer{Timeout: 10 * time.Second, Wait: 20 * time.Millisecond}, t, ensureDeregistered)
+
+	// Wait for the agent to re-register the service and TTL check
+	retry.Run(t, ensureRegistered)
+
+	// Stop the ESM agent
+	agent.Shutdown()
+
+	// Make sure the service and check are gone
+	retry.RunWith(&retry.Timer{Timeout: 15 * time.Second, Wait: 50 * time.Millisecond}, t, ensureDeregistered)
+}
+
+func TestAgent_AgentLessSessions(t *testing.T) {
+	t.Parallel()
+	s, err := NewTestServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	agent := testAgent(t, func(c *Config) {
+		c.EnableAgentless = true
+		c.HTTPAddr = s.HTTPAddr
+		c.Tag = "test"
+		// start node as healthy
+		c.NodeMeta["initial-health"] = "passing"
+	})
+	defer agent.Shutdown()
+
+	// ensure sessions
+	ensureSessions := func(r *retry.R) {
+		// ensure session is registered
+		sessions, _, err := agent.client.Session().List(&api.QueryOptions{})
+		if err != nil {
+			r.Fatal(err)
+		}
+
+		if len(sessions) != 2 {
+			r.Fatalf("got %d, want 2", len(sessions))
+		}
+
+		// check each session
+		for _, session := range sessions {
+			if session.Name != agent.agentlessSessionID() {
+				continue
+			}
+
+			if len(session.NodeChecks) != 1 {
+				r.Fatalf("bad: %v, want 1", len(session.NodeChecks))
+			}
+
+			if len(session.Checks) != 1 {
+				r.Fatalf("bad: %v, want 1", len(session.NodeChecks))
+			}
+
+			if session.NodeChecks[0] != agent.agentlessCheckID() {
+				r.Fatalf("bad: %v, want: %v", session.NodeChecks[0], agent.agentlessCheckID())
+			}
+
+			if session.Checks[0] != agent.agentlessCheckID() {
+				r.Fatalf("bad: %v, want: %v", session.Checks[0], agent.agentlessCheckID())
+			}
+		}
+	}
+
+	// Make sure the session is registered
+	retry.RunWith(&retry.Counter{Wait: 2 * time.Second, Count: 10}, t, ensureSessions)
+	// Stop the ESM agent
+	agent.Shutdown()
+}
+
 func TestAgent_registerServiceAndCheck(t *testing.T) {
 	t.Parallel()
 	s, err := NewTestServer(t)

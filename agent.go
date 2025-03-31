@@ -249,7 +249,7 @@ func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.
 			{
 				Node:    nodeName,
 				CheckID: a.agentlessCheckID(),
-				Name:    a.agentlessCheckID(),
+				Name:    "Consul External Service Monitor Alive",
 				// Start in critical state. As soon as the session is created, the check will be updated to passing.
 				Status: api.HealthCritical,
 				Definition: api.HealthCheckDefinition{
@@ -261,12 +261,20 @@ func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.
 				Type: "session",
 			},
 		}
+
+		if a.config.NodeMeta != nil && a.config.NodeMeta["initial-health"] == "passing" {
+			reg.Checks[0].Status = api.HealthPassing
+		}
 	}
 
 	if addService {
 		reg.Service = &api.AgentService{
 			ID:      serviceID,
 			Service: serviceName,
+			Meta:    a.serviceMeta(),
+		}
+		if a.config.Tag != "" {
+			reg.Service.Tags = []string{a.config.Tag}
 		}
 	}
 	return reg
