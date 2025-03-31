@@ -250,10 +250,12 @@ func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.
 				Node:    nodeName,
 				CheckID: a.agentlessCheckID(),
 				Name:    a.agentlessCheckID(),
-				Status:  api.HealthCritical,
+				// Start in critical state. As soon as the session is created, the check will be updated to passing.
+				Status: api.HealthCritical,
 				Definition: api.HealthCheckDefinition{
-					SessionName:                    fmt.Sprintf("%s:session", serviceID),
-					DeregisterCriticalServiceAfter: api.ReadableDuration(1 * time.Minute),
+					// only react to the change events of the given session name
+					SessionName:                    a.agentlessSessionID(),
+					DeregisterCriticalServiceAfter: api.ReadableDuration(deregisterTime),
 				},
 				// This type of check is a session checked
 				Type: "session",
@@ -348,7 +350,7 @@ func (a *Agent) agentlessCheckID() string {
 }
 
 func (a *Agent) agentlessSessionID() string {
-	return fmt.Sprintf("%s:session", a.serviceID())
+	return fmt.Sprintf("%s:health-session", a.serviceID())
 }
 
 func (a *Agent) agentlessNodeID() string {
@@ -549,7 +551,7 @@ LOCK_WAIT:
 // check and services it periodically. It will run until the shutdownCh is closed.
 func (a *Agent) runTTL() {
 	serviceID := a.serviceID()
-	ttlID := a.agentlessCheckID()
+	ttlID := fmt.Sprintf("%s:agent-ttl", serviceID)
 
 REGISTER:
 	select {
