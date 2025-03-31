@@ -37,11 +37,6 @@ func (a *Agent) runAgentlessLeaderLoop() {
 }
 
 func (a *Agent) runLeaderLoop() {
-	//if a.isAgentLess() {
-	//	a.runAgentlessLeaderLoop()
-	//	return
-	//}
-
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
 	var lock *api.Lock

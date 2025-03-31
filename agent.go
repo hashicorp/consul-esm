@@ -24,12 +24,6 @@ import (
 
 const LeaderKey = "leader"
 
-// Do not edit this, it is used by the other application in integration.
-const agentTypeHttpHeader = "X-Consul-Agent-Type"
-
-// Do not edit this, it is used by the other application in integration.
-const agentTypeESM = "consul-esm"
-
 var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
 	// determines how often we poll the agent to check on service
@@ -90,9 +84,6 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// A unique marker to identify the agent type as ESM.
-	client.AddHeader(agentTypeHttpHeader, agentTypeESM)
 
 	// Never used locally. I think we keep the reference to avoid GC.
 	metricsConf, err := lib.InitTelemetry(config.Telemetry, logger)
@@ -518,29 +509,6 @@ LOCK_WAIT:
 		}
 	}
 
-	// Before registering make sure we reset the health check if not passing
-	//healthChecks, _, err := a.client.Health().Node(a.agentlessNodeID(), a.ConsulQueryOption())
-	//if err != nil {
-	//	a.logger.Error("Agent: Error trying to get health checks for node", "error", err)
-	//	time.Sleep(retryTime)
-	//	goto LOCK_WAIT
-	//}
-
-	//for _, check := range healthChecks {
-	//	if check.CheckID == a.agentlessCheckID() && check.Status != api.HealthPassing {
-	//		_, err := a.client.Catalog().Register(a.createCatalogHealthCheck(api.HealthPassing), &api.WriteOptions{
-	//			Datacenter: a.config.Datacenter,
-	//			Partition:  a.PartitionOrEmpty(),
-	//		})
-	//
-	//		if err != nil {
-	//			a.logger.Error("Agent: Error trying to reset health check", "error", err)
-	//			time.Sleep(retryTime)
-	//			goto LOCK_WAIT
-	//		}
-	//	}
-	//}
-
 	// register the session
 	lockCh, err := lock.Lock(a.shutdownCh)
 	if err != nil {
@@ -623,10 +591,6 @@ REGISTER:
 				time.Sleep(retryTime)
 				goto REGISTER
 			}
-
-			//if err := a.client.Agent().UpdateTTLOpts("SerfHealth", "", api.HealthPassing, a.ConsulQueryOption()); err != nil {
-			//	a.logger.Error("Failed to refresh agent TTL check (will reregister)", "error", err)
-			//}
 		}
 	}
 }
