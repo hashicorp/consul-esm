@@ -189,10 +189,21 @@ func (a *Agent) Run() error {
 	wg.Wait()
 
 	// Clean up.
-	if err := a.client.Agent().ServiceDeregisterOpts(a.serviceID(), a.ConsulQueryOption()); err != nil {
-		a.logger.Warn("Failed to deregister service", "error", err)
-	}
+	if a.isAgentLess() {
+		deregister := &api.CatalogDeregistration{
+			Node:      a.agentlessNodeID(),
+			ServiceID: a.serviceID(),
+			Partition: a.PartitionOrEmpty(),
+		}
 
+		if _, err := a.client.Catalog().Deregister(deregister, a.ConsulWriteOption()); err != nil {
+			a.logger.Warn("Failed to deregister service", "error", err)
+		}
+	} else {
+		if err := a.client.Agent().ServiceDeregisterOpts(a.serviceID(), a.ConsulQueryOption()); err != nil {
+			a.logger.Warn("Failed to deregister service", "error", err)
+		}
+	}
 	return nil
 }
 
@@ -925,6 +936,14 @@ func (a *Agent) HasPartition(callback func(partition string)) {
 
 func (a *Agent) ConsulQueryOption() *api.QueryOptions {
 	opts := &api.QueryOptions{}
+	a.HasPartition(func(partition string) {
+		opts.Partition = partition
+	})
+	return opts
+}
+
+func (a *Agent) ConsulWriteOption() *api.WriteOptions {
+	opts := &api.WriteOptions{}
 	a.HasPartition(func(partition string) {
 		opts.Partition = partition
 	})
