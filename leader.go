@@ -62,7 +62,6 @@ LEADER_WAIT:
 				Key: a.config.KVPath + LeaderKey,
 			}
 			lock, err = a.client.LockOpts(opts)
-			//checkID := fmt.Sprintf("%s:agent-ttl", a.serviceID())
 			opts.SessionOpts = &api.SessionEntry{
 				Node:       a.agentlessNodeID(),
 				Name:       opts.SessionName,

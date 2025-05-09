@@ -307,10 +307,6 @@ func (a *Agent) registerCatalog() error {
 		if err != nil {
 			return err
 		}
-
-		fmt.Println("Node registered successfully")
-	} else {
-		fmt.Println("Node already exists")
 	}
 
 	// Register the ESM service
