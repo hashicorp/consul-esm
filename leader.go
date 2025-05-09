@@ -18,6 +18,24 @@ type NodeWatchList struct {
 	Probes []string
 }
 
+func (a *Agent) runAgentlessLeaderLoop() {
+	opts := &api.WriteOptions{
+		Partition: a.PartitionOrEmpty(),
+	}
+
+	lockKVPair := &api.KVPair{
+		Key: a.config.KVPath + LeaderKey,
+	}
+
+	_, err := a.client.KV().Put(lockKVPair, opts)
+	if err != nil {
+		a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
+		time.Sleep(retryTime)
+		return
+	}
+
+}
+
 func (a *Agent) runLeaderLoop() {
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
@@ -39,7 +57,24 @@ LEADER_WAIT:
 	a.logger.Info("Trying to obtain leadership...")
 	if lock == nil {
 		var err error
-		lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
+		if a.isAgentLess() {
+			opts := &api.LockOptions{
+				Key: a.config.KVPath + LeaderKey,
+			}
+			lock, err = a.client.LockOpts(opts)
+			opts.SessionOpts = &api.SessionEntry{
+				Node:       a.agentlessNodeID(),
+				Name:       opts.SessionName,
+				TTL:        opts.SessionTTL,
+				LockDelay:  opts.LockDelay,
+				NodeChecks: []string{a.agentlessCheckID()},
+				Checks:     []string{a.agentlessCheckID()},
+			}
+
+		} else {
+			lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
+		}
+
 		if err != nil {
 			a.logger.Error("Error trying to create leader lock (will retry)", "error", err)
 			time.Sleep(retryTime)

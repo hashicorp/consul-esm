@@ -120,10 +120,25 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 	return &agent, nil
 }
 
+func (a *Agent) isAgentLess() bool {
+	if a.config == nil {
+		return false
+	}
+	return a.config.EnableAgentless
+}
+
 func (a *Agent) Run() error {
-	// Do the initial service registration.
-	if err := a.register(); err != nil {
-		return err
+	// initial registration
+	if a.isAgentLess() {
+		// register ESM as catalog service instead of agent
+		if err := a.registerCatalog(); err != nil {
+			return err
+		}
+	} else {
+		// Do the initial service registration.
+		if err := a.register(); err != nil {
+			return err
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -134,12 +149,21 @@ func (a *Agent) Run() error {
 	}()
 	wg.Add(1)
 	go func() {
-		a.runRegister()
+		// re-registration loop
+		if a.isAgentLess() {
+			a.runAgentlessRegister()
+		} else {
+			a.runRegister()
+		}
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		a.runTTL()
+		if a.isAgentLess() {
+			a.runAgentlessSession()
+		} else {
+			a.runTTL()
+		}
 		wg.Done()
 	}()
 	wg.Add(1)
@@ -197,6 +221,107 @@ func (e *alreadyExistsError) Error() string {
 	return fmt.Sprintf("ESM instance with service id '%s' is already registered with Consul", e.serviceID)
 }
 
+func (a *Agent) createCatalogHealthCheck(status string) *api.CatalogRegistration {
+	// create a catalog registration without service
+	reg := a.createCatalogRegistration(false, true)
+	reg.Checks[0].Status = status
+
+	// this is super important to avoid the node update
+	reg.SkipNodeUpdate = true
+	return reg
+}
+
+func (a *Agent) createCatalogRegistration(addService bool, addChecks bool) *api.CatalogRegistration {
+	// Define service details
+	serviceID := a.serviceID()
+	serviceName := a.config.Service
+	nodeName := a.agentlessNodeID()
+	address := fmt.Sprintf("esm-%s", serviceID)
+
+	// Node does not exist, register it
+	reg := &api.CatalogRegistration{
+		Node:    nodeName,
+		Address: address,
+	}
+
+	if addChecks {
+		reg.Checks = api.HealthChecks{
+			{
+				Node:    nodeName,
+				CheckID: a.agentlessCheckID(),
+				Name:    "Consul External Service Monitor Alive",
+				// Start in critical state. As soon as the session is created, the check will be updated to passing.
+				Status: api.HealthCritical,
+				Definition: api.HealthCheckDefinition{
+					// only react to the change events of the given session name
+					SessionName:                    a.agentlessSessionID(),
+					DeregisterCriticalServiceAfter: api.ReadableDuration(deregisterTime),
+				},
+				// This type of check is a session checked
+				Type: "session",
+			},
+		}
+
+		if a.config.NodeMeta != nil && a.config.NodeMeta["initial-health"] == "passing" {
+			reg.Checks[0].Status = api.HealthPassing
+		}
+	}
+
+	if addService {
+		reg.Service = &api.AgentService{
+			ID:      serviceID,
+			Service: serviceName,
+			Meta:    a.serviceMeta(),
+		}
+		if a.config.Tag != "" {
+			reg.Service.Tags = []string{a.config.Tag}
+		}
+	}
+	return reg
+}
+
+// register ESM as service in Catalog
+func (a *Agent) registerCatalog() error {
+	// check if the instance is not already registered as service in catalog
+	services, _, err := a.client.Catalog().Service(a.config.Service, "", a.ConsulQueryOption())
+	if err != nil {
+		return err
+	}
+
+	if containsService(a.serviceID(), services) && false {
+		return &alreadyExistsError{a.serviceID()}
+	}
+
+	nodeName := a.agentlessNodeID()
+	// Check if the node exists
+	node, _, err := a.client.Catalog().Node(nodeName, nil)
+	if err != nil {
+		return err
+	}
+
+	if node == nil {
+		_, err := a.client.Catalog().Register(a.createCatalogRegistration(false, false), &api.WriteOptions{
+			Datacenter: a.config.Datacenter,
+			Partition:  a.PartitionOrEmpty(),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Register the ESM service
+	_, err = a.client.Catalog().Register(a.createCatalogRegistration(true, true), &api.WriteOptions{
+		Datacenter: a.config.Datacenter,
+		Partition:  a.PartitionOrEmpty(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // register is used to register this agent with Consul service discovery.
 func (a *Agent) register() error {
 	// agent ids need to be unique to disambiguate different instances on same host
@@ -222,6 +347,18 @@ func (a *Agent) register() error {
 	a.logger.Debug("Registered ESM service with Consul")
 
 	return nil
+}
+
+func (a *Agent) agentlessCheckID() string {
+	return fmt.Sprintf("%s:session-check", a.serviceID())
+}
+
+func (a *Agent) agentlessSessionID() string {
+	return fmt.Sprintf("%s:health-session", a.serviceID())
+}
+
+func (a *Agent) agentlessNodeID() string {
+	return fmt.Sprintf("%s:node", a.serviceID())
 }
 
 // runHTTP is a long-running goroutine that exposes an http interface for
@@ -298,6 +435,118 @@ func (a *Agent) runRegister() {
 					goto REGISTER_CHECK
 				}
 			}
+		}
+	}
+}
+
+// runAgentlessRegister is a long-running goroutine that ensures this service is registered
+// with Consul's service discovery. It will run until the shutdownCh is closed.
+func (a *Agent) runAgentlessRegister() {
+	for {
+	REGISTER_CHECK:
+		select {
+		case <-a.shutdownCh:
+			return
+
+		case <-time.After(agentTTL):
+			// check if the instance is not already registered as service in catalog
+			services, _, err := a.client.Catalog().Service(a.config.Service, "", a.ConsulQueryOption())
+			if err != nil {
+				a.logger.Error("Failed to check services (will retry)", "error", err)
+				time.Sleep(retryTime)
+				goto REGISTER_CHECK
+			}
+
+			if !containsService(a.serviceID(), services) {
+				a.logger.Warn("Service registration was lost, re-registering")
+				if err := a.registerCatalog(); err != nil {
+					a.logger.Error("Failed to re-register service (will retry)", "error", err)
+					time.Sleep(retryTime)
+					goto REGISTER_CHECK
+				}
+			}
+			// found the service
+		}
+	}
+}
+
+func (a *Agent) runAgentlessSession() {
+	// registering a session to monitor the health of the agent
+	sessionKey := a.agentlessSessionID()
+	// Arrange to give up any held lock any time we exit the goroutine so
+	// another agent can pick up without delay.
+	var lock *api.Lock
+	defer func() {
+		if lock != nil {
+			lock.Unlock()
+		}
+	}()
+
+LOCK_WAIT:
+	select {
+	case <-a.shutdownCh:
+		return
+	default:
+	}
+
+	// Wait to get the session lock before running snapshots.
+	a.logger.Info("Agent: Trying to obtain health check session...")
+	if lock == nil {
+		var err error
+		opts := &api.LockOptions{
+			Key:         a.config.KVPath + sessionKey,
+			SessionName: sessionKey,
+		}
+		lock, err = a.client.LockOpts(opts)
+		opts.SessionOpts = &api.SessionEntry{
+			Node:       a.agentlessNodeID(),
+			ID:         a.agentlessNodeID(),
+			Name:       opts.SessionName,
+			TTL:        opts.SessionTTL,
+			LockDelay:  opts.LockDelay,
+			NodeChecks: []string{a.agentlessCheckID()},
+			Checks:     []string{a.agentlessCheckID()},
+		}
+
+		if err != nil {
+			a.logger.Error("Agent: Error trying to create session lock (will retry)", "error", err)
+			time.Sleep(retryTime)
+			goto LOCK_WAIT
+		}
+	}
+
+	// register the session
+	lockCh, err := lock.Lock(a.shutdownCh)
+	if err != nil {
+		if err == api.ErrLockHeld {
+			a.logger.Error("Agent: Unable to use session lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
+			lock.Unlock()
+			time.Sleep(retryTime)
+			goto LOCK_WAIT
+		} else {
+			a.logger.Error("Agent: Error trying to get session lock (will retry)", "error", err)
+			time.Sleep(retryTime)
+			if err != nil {
+				a.logger.Error("Agent: nested error trying to get session lock (will retry)", "error", err)
+			}
+
+			goto LOCK_WAIT
+		}
+	}
+	if lockCh == nil {
+		// This is how the Lock() call lets us know that it quit because
+		// we closed the shutdown channel.
+		return
+	}
+	a.logger.Info("Agent: Obtained lock")
+
+	for {
+		select {
+		case <-lockCh:
+			a.logger.Warn("Agent: Lost the lock")
+			goto LOCK_WAIT
+		case <-a.shutdownCh:
+			return
 		}
 	}
 }
@@ -606,7 +855,8 @@ VERIFYCONSULSERVER:
 	}
 
 	// Fetch server versions
-	svs, _, err := a.client.Catalog().Service("consul", "", a.ConsulQueryOption())
+	// consul is always registered in default partition. There is possibility the default token may not have access to the partition
+	svs, _, err := a.client.Catalog().Service("consul", "", &api.QueryOptions{})
 	if err != nil {
 		if strings.Contains(err.Error(), "429") {
 			// 429 is a warning that something is unhealthy. This may occur when ESM
@@ -679,4 +929,14 @@ func (a *Agent) ConsulQueryOption() *api.QueryOptions {
 		opts.Partition = partition
 	})
 	return opts
+}
+
+// find the service instance in the list of services
+func containsService(serviceID string, services []*api.CatalogService) bool {
+	for _, service := range services {
+		if service.ServiceID == serviceID {
+			return true
+		}
+	}
+	return false
 }

@@ -204,8 +204,15 @@ node_probe_interval = "10s"
 // are enabled.
 disable_coordinate_updates = false
 
-// The address of the local Consul agent. Can also be provided through the
-// CONSUL_HTTP_ADDR environment variable.
+// Enable or disable agentless mode.
+// When set to true, ESM will operate without a Consul Client Agent dependency.
+// Can also be provided through the CONSUL_ENABLEAGENTLESS environment variable.
+enable_agentless = true/false
+
+// The address of the local Consul agent.
+// or
+// The address of the Consul server to use if `enable_agentless` is set to true.
+// Can also be provided through the CONSUL_HTTP_ADDR environment variable.
 http_addr = "localhost:8500"
 
 // The ACL token to use when communicating with the local Consul agent. Can
@@ -216,6 +223,7 @@ token = ""
 datacenter = "dc1"
 
 // The target Admin Partition to use.
+// Can also be provided through the CONSUL_PARTITION environment variable.
 partition = ""
 
 // The CA file to use for talking to Consul over TLS. Can also be provided
