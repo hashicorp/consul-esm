@@ -76,6 +76,9 @@ type Config struct {
 
 	PassingThreshold  int
 	CriticalThreshold int
+
+	ServiceDeregisterHttpHook string
+	NodeDeregisterHttpHook    string
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -222,6 +225,9 @@ type HumanConfig struct {
 
 	PassingThreshold  intValue `mapstructure:"passing_threshold"`
 	CriticalThreshold intValue `mapstructure:"critical_threshold"`
+
+	ServiceDeregisterHttpHook flags.StringValue `mapstructure:"service_deregister_http_hook"`
+	NodeDeregisterHttpHook    flags.StringValue `mapstructure:"node_deregister_http_hook"`
 }
 
 // intValue provides a flag value that's aware if it has been set.
@@ -527,5 +533,9 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.LogRotateDuration.Merge(&dst.LogRotateDuration)
 
 	src.EnableAgentless.Merge(&dst.EnableAgentless)
+
+	src.ServiceDeregisterHttpHook.Merge(&dst.ServiceDeregisterHttpHook)
+	src.NodeDeregisterHttpHook.Merge(&dst.NodeDeregisterHttpHook)
+
 	return nil
 }

@@ -271,6 +271,12 @@ func (a *Agent) updateFailedNodeTxn(node *api.Node, kvClient *api.KV, key string
 				})
 				a.logger.Debug("Deregistering node", "node", node.Node)
 			}
+			if a.config.NodeDeregisterHttpHook != "" {
+				// Call the deregister HTTP hook if configured.
+				jsonData := []byte(fmt.Sprintf(`{"node": "%s"}`, node.Node))
+
+				CallDeregisterHook(a.logger, a.config.NodeDeregisterHttpHook, jsonData)
+			}
 
 			// Run the transaction as-is to deregister the node and delete the KV entry.
 			return a.runClientTxn(ops)

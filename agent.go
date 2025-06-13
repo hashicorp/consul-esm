@@ -730,7 +730,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 	// UpdateChecks when we get an update from watchHealthChecks.
 	a.checkRunner = NewCheckRunner(a.logger, a.client,
 		a.config.CheckUpdateInterval, minimumInterval,
-		tlsClientConfig, a.config.PassingThreshold, a.config.CriticalThreshold)
+		tlsClientConfig, a.config.PassingThreshold, a.config.CriticalThreshold, a.config.ServiceDeregisterHttpHook)
 	go a.checkRunner.reapServices(a.shutdownCh)
 	defer a.checkRunner.Stop()
 

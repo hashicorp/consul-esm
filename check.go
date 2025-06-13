@@ -53,6 +53,8 @@ type CheckRunner struct {
 
 	PassingThreshold  int
 	CriticalThreshold int
+
+	ServiceDeregisterHttpHook string `mapstructure:"service_deregister_http_hook"`
 }
 
 type esmHealthCheck struct {
@@ -105,15 +107,17 @@ func (m *stopMap[K, V]) StopAll() {
 func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	minimumInterval time.Duration, tlsConfig *tls.Config, passingThreshold int,
 	criticalThreshold int,
+	serviceDeregisterHttpHook string,
 ) *CheckRunner {
 	return &CheckRunner{
-		logger:              logger,
-		client:              client,
-		CheckUpdateInterval: updateInterval,
-		MinimumInterval:     minimumInterval,
-		tlsConfig:           tlsConfig,
-		PassingThreshold:    passingThreshold,
-		CriticalThreshold:   criticalThreshold,
+		logger:                    logger,
+		client:                    client,
+		CheckUpdateInterval:       updateInterval,
+		MinimumInterval:           minimumInterval,
+		tlsConfig:                 tlsConfig,
+		PassingThreshold:          passingThreshold,
+		CriticalThreshold:         criticalThreshold,
+		ServiceDeregisterHttpHook: serviceDeregisterHttpHook,
 	}
 }
 
@@ -529,6 +533,14 @@ func (c *CheckRunner) reapServicesInternal() {
 				"duration", time.Since(criticalTime),
 				"timeout", timeout)
 			reaped[ID] = true
+
+			// Now we make the http hook call if it is set
+			if c.ServiceDeregisterHttpHook != "" {
+				jsonData := []byte(fmt.Sprintf(`{"node": "%s", "service": "%s", "check_id": "%s"}`,
+					ID.node, ID.service, checkID))
+
+				CallDeregisterHook(c.logger, c.ServiceDeregisterHttpHook, jsonData)
+			}
 		}
 		return true
 	})
