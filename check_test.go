@@ -35,7 +35,7 @@ func TestCheck_HTTP(t *testing.T) {
 		IncludeLocation: true,
 		Output:          LOGOUT,
 	})
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1, "")
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
@@ -142,7 +142,7 @@ func TestCheck_TCP(t *testing.T) {
 		IncludeLocation: true,
 		Output:          LOGOUT,
 	})
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1, "")
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check
@@ -259,7 +259,7 @@ func TestCheck_MinimumInterval(t *testing.T) {
 		Output:          LOGOUT,
 	})
 	minimumInterval := 2 * time.Second
-	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 0, 0)
+	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 0, 0, "")
 	defer runner.Stop()
 
 	// Make a check with an interval that is below the minimum required interval
@@ -319,7 +319,7 @@ func TestCheck_NoFlapping(t *testing.T) {
 		Output:          LOGOUT,
 	})
 	minimumInterval := 2 * time.Second
-	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 2, 2)
+	runner := NewCheckRunner(logger, client, 0, minimumInterval, &tls.Config{}, 2, 2, "")
 	defer runner.Stop()
 
 	// Register an external node with an initially critical http check.
