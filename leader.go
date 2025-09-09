@@ -10,12 +10,21 @@ import (
 	"sort"
 	"time"
 
+	"github.com/armon/go-metrics"
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul/api"
 )
 
 type NodeWatchList struct {
 	Nodes  []string
 	Probes []string
+}
+
+var LeaderGauges = []prometheus.GaugeDefinition{
+	{
+		Name: []string{"esm", "agents", "healthy"},
+		Help: "Total number of healthy ESM agents in the cluster",
+	},
 }
 
 func (a *Agent) runAgentlessLeaderLoop() {
@@ -44,6 +53,7 @@ func (a *Agent) runLeaderLoop() {
 		if lock != nil {
 			lock.Unlock()
 		}
+		metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
 	}()
 
 LEADER_WAIT:
@@ -52,6 +62,8 @@ LEADER_WAIT:
 		return
 	default:
 	}
+
+	metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
 
 	// Wait to get the leader lock before running snapshots.
 	a.logger.Info("Trying to obtain leadership...")
@@ -102,6 +114,8 @@ LEADER_WAIT:
 	}
 	a.logger.Info("Obtained leadership")
 
+	metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 1)
+
 	// Start a goroutine for computing the node watches.
 	go a.computeWatchedNodes(leaderCh)
 
@@ -109,6 +123,7 @@ LEADER_WAIT:
 		select {
 		case <-leaderCh:
 			a.logger.Warn("Lost leadership")
+			metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
 			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return
@@ -164,6 +179,8 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	externalNodes := <-nodeCh
 	healthyInstances := <-instanceCh
 
+	metrics.SetGauge([]string{"esm", "agents", "healthy"}, float32(len(healthyInstances)))
+
 	var prevHealthNodes map[string][]string
 	var prevPingNodes map[string][]string
 
@@ -177,6 +194,7 @@ WATCH_NODES_WAIT:
 			return
 		case externalNodes = <-nodeCh:
 		case healthyInstances = <-instanceCh:
+			metrics.SetGauge([]string{"esm", "agents", "healthy"}, float32(len(healthyInstances)))
 		case <-retryTimer:
 		}
 
