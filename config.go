@@ -472,8 +472,10 @@ func convertTelemetry(telemetry Telemetry) (lib.TelemetryConfig, error) {
 		MetricsPrefix:                      stringVal(telemetry.MetricsPrefix),
 		StatsdAddr:                         stringVal(telemetry.StatsdAddr),
 		StatsiteAddr:                       stringVal(telemetry.StatsiteAddr),
-		PrometheusOpts: prometheus.PrometheusOpts{Expiration: prometheusRetentionTime,
-			Name: stringVal(telemetry.MetricsPrefix)},
+		PrometheusOpts: prometheus.PrometheusOpts{
+			Expiration: prometheusRetentionTime,
+			Name:       stringVal(telemetry.MetricsPrefix),
+		},
 	}, nil
 }
 

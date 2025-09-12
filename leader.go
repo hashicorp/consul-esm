@@ -62,9 +62,6 @@ LEADER_WAIT:
 		return
 	default:
 	}
-
-	metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
-
 	// Wait to get the leader lock before running snapshots.
 	a.logger.Info("Trying to obtain leadership...")
 	if lock == nil {

@@ -15,8 +15,7 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/armon/go-metrics/prometheus"
-	promsink "github.com/armon/go-metrics/prometheus"
+	prommetrics "github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
@@ -49,14 +48,14 @@ var (
 	maximumTransactionSize = 64
 )
 
-var AgentGauges = []promsink.GaugeDefinition{
+var AgentGauges = []prommetrics.GaugeDefinition{
 	{
 		Name: []string{"esm", "agent", "isLeader"},
 		Help: "Indicates if this ESM instance is the current cluster leader (1 for leader, 0 for follower)",
 	},
 }
 
-var MonitoredGauges = []promsink.GaugeDefinition{
+var MonitoredGauges = []prommetrics.GaugeDefinition{
 	{
 		Name: []string{"esm", "nodes", "monitored"},
 		Help: "Number of external nodes being monitored by this ESM instance",
@@ -100,17 +99,17 @@ type Agent struct {
 }
 
 // Can add counter and histogram definitions here if needed
-func getPrometheusDefs(config *Config) ([]prometheus.GaugeDefinition, []prometheus.SummaryDefinition) {
-	var gauges = [][]prometheus.GaugeDefinition{
+func getPrometheusDefs(config *Config) ([]prommetrics.GaugeDefinition, []prommetrics.SummaryDefinition) {
+	var gauges = [][]prommetrics.GaugeDefinition{
 		AgentGauges,
 		MonitoredGauges,
 		LeaderGauges,
 	}
 
 	// Flatten definitions and apply prefix
-	var gaugeDefs []prometheus.GaugeDefinition
+	var gaugeDefs []prommetrics.GaugeDefinition
 	for _, g := range gauges {
-		var withPrefix []prometheus.GaugeDefinition
+		var withPrefix []prommetrics.GaugeDefinition
 		for _, gauge := range g {
 			if config.Telemetry.MetricsPrefix != "" {
 				gauge.Name = append([]string{config.Telemetry.MetricsPrefix}, gauge.Name...)
@@ -120,12 +119,12 @@ func getPrometheusDefs(config *Config) ([]prometheus.GaugeDefinition, []promethe
 		gaugeDefs = append(gaugeDefs, withPrefix...)
 	}
 
-	var summaries = [][]prometheus.SummaryDefinition{
+	var summaries = [][]prommetrics.SummaryDefinition{
 		ChecksSummary,
 	}
-	var summaryDefs []prometheus.SummaryDefinition
+	var summaryDefs []prommetrics.SummaryDefinition
 	for _, s := range summaries {
-		var withPrefix []prometheus.SummaryDefinition
+		var withPrefix []prommetrics.SummaryDefinition
 		for _, summary := range s {
 			if config.Telemetry.MetricsPrefix != "" {
 				summary.Name = append([]string{config.Telemetry.MetricsPrefix}, summary.Name...)
