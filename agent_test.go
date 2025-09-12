@@ -940,7 +940,6 @@ func TestAgent_recordHealthCheckMetrics(t *testing.T) {
 
 		agent.recordHealthCheckMetrics(start, nodes, checks)
 
-		// Use retry to allow metrics to be published
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
@@ -996,12 +995,10 @@ func TestAgent_recordHealthCheckMetrics(t *testing.T) {
 
 		agent.recordHealthCheckMetrics(start, nodes, checks)
 
-		// Use retry to allow metrics to be published
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
 
-			// Use the latest interval (there might be multiple from global metrics)
 			intv := intervals[len(intervals)-1]
 
 			countKey := "consul-esm.esm.checks.count"
@@ -1018,8 +1015,6 @@ func TestAgent_recordHealthCheckMetrics(t *testing.T) {
 }
 
 func TestAgent_updateCheckMetrics(t *testing.T) {
-	// Not running in parallel to avoid global metrics conflicts
-
 	logger := hclog.New(&hclog.LoggerOptions{
 		Name:   "consul-esm",
 		Level:  hclog.LevelFromString("INFO"),
@@ -1041,12 +1036,11 @@ func TestAgent_updateCheckMetrics(t *testing.T) {
 		}
 
 		agent.updateCheckMetrics(checks)
-		time.Sleep(100 * time.Millisecond) // Allow metrics to be published
 
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			countKey := "consul-esm.esm.checks.count"
 			countMetric, ok := intv.Gauges[countKey]
@@ -1077,7 +1071,7 @@ func TestAgent_updateCheckMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			countKey := "consul-esm.esm.checks.count"
 			countMetric, ok := intv.Gauges[countKey]
@@ -1104,7 +1098,7 @@ func TestAgent_updateCheckMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			countKey := "consul-esm.esm.checks.count"
 			countMetric, ok := intv.Gauges[countKey]
@@ -1125,7 +1119,6 @@ func TestAgent_updateCheckMetrics(t *testing.T) {
 }
 
 func TestAgent_updateServiceMetrics(t *testing.T) {
-	// Not running in parallel to avoid global metrics conflicts
 
 	logger := hclog.New(&hclog.LoggerOptions{
 		Name:   "consul-esm",
@@ -1157,7 +1150,7 @@ func TestAgent_updateServiceMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			nodesKey := "consul-esm.esm.nodes.monitored"
 			nodesMetric, ok := intv.Gauges[nodesKey]
@@ -1182,7 +1175,7 @@ func TestAgent_updateServiceMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			nodesKey := "consul-esm.esm.nodes.monitored"
 			nodesMetric, ok := intv.Gauges[nodesKey]
@@ -1204,7 +1197,7 @@ func TestAgent_updateServiceMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			nodesKey := "consul-esm.esm.nodes.monitored"
 			nodesMetric, ok := intv.Gauges[nodesKey]
@@ -1235,7 +1228,7 @@ func TestAgent_updateServiceMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			nodesKey := "consul-esm.esm.nodes.monitored"
 			nodesMetric, ok := intv.Gauges[nodesKey]
@@ -1267,7 +1260,7 @@ func TestAgent_updateServiceMetrics(t *testing.T) {
 		retry.Run(t, func(r *retry.R) {
 			intervals := sink.Data()
 			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
-			intv := intervals[len(intervals)-1] // Use the latest interval
+			intv := intervals[len(intervals)-1]
 
 			nodesKey := "consul-esm.esm.nodes.monitored"
 			nodesMetric, ok := intv.Gauges[nodesKey]
