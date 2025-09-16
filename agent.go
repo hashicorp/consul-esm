@@ -773,7 +773,7 @@ func (a *Agent) kvNodeListPath() string {
 }
 
 func (a *Agent) recordHealthCheckMetrics(start time.Time, nodes map[string]bool, checks api.HealthChecks) {
-	metrics.MeasureSince([]string{"esm", "checks", "execution", "duration"}, start)
+	metrics.MeasureSince([]string{"esm", "checks", "fetch_and_update", "duration"}, start)
 	a.updateCheckMetrics(checks)
 	a.updateServiceMetrics(nodes, checks)
 }

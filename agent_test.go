@@ -947,7 +947,7 @@ func TestAgent_recordHealthCheckMetrics(t *testing.T) {
 			// Use the latest interval (there might be multiple from global metrics)
 			intv := intervals[len(intervals)-1]
 
-			durationKey := "consul-esm.esm.checks.execution.duration"
+			durationKey := "consul-esm.esm.checks.fetch_and_update.duration"
 			_, ok := intv.Samples[durationKey]
 			require.True(r, ok, fmt.Sprintf("did not find duration sample %q", durationKey))
 
@@ -1315,7 +1315,7 @@ func TestAgent_getPrometheusDefs(t *testing.T) {
 		}
 
 		expectedSummaries := []string{
-			"esm.checks.execution.duration",
+			"esm.checks.fetch_and_update.duration",
 		}
 
 		for _, expected := range expectedSummaries {

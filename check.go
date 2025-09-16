@@ -45,8 +45,8 @@ var ChecksGauges = []prometheus.GaugeDefinition{
 
 var ChecksSummary = []prometheus.SummaryDefinition{
 	{
-		Name: []string{"esm", "checks", "execution", "duration"},
-		Help: "Measures the time taken to execute all health checks",
+		Name: []string{"esm", "checks", "fetch_and_update", "duration"},
+		Help: "Measures the time taken to fetch and update health checks",
 	},
 }
 
