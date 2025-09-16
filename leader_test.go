@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
+	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -79,7 +81,7 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 		a.checkRunner.checks.Range(
 			func(_, _ any) bool { checksLen++; return true })
 		if len(ourChecks) != checksLen {
-			r.Fatalf("checks do not match: %+v, %+v", ourChecks, a.checkRunner.checks)
+			r.Fatalf("checks do not match: expected %d checks, got %d", len(ourChecks), checksLen)
 		}
 	})
 }
@@ -173,7 +175,6 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 
 func TestLeader_divideCoordinates(t *testing.T) {
 	t.Parallel()
-
 	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
@@ -557,4 +558,73 @@ func Test_getServiceInstances(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLeader_isLeaderMetric(t *testing.T) {
+	s, err := NewTestServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+		Output:          os.Stdout,
+	})
+
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf.HTTPAddr = s.HTTPAddr
+	conf.InstanceID = "test-leader-agent"
+	conf.KVPath = "consul-esm/"
+	conf.CoordinateUpdateInterval = 200 * time.Millisecond
+	conf.Telemetry.FilterDefault = true
+
+	agent, err := NewAgent(conf, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Shutdown()
+
+	sink := setupMetricsSink()
+
+	go func() {
+		if err := agent.Run(); err != nil {
+			panic(err)
+		}
+	}()
+	<-agent.ready
+
+	leaderLoopDone := make(chan struct{})
+	go func() {
+		defer close(leaderLoopDone)
+		agent.runLeaderLoop()
+	}()
+
+	// Wait for leadership to be obtained and the metric to be set
+	time.Sleep(3 * time.Second)
+
+	retry.RunWith(&retry.Timer{Timeout: 10 * time.Second, Wait: 500 * time.Millisecond}, t, func(r *retry.R) {
+		intervals := sink.Data()
+		if len(intervals) == 0 {
+			r.Fatal("Expected at least one metrics interval")
+		}
+
+		isLeaderKey := "consul-esm.esm.agent.isLeader"
+		for i, intv := range intervals {
+			if metric, exists := intv.Gauges[isLeaderKey]; exists {
+				r.Logf("Found isLeader metric in interval %d with value %f", i, metric.Value)
+				if metric.Value != 1 {
+					r.Fatalf("isLeader metric value is %f, expected 1", metric.Value)
+				}
+				return
+			}
+		}
+
+		r.Fatalf("did not find the key %q in any of the %d intervals", isLeaderKey, len(intervals))
+	})
 }
