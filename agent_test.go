@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armon/go-metrics"
 	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +22,16 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
 )
+
+func setupMetricsSink() *metrics.InmemSink {
+	interval := 1 * time.Second
+	retention := 10 * time.Second
+	sink := metrics.NewInmemSink(interval, retention)
+	cfg := metrics.DefaultConfig("consul-esm")
+	cfg.EnableHostname = false
+	metrics.NewGlobal(cfg, sink)
+	return sink
+}
 
 func testAgent(t *testing.T, cb func(*Config)) *Agent {
 	logger := hclog.New(&hclog.LoggerOptions{
@@ -902,4 +913,475 @@ func TestAgent_ConsulQueryOptions(t *testing.T) {
 			assert.Equal(t, tc.expected, opts.Partition)
 		})
 	}
+}
+
+func TestAgent_recordHealthCheckMetrics(t *testing.T) {
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+		Output:          LOGOUT,
+	})
+
+	conf, err := DefaultConfig()
+	require.NoError(t, err)
+
+	agent := &Agent{
+		config: conf,
+		logger: logger,
+	}
+
+	t.Run("handles empty inputs gracefully", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		start := time.Now()
+		nodes := map[string]bool{}
+		checks := api.HealthChecks{}
+
+		agent.recordHealthCheckMetrics(start, nodes, checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+
+			// Use the latest interval (there might be multiple from global metrics)
+			intv := intervals[len(intervals)-1]
+
+			durationKey := "consul-esm.esm.checks.fetch_and_update.duration"
+			_, ok := intv.Samples[durationKey]
+			require.True(r, ok, fmt.Sprintf("did not find duration sample %q", durationKey))
+
+			countKey := "consul-esm.esm.checks.count"
+			countMetric, ok := intv.Gauges[countKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", countKey))
+			require.Equal(r, float32(0), countMetric.Value)
+
+			healthyKey := "consul-esm.esm.checks.healthy"
+			healthyMetric, ok := intv.Gauges[healthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", healthyKey))
+			require.Equal(r, float32(0), healthyMetric.Value)
+
+			unhealthyKey := "consul-esm.esm.checks.unhealthy"
+			unhealthyMetric, ok := intv.Gauges[unhealthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", unhealthyKey))
+			require.Equal(r, float32(0), unhealthyMetric.Value)
+
+			nodesKey := "consul-esm.esm.nodes.monitored"
+			nodesMetric, ok := intv.Gauges[nodesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", nodesKey))
+			require.Equal(r, float32(0), nodesMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(0), servicesMetric.Value)
+		})
+	})
+
+	t.Run("handles duplicate service IDs correctly", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		start := time.Now()
+		nodes := map[string]bool{
+			"node1": true,
+			"node2": true,
+		}
+		checks := api.HealthChecks{
+			{Node: "node1", ServiceID: "web", Status: api.HealthPassing},
+			{Node: "node1", ServiceID: "web", Status: api.HealthPassing},
+			{Node: "node2", ServiceID: "web", Status: api.HealthCritical},
+			{Node: "node2", ServiceID: "", Status: api.HealthPassing},
+		}
+
+		agent.recordHealthCheckMetrics(start, nodes, checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+
+			intv := intervals[len(intervals)-1]
+
+			countKey := "consul-esm.esm.checks.count"
+			countMetric, ok := intv.Gauges[countKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", countKey))
+			require.Equal(r, float32(4), countMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(2), servicesMetric.Value)
+		})
+	})
+}
+
+func TestAgent_updateCheckMetrics(t *testing.T) {
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "consul-esm",
+		Level:  hclog.LevelFromString("INFO"),
+		Output: LOGOUT,
+	})
+
+	agent := &Agent{
+		logger: logger,
+	}
+
+	t.Run("calculates check counts correctly", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		checks := api.HealthChecks{
+			{Status: api.HealthPassing},
+			{Status: api.HealthPassing},
+			{Status: api.HealthCritical},
+			{Status: api.HealthWarning},
+		}
+
+		agent.updateCheckMetrics(checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			countKey := "consul-esm.esm.checks.count"
+			countMetric, ok := intv.Gauges[countKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", countKey))
+			require.Equal(r, float32(4), countMetric.Value)
+
+			// Check healthy count (passing)
+			healthyKey := "consul-esm.esm.checks.healthy"
+			healthyMetric, ok := intv.Gauges[healthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", healthyKey))
+			require.Equal(r, float32(2), healthyMetric.Value)
+
+			// Check unhealthy count (critical + warning)
+			unhealthyKey := "consul-esm.esm.checks.unhealthy"
+			unhealthyMetric, ok := intv.Gauges[unhealthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", unhealthyKey))
+			require.Equal(r, float32(2), unhealthyMetric.Value)
+		})
+	})
+
+	t.Run("handles empty check list", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		checks := api.HealthChecks{}
+
+		agent.updateCheckMetrics(checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			countKey := "consul-esm.esm.checks.count"
+			countMetric, ok := intv.Gauges[countKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", countKey))
+			require.Equal(r, float32(0), countMetric.Value)
+
+			healthyKey := "consul-esm.esm.checks.healthy"
+			healthyMetric, ok := intv.Gauges[healthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", healthyKey))
+			require.Equal(r, float32(0), healthyMetric.Value)
+
+			unhealthyKey := "consul-esm.esm.checks.unhealthy"
+			unhealthyMetric, ok := intv.Gauges[unhealthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", unhealthyKey))
+			require.Equal(r, float32(0), unhealthyMetric.Value)
+		})
+	})
+
+	t.Run("handles nil check list", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		agent.updateCheckMetrics(nil)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			countKey := "consul-esm.esm.checks.count"
+			countMetric, ok := intv.Gauges[countKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", countKey))
+			require.Equal(r, float32(0), countMetric.Value)
+
+			healthyKey := "consul-esm.esm.checks.healthy"
+			healthyMetric, ok := intv.Gauges[healthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", healthyKey))
+			require.Equal(r, float32(0), healthyMetric.Value)
+
+			unhealthyKey := "consul-esm.esm.checks.unhealthy"
+			unhealthyMetric, ok := intv.Gauges[unhealthyKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", unhealthyKey))
+			require.Equal(r, float32(0), unhealthyMetric.Value)
+		})
+	})
+}
+
+func TestAgent_updateServiceMetrics(t *testing.T) {
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "consul-esm",
+		Level:  hclog.LevelFromString("INFO"),
+		Output: LOGOUT,
+	})
+
+	agent := &Agent{
+		logger: logger,
+	}
+
+	t.Run("counts unique services correctly", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		nodes := map[string]bool{
+			"node1": true,
+			"node2": true,
+		}
+
+		checks := api.HealthChecks{
+			{Node: "node1", ServiceID: "service1"},
+			{Node: "node1", ServiceID: "service1"}, // Duplicate
+			{Node: "node2", ServiceID: "service2"},
+			{Node: "node2", ServiceID: ""}, // No service
+		}
+
+		agent.updateServiceMetrics(nodes, checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			nodesKey := "consul-esm.esm.nodes.monitored"
+			nodesMetric, ok := intv.Gauges[nodesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", nodesKey))
+			require.Equal(r, float32(2), nodesMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(2), servicesMetric.Value)
+		})
+	})
+
+	t.Run("handles empty inputs", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		nodes := map[string]bool{}
+		checks := api.HealthChecks{}
+
+		agent.updateServiceMetrics(nodes, checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			nodesKey := "consul-esm.esm.nodes.monitored"
+			nodesMetric, ok := intv.Gauges[nodesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", nodesKey))
+			require.Equal(r, float32(0), nodesMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(0), servicesMetric.Value)
+		})
+	})
+
+	t.Run("handles nil inputs", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		agent.updateServiceMetrics(nil, nil)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			nodesKey := "consul-esm.esm.nodes.monitored"
+			nodesMetric, ok := intv.Gauges[nodesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", nodesKey))
+			require.Equal(r, float32(0), nodesMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(0), servicesMetric.Value)
+		})
+	})
+
+	t.Run("handles checks without services", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		nodes := map[string]bool{
+			"node1": true,
+		}
+
+		checks := api.HealthChecks{
+			{Node: "node1", ServiceID: ""},
+			{Node: "node1", ServiceID: ""},
+		}
+
+		agent.updateServiceMetrics(nodes, checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			nodesKey := "consul-esm.esm.nodes.monitored"
+			nodesMetric, ok := intv.Gauges[nodesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", nodesKey))
+			require.Equal(r, float32(1), nodesMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(0), servicesMetric.Value)
+		})
+	})
+
+	t.Run("handles same service on different nodes", func(t *testing.T) {
+		sink := setupMetricsSink()
+
+		nodes := map[string]bool{
+			"node1": true,
+			"node2": true,
+		}
+
+		checks := api.HealthChecks{
+			{Node: "node1", ServiceID: "web"},
+			{Node: "node2", ServiceID: "web"},
+		}
+
+		agent.updateServiceMetrics(nodes, checks)
+
+		retry.Run(t, func(r *retry.R) {
+			intervals := sink.Data()
+			require.NotEmpty(r, intervals, "Expected at least one metrics interval")
+			intv := intervals[len(intervals)-1]
+
+			nodesKey := "consul-esm.esm.nodes.monitored"
+			nodesMetric, ok := intv.Gauges[nodesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", nodesKey))
+			require.Equal(r, float32(2), nodesMetric.Value)
+
+			servicesKey := "consul-esm.esm.services.monitored"
+			servicesMetric, ok := intv.Gauges[servicesKey]
+			require.True(r, ok, fmt.Sprintf("did not find the key %q", servicesKey))
+			require.Equal(r, float32(2), servicesMetric.Value)
+		})
+	})
+}
+
+func TestAgent_getPrometheusDefs(t *testing.T) {
+	t.Run("returns correct definitions without prefix", func(t *testing.T) {
+		config, err := DefaultConfig()
+		require.NoError(t, err)
+		config.Telemetry.MetricsPrefix = ""
+
+		gauges, summaries := getPrometheusDefs(config)
+
+		// Verify we get the expected number of gauge definitions
+		expectedGaugeCount := len(AgentGauges) + len(MonitoredGauges) + len(LeaderGauges)
+		require.Len(t, gauges, expectedGaugeCount, "Should have correct number of gauge definitions")
+
+		// Verify we get the expected number of summary definitions
+		expectedSummaryCount := len(ChecksSummary)
+		require.Len(t, summaries, expectedSummaryCount, "Should have correct number of summary definitions")
+
+		// Check specific gauge definitions are present
+		gaugeNames := make(map[string]bool)
+		for _, gauge := range gauges {
+			gaugeNames[strings.Join(gauge.Name, ".")] = true
+		}
+
+		expectedGauges := []string{
+			"esm.agent.isLeader",
+			"esm.nodes.monitored",
+			"esm.services.monitored",
+			"esm.agents.healthy",
+		}
+
+		for _, expected := range expectedGauges {
+			require.True(t, gaugeNames[expected], "Should contain gauge %s", expected)
+		}
+
+		// Check specific summary definitions are present
+		summaryNames := make(map[string]bool)
+		for _, summary := range summaries {
+			summaryNames[strings.Join(summary.Name, ".")] = true
+		}
+
+		expectedSummaries := []string{
+			"esm.checks.fetch_and_update.duration",
+		}
+
+		for _, expected := range expectedSummaries {
+			require.True(t, summaryNames[expected], "Should contain summary %s", expected)
+		}
+	})
+
+	t.Run("applies metrics prefix correctly", func(t *testing.T) {
+		config, err := DefaultConfig()
+		require.NoError(t, err)
+		config.Telemetry.MetricsPrefix = "test-prefix"
+
+		gauges, summaries := getPrometheusDefs(config)
+
+		// Verify all gauges have the prefix
+		for _, gauge := range gauges {
+			require.True(t, len(gauge.Name) > 0, "Gauge should have a name")
+			require.Equal(t, "test-prefix", gauge.Name[0], "Gauge should start with metrics prefix")
+		}
+
+		// Verify all summaries have the prefix
+		for _, summary := range summaries {
+			require.True(t, len(summary.Name) > 0, "Summary should have a name")
+			require.Equal(t, "test-prefix", summary.Name[0], "Summary should start with metrics prefix")
+		}
+	})
+
+	t.Run("handles empty metrics prefix", func(t *testing.T) {
+		config, err := DefaultConfig()
+		require.NoError(t, err)
+		config.Telemetry.MetricsPrefix = ""
+
+		gauges, summaries := getPrometheusDefs(config)
+
+		// Verify gauges don't have unexpected prefixes
+		for _, gauge := range gauges {
+			require.True(t, len(gauge.Name) > 0, "Gauge should have a name")
+			require.Equal(t, "esm", gauge.Name[0], "Gauge should start with 'esm' when no prefix is set")
+		}
+
+		// Verify summaries don't have unexpected prefixes
+		for _, summary := range summaries {
+			require.True(t, len(summary.Name) > 0, "Summary should have a name")
+			require.Equal(t, "esm", summary.Name[0], "Summary should start with 'esm' when no prefix is set")
+		}
+	})
+
+	t.Run("gauge definitions have help text", func(t *testing.T) {
+		config, err := DefaultConfig()
+		require.NoError(t, err)
+
+		gauges, _ := getPrometheusDefs(config)
+
+		for _, gauge := range gauges {
+			require.NotEmpty(t, gauge.Help, "Gauge %s should have help text", strings.Join(gauge.Name, "."))
+		}
+	})
+
+	t.Run("summary definitions have help text", func(t *testing.T) {
+		config, err := DefaultConfig()
+		require.NoError(t, err)
+
+		_, summaries := getPrometheusDefs(config)
+
+		for _, summary := range summaries {
+			require.NotEmpty(t, summary.Help, "Summary %s should have help text", strings.Join(summary.Name, "."))
+		}
+	})
 }

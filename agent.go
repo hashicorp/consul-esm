@@ -14,11 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armon/go-metrics"
+	prommetrics "github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/go-hclog"
-	"github.com/prometheus/client_golang/prometheus"
+	promclient "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -45,6 +47,24 @@ var (
 	// Specifies the maximum transaction size for kv store ops
 	maximumTransactionSize = 64
 )
+
+var AgentGauges = []prommetrics.GaugeDefinition{
+	{
+		Name: []string{"esm", "agent", "isLeader"},
+		Help: "Indicates if this ESM instance is the current cluster leader (1 for leader, 0 for follower)",
+	},
+}
+
+var MonitoredGauges = []prommetrics.GaugeDefinition{
+	{
+		Name: []string{"esm", "nodes", "monitored"},
+		Help: "Number of external nodes being monitored by this ESM instance",
+	},
+	{
+		Name: []string{"esm", "services", "monitored"},
+		Help: "Number of external services being monitored by this ESM instance",
+	},
+}
 
 type lastKnownStatus struct {
 	status string
@@ -78,6 +98,45 @@ type Agent struct {
 	metrics *lib.MetricsConfig
 }
 
+// Can add counter and histogram definitions here if needed
+func getPrometheusDefs(config *Config) ([]prommetrics.GaugeDefinition, []prommetrics.SummaryDefinition) {
+	var gauges = [][]prommetrics.GaugeDefinition{
+		AgentGauges,
+		MonitoredGauges,
+		LeaderGauges,
+	}
+
+	// Flatten definitions and apply prefix
+	var gaugeDefs []prommetrics.GaugeDefinition
+	for _, g := range gauges {
+		var withPrefix []prommetrics.GaugeDefinition
+		for _, gauge := range g {
+			if config.Telemetry.MetricsPrefix != "" {
+				gauge.Name = append([]string{config.Telemetry.MetricsPrefix}, gauge.Name...)
+			}
+			withPrefix = append(withPrefix, gauge)
+		}
+		gaugeDefs = append(gaugeDefs, withPrefix...)
+	}
+
+	var summaries = [][]prommetrics.SummaryDefinition{
+		ChecksSummary,
+	}
+	var summaryDefs []prommetrics.SummaryDefinition
+	for _, s := range summaries {
+		var withPrefix []prommetrics.SummaryDefinition
+		for _, summary := range s {
+			if config.Telemetry.MetricsPrefix != "" {
+				summary.Name = append([]string{config.Telemetry.MetricsPrefix}, summary.Name...)
+			}
+			withPrefix = append(withPrefix, summary)
+		}
+		summaryDefs = append(summaryDefs, withPrefix...)
+	}
+
+	return gaugeDefs, summaryDefs
+}
+
 func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 	clientConf := config.ClientConfig()
 	client, err := api.NewClient(clientConf)
@@ -85,6 +144,9 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		return nil, err
 	}
 
+	gauges, summaries := getPrometheusDefs(config)
+	config.Telemetry.PrometheusOpts.GaugeDefinitions = gauges
+	config.Telemetry.PrometheusOpts.SummaryDefinitions = summaries
 	// Never used locally. I think we keep the reference to avoid GC.
 	metricsConf, err := lib.InitTelemetry(config.Telemetry, logger)
 	if err != nil {
@@ -116,6 +178,8 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 
 		time.Sleep(retryTime)
 	}
+
+	metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
 
 	return &agent, nil
 }
@@ -394,7 +458,7 @@ func (a *Agent) runHTTP() {
 			}),
 			ErrorHandling: promhttp.ContinueOnError,
 		}
-		mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOptions))
+		mux.Handle("/metrics", promhttp.HandlerFor(promclient.DefaultGatherer, handlerOptions))
 	}
 
 	if a.config.EnableDebug {
@@ -708,6 +772,12 @@ func (a *Agent) kvNodeListPath() string {
 	return a.config.KVPath + "agents/"
 }
 
+func (a *Agent) recordHealthCheckMetrics(start time.Time, nodes map[string]bool, checks api.HealthChecks) {
+	metrics.MeasureSince([]string{"esm", "checks", "fetch_and_update", "duration"}, start)
+	a.updateCheckMetrics(checks)
+	a.updateServiceMetrics(nodes, checks)
+}
+
 // watchHealthChecks does a blocking query to the Consul api to get
 // all health checks on nodes marked with the external node metadata
 // identifier and sends any updates through the given updateCh.
@@ -748,8 +818,11 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 			// Sleep here to limit how much load we put on the Consul servers.
 		}
 		if len(ourNodes) == 0 {
+			metrics.SetGauge([]string{"esm", "nodes", "monitored"}, 0)
 			continue
 		}
+
+		start := time.Now()
 
 		ourChecks, lastIndex := a.getHealthChecks(waitIndex, ourNodes)
 		if len(ourChecks) == 0 {
@@ -758,6 +831,8 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 		waitIndex = lastIndex
 		a.checkRunner.UpdateChecks(ourChecks)
+
+		a.recordHealthCheckMetrics(start, ourNodes, ourChecks)
 
 		if checkCount != len(ourChecks) {
 			checkCount = len(ourChecks)
@@ -958,4 +1033,32 @@ func containsService(serviceID string, services []*api.CatalogService) bool {
 		}
 	}
 	return false
+}
+
+// Add this new method to the Agent struct
+func (a *Agent) updateCheckMetrics(checks api.HealthChecks) {
+	healthyCount := 0
+
+	for _, check := range checks {
+		if check.Status == api.HealthPassing {
+			healthyCount++
+		}
+	}
+
+	metrics.SetGauge([]string{"esm", "checks", "count"}, float32(len(checks)))
+	metrics.SetGauge([]string{"esm", "checks", "healthy"}, float32(healthyCount))
+	metrics.SetGauge([]string{"esm", "checks", "unhealthy"}, float32(len(checks)-healthyCount))
+}
+
+func (a *Agent) updateServiceMetrics(nodes map[string]bool, checks api.HealthChecks) {
+	monitoredServices := make(map[string]struct{})
+	for _, check := range checks {
+		if check.ServiceID != "" {
+			serviceKey := check.Node + ":" + check.ServiceID
+			monitoredServices[serviceKey] = struct{}{}
+		}
+	}
+
+	metrics.SetGauge([]string{"esm", "nodes", "monitored"}, float32(len(nodes)))
+	metrics.SetGauge([]string{"esm", "services", "monitored"}, float32(len(monitoredServices)))
 }
