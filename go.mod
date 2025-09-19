@@ -6,7 +6,6 @@ toolchain go1.24.1
 
 require (
 	github.com/armon/go-metrics v0.4.1
-	github.com/go-ping/ping v1.1.0
 	github.com/hashicorp/consul v1.20.5
 	github.com/hashicorp/consul/api v1.32.0
 	github.com/hashicorp/consul/sdk v0.16.2
@@ -18,6 +17,7 @@ require (
 	github.com/hashicorp/serf v0.10.1
 	github.com/mitchellh/cli v1.1.5
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/prometheus-community/pro-bing v0.4.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.9.0
 )
