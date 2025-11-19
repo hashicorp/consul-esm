@@ -194,8 +194,9 @@ type HumanConfig struct {
 	NodeMeta   []map[string]string `mapstructure:"external_node_meta"`
 	Partition  flags.StringValue   `mapstructure:"partition"`
 
-	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
-	NodeProbeInterval    flags.DurationValue `mapstructure:"node_probe_interval"`
+	NodeReconnectTimeout      flags.DurationValue `mapstructure:"node_reconnect_timeout"`
+	NodeProbeInterval         flags.DurationValue `mapstructure:"node_probe_interval"`
+	NodeHealthRefreshInterval flags.DurationValue `mapstructure:"node_health_refresh_interval"`
 
 	HTTPAddr      flags.StringValue `mapstructure:"http_addr"`
 	Token         flags.StringValue `mapstructure:"token"`
@@ -496,6 +497,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	}
 	src.NodeReconnectTimeout.Merge(&dst.NodeReconnectTimeout)
 	src.NodeProbeInterval.Merge(&dst.CoordinateUpdateInterval)
+	src.NodeHealthRefreshInterval.Merge(&dst.NodeHealthRefreshInterval)
 	src.HTTPAddr.Merge(&dst.HTTPAddr)
 	src.Token.Merge(&dst.Token)
 	src.Datacenter.Merge(&dst.Datacenter)
