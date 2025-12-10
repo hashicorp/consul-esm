@@ -196,7 +196,7 @@ WATCH_NODES_WAIT:
 		}
 
 		// Force periodic rebalancing to detect new ESM instances quickly
-		retryTimer = time.After(10 * time.Second)
+		retryTimer = time.After(retryTime)
 
 		// Wait for some instances to become available, if there are none, then there isn't anything we can do
 		if len(healthyInstances) == 0 {
@@ -262,7 +262,7 @@ WATCH_NODES_WAIT:
 func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct{}) {
 	opts := &api.QueryOptions{
 		NodeMeta: a.config.NodeMeta,
-		WaitTime: 10 * time.Second,
+		WaitTime: retryTime,
 	}
 	a.HasPartition(func(partition string) {
 		opts.Partition = partition
@@ -308,7 +308,7 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 // watchServiceInstances does a watch for any ESM instances with the same service tag as
 // this agent and sends any updates back through instanceCh as a sorted list.
 func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopCh <-chan struct{}) {
-	opts := &api.QueryOptions{WaitTime: 10 * time.Second}
+	opts := &api.QueryOptions{WaitTime: retryTime}
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
