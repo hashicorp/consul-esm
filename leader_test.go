@@ -628,3 +628,219 @@ func TestLeader_isLeaderMetric(t *testing.T) {
 		r.Fatalf("did not find the key %q in any of the %d intervals", isLeaderKey, len(intervals))
 	})
 }
+
+// TestLeader_newInstanceDiscoveryTime verifies that when a new ESM instance joins
+// an existing cluster, it is discovered and assigned work within a reasonable time
+// (< 1 minute)
+func TestLeader_newInstanceDiscoveryTime(t *testing.T) {
+	t.Parallel()
+	s, err := NewTestServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Register 4 external nodes so there's enough work to distribute
+	for i, nodeName := range []string{"node1", "node2", "node3", "node4"} {
+		meta := map[string]string{"external-node": "true"}
+		// Make node2 a probe node to test both types
+		if i == 1 {
+			meta["external-probe"] = "true"
+		}
+		_, err := client.Catalog().Register(&api.CatalogRegistration{
+			Node:       nodeName,
+			Address:    "127.0.0.1",
+			Datacenter: "dc1",
+			NodeMeta:   meta,
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Start 3 ESM agents
+	agent1 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent1"
+	})
+	defer agent1.Shutdown()
+
+	agent2 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent2"
+	})
+	defer agent2.Shutdown()
+
+	agent3 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent3"
+	})
+	defer agent3.Shutdown()
+
+	// Wait for initial distribution to stabilize
+	time.Sleep(3 * time.Second)
+
+	// Record the time when we add the 4th agent
+	startTime := time.Now()
+
+	// Add a 4th ESM agent
+	agent4 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent4"
+	})
+	defer agent4.Shutdown()
+
+	// Verify that agent4 is discovered and assigned work within a few retry cycles
+	// The periodic rebalancing timer uses the retryTime constant
+	discovered := false
+	retry.RunWith(&retry.Timer{Timeout: 15 * time.Second, Wait: 500 * time.Millisecond}, t, func(r *retry.R) {
+		serviceID := fmt.Sprintf("%s:%s", agent4.config.Service, agent4.id)
+		kv, _, err := agent4.client.KV().Get(agent4.kvNodeListPath()+serviceID, nil)
+		if err != nil {
+			r.Fatalf("error querying for node watch list: %v", err)
+		}
+
+		if kv == nil {
+			r.Fatalf("agent4 not yet discovered - no KV entry")
+		}
+
+		var nodeList NodeWatchList
+		if err := json.Unmarshal(kv.Value, &nodeList); err != nil {
+			r.Fatalf("error deserializing node list: %v", err)
+		}
+
+		// Agent4 should have at least one node assigned
+		if len(nodeList.Nodes) > 0 || len(nodeList.Probes) > 0 {
+			discovered = true
+			discoveryTime := time.Since(startTime)
+			r.Logf("Agent4 discovered and assigned work in %v", discoveryTime)
+
+			// Verify discovery happened within reasonable time (15 seconds)
+			if discoveryTime > 15*time.Second {
+				r.Fatalf("Discovery took too long: %v (expected < 15s)", discoveryTime)
+			}
+		} else {
+			r.Fatalf("agent4 discovered but no nodes assigned yet")
+		}
+	})
+
+	if !discovered {
+		t.Fatal("Agent4 was never discovered and assigned work")
+	}
+
+	// Verify that all 4 agents now have work assigned and all nodes are covered
+	totalHealthNodes := 0
+	totalProbeNodes := 0
+	for i, agent := range []*Agent{agent1, agent2, agent3, agent4} {
+		serviceID := fmt.Sprintf("%s:%s", agent.config.Service, agent.id)
+		kv, _, err := agent.client.KV().Get(agent.kvNodeListPath()+serviceID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kv == nil {
+			t.Fatalf("Agent %d has no KV entry", i+1)
+		}
+
+		var nodeList NodeWatchList
+		if err := json.Unmarshal(kv.Value, &nodeList); err != nil {
+			t.Fatal(err)
+		}
+
+		totalHealthNodes += len(nodeList.Nodes)
+		totalProbeNodes += len(nodeList.Probes)
+	}
+
+	// Verify all 4 nodes are accounted for (3 health + 1 probe)
+	if totalHealthNodes != 3 {
+		t.Errorf("Expected 3 health nodes total, got %d", totalHealthNodes)
+	}
+	if totalProbeNodes != 1 {
+		t.Errorf("Expected 1 probe node total, got %d", totalProbeNodes)
+	}
+}
+
+// TestLeader_periodicRebalancing verifies that the retry timer continues to fire
+// periodically and doesn't get disabled after the first run
+func TestLeader_periodicRebalancing(t *testing.T) {
+	t.Parallel()
+	s, err := NewTestServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Register 2 external nodes
+	for _, nodeName := range []string{"node1", "node2"} {
+		_, err := client.Catalog().Register(&api.CatalogRegistration{
+			Node:       nodeName,
+			Address:    "127.0.0.1",
+			Datacenter: "dc1",
+			NodeMeta:   map[string]string{"external-node": "true"},
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Start 2 ESM agents
+	agent1 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent1"
+	})
+	defer agent1.Shutdown()
+
+	agent2 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent2"
+	})
+	defer agent2.Shutdown()
+
+	// Wait for initial distribution
+	time.Sleep(2 * time.Second)
+	agent1.verifyUpdates(t, []string{"node1"}, []string{})
+	agent2.verifyUpdates(t, []string{"node2"}, []string{})
+
+	// Add a 3rd agent and verify it gets discovered quickly
+	// This tests that the timer keeps firing
+	agent3 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent3"
+	})
+	defer agent3.Shutdown()
+
+	retry.RunWith(&retry.Timer{Timeout: 15 * time.Second, Wait: 500 * time.Millisecond}, t, func(r *retry.R) {
+		serviceID := fmt.Sprintf("%s:%s", agent3.config.Service, agent3.id)
+		kv, _, err := agent3.client.KV().Get(agent3.kvNodeListPath()+serviceID, nil)
+		if err != nil || kv == nil {
+			r.Fatal("agent3 not discovered yet")
+		}
+	})
+
+	// Wait a bit more and add a 4th agent to verify the timer is still firing
+	time.Sleep(5 * time.Second)
+
+	agent4 := testAgent(t, func(c *Config) {
+		c.HTTPAddr = s.HTTPAddr
+		c.InstanceID = "agent4"
+	})
+	defer agent4.Shutdown()
+
+	// Verify agent4 also gets discovered quickly (proving timer continues)
+	retry.RunWith(&retry.Timer{Timeout: 15 * time.Second, Wait: 500 * time.Millisecond}, t, func(r *retry.R) {
+		serviceID := fmt.Sprintf("%s:%s", agent4.config.Service, agent4.id)
+		kv, _, err := agent4.client.KV().Get(agent4.kvNodeListPath()+serviceID, nil)
+		if err != nil || kv == nil {
+			r.Fatal("agent4 not discovered - timer may have been disabled")
+		}
+	})
+}
