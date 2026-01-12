@@ -438,6 +438,9 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 // handleCheckUpdate writes a check's status to the catalog and updates the local check state.
 // Should only be called when the lock is held.
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
+
+	c.logger.Info("Fetching existing node entry for check update in healthCheckUpdate", "checkID", check.CheckID, "node", check.Node)
+	nodeQueryStart := time.Now()
 	// Exit early if the check or node have been deregistered.
 	// consistent mode reduces convergency time particularly when services have many updates in a short time
 	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{
@@ -448,6 +451,13 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		c.logger.Warn("error retrieving existing node entry", "error", err)
 		return
 	}
+	nodeQueryDuration := time.Since(nodeQueryStart)
+	c.logger.Info("Fetched health checks for node in handleCheckUpdate",
+		"node", check.Node,
+		"duration", nodeQueryDuration.String(),
+		"count", len(checks),
+	)
+
 	var existing *api.HealthCheck
 	checkID := strings.TrimPrefix(string(check.CheckID), check.Node+"/")
 	for _, check := range checks {
@@ -474,11 +484,20 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 		},
 	}
 	metrics.IncrCounter([]string{"check", "txn"}, 1)
+
+	c.logger.Info("Submitting check status update txn to Consul", "checkID", existing.CheckID)
+	txnStart := time.Now()
 	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
 	if err != nil {
 		c.logger.Warn("Error updating check status in Consul", "error", err)
 		return
 	}
+	txnDuration := time.Since(txnStart)
+	c.logger.Info("Submitted check status update txn to Consul",
+		"checkID", existing.CheckID,
+		"duration", txnDuration.String(),
+		"success", ok,
+	)
 	if len(resp.Errors) > 0 {
 		var errs error
 		for _, e := range resp.Errors {

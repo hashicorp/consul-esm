@@ -712,6 +712,7 @@ func (a *Agent) watchNodeList() {
 			}
 		}
 
+		kvQueryStart := time.Now()
 		// Get the KV entry for this agent's node list.
 		kv, meta, err := a.client.KV().Get(a.kvNodeListPath()+a.serviceID(), opts)
 		if err != nil {
@@ -719,6 +720,13 @@ func (a *Agent) watchNodeList() {
 			time.Sleep(retryTime)
 			continue
 		}
+
+		kvQueryDuration := time.Since(kvQueryStart)
+		a.logger.Info("Fetched node watch list from KV",
+			"duration", kvQueryDuration.String(),
+			"waitIndex", opts.WaitIndex,
+			"lastIndex", meta.LastIndex,
+		)
 
 		// If the KV entry wasn't created yet, retry immediately (without setting
 		// firstRun = false) so that we can get an update as soon as it's created.
@@ -869,17 +877,40 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 
 	ourChecks := make(api.HealthChecks, 0)
 	var lastIndex uint64
-	for _, ns := range namespaces {
+	var backoffDelay time.Duration = 0
+	for i, ns := range namespaces {
 		opts.Namespace = ns.Name
 		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
+			a.logger.Info("checking namespaces for services to get health checks", "namespace", ns.Name)
 		}
+
+		// Adding delay between namespace queries to reduce load on Consul servers
+		if i > 0 {
+			time.Sleep(100 * time.Millisecond)
+		}
+
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
+			if strings.Contains(err.Error(), "429") {
+				// Exponential backoff on rate limit
+				if backoffDelay == 0 {
+					backoffDelay = 1 * time.Second
+				} else {
+					backoffDelay = min(backoffDelay*2, 30*time.Second)
+				}
+				a.logger.Warn("Rate limited, backing off", "delay", backoffDelay, "error", err)
+				time.Sleep(backoffDelay)
+				continue
+			}
 			a.logger.Warn("Error querying for health check info", "error", err)
 			continue
 		}
 		lastIndex = meta.LastIndex
+
+		a.logger.Info("Fetched health checks from catalog",
+			"count", len(checks),
+			"namespace", ns.Name,
+		)
 
 		for _, c := range checks {
 			if nodes[c.Node] && c.CheckID != externalCheckName {

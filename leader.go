@@ -196,7 +196,7 @@ WATCH_NODES_WAIT:
 		}
 
 		// Force periodic rebalancing to detect new ESM instances quickly
-		retryTimer = time.After(retryTime)
+		// retryTimer = time.After(retryTime)
 
 		// Wait for some instances to become available, if there are none, then there isn't anything we can do
 		if len(healthyInstances) == 0 {
@@ -308,7 +308,7 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 // watchServiceInstances does a watch for any ESM instances with the same service tag as
 // this agent and sends any updates back through instanceCh as a sorted list.
 func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopCh <-chan struct{}) {
-	opts := &api.QueryOptions{WaitTime: retryTime}
+	opts := &api.QueryOptions{}
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
@@ -319,20 +319,52 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 		cancelFunc()
 	}()
 
+	firstRun := true
+
 	for {
-		select {
-		case <-stopCh:
-			return
-		case <-time.After(retryTime / 10):
-			// Sleep here to limit how much load we put on the Consul servers.
-			// We can wait a lot less than the normal retry time here because
-			// the ESM service instance list is relatively small and cheap to
-			// query.
+		if !firstRun {
+			select {
+			case <-stopCh:
+				return
+			case <-time.After(retryTime):
+				// Sleep here to limit how much load we put on the Consul servers.
+				// We can wait a lot less than the normal retry time here because
+				// the ESM service instance list is relatively small and cheap to
+				// query.
+			}
 		}
+		firstRun = false
+
+		a.logger.Info("Querying for ESM service instances", "waitIndex", opts.WaitIndex)
 
 		switch healthyInstances, err := a.getServiceInstances(opts); err {
 		case nil:
+			a.logger.Info("Found ESM instances", "count", len(healthyInstances), "instances",
+				func() []string {
+					ids := make([]string, len(healthyInstances))
+					for i, h := range healthyInstances {
+						ids[i] = h.Service.ID
+					}
+					return ids
+				}())
+			// Log BEFORE attempting to send to channel
+			sendStart := time.Now()
+			a.logger.Info("Attempting to send to instanceCh (this may block)",
+				"instanceCount", len(healthyInstances),
+				"timestamp", sendStart.Format(time.RFC3339))
+
 			instanceCh <- healthyInstances
+
+			// Log AFTER successfully sending to channel
+			sendDuration := time.Since(sendStart)
+			a.logger.Info("Successfully sent to instanceCh",
+				"blockedDuration", sendDuration,
+				"timestamp", time.Now().Format(time.RFC3339))
+
+			if sendDuration > 5*time.Second {
+				a.logger.Warn("Channel send was blocked for significant time",
+					"duration", sendDuration)
+			}
 		default:
 			a.logger.Warn("[WARN] Error querying for health check info",
 				"error", err)
@@ -345,29 +377,55 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 // It loops over all available namespaces to get instances from each.
 func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry, error) {
 	var healthyInstances []*api.ServiceEntry
-	var meta *api.QueryMeta
+	// var meta *api.QueryMeta
 
-	namespaces, err := namespacesList(a.client, a.config)
+	// queryStart := time.Now()
+	// namespaces, err := namespacesList(a.client, a.config)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// for _, ns := range namespaces {
+	// 	if ns.Name != "" {
+	// 		a.logger.Info("checking namespaces for consul-esm services", "name", ns.Name)
+	// 	}
+	// 	nsQueryStart := time.Now()
+	// 	opts.Namespace = ns.Name
+	// 	healthy, m, err := a.client.Health().Service(a.config.Service,
+	// 		a.config.Tag, true, opts)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	nsQueryDuration := time.Since(nsQueryStart)
+	// 	a.logger.Info("queried namespace for consul-esm services",
+	// 		"name", ns.Name,
+	// 		"instanceCount", len(healthy),
+	// 		"duration", nsQueryDuration,
+	// 		"lastIndex", m.LastIndex)
+
+	// 	// meta = m // keep last good meta
+	// 	for _, h := range healthy {
+	// 		healthyInstances = append(healthyInstances, h)
+	// 	}
+	// }
+
+	opts.Namespace = "default"
+	healthy, _, err := a.client.Health().Service(a.config.Service,
+		a.config.Tag, true, opts)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, ns := range namespaces {
-		if ns.Name != "" {
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		opts.Namespace = ns.Name
-		healthy, m, err := a.client.Health().Service(a.config.Service,
-			a.config.Tag, true, opts)
-		if err != nil {
-			return nil, err
-		}
-		meta = m // keep last good meta
-		for _, h := range healthy {
-			healthyInstances = append(healthyInstances, h)
-		}
+	for _, h := range healthy {
+		healthyInstances = append(healthyInstances, h)
 	}
-	opts.WaitIndex = meta.LastIndex
+
+	// totalDuration := time.Since(queryStart)
+	// // opts.WaitIndex = meta.LastIndex
+
+	// a.logger.Info("All namespace queries completed for consul-esm services",
+	// 	"totalDuration", totalDuration,
+	// 	"totalInstances", len(healthyInstances),
+	// 	"finalWaitIndex", opts.WaitIndex)
 
 	sort.Slice(healthyInstances, func(a, b int) bool {
 		return healthyInstances[a].Service.ID < healthyInstances[b].Service.ID
