@@ -5,8 +5,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"os"
 	"reflect"
 	"strings"
