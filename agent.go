@@ -876,7 +876,12 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		}
 		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 		if err != nil {
-			a.logger.Warn("Error querying for health check info", "error", err)
+			if strings.Contains(err.Error(), "429") || strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+				metrics.IncrCounter([]string{"esm", "checks", "health_state", "rate_limit_errors"}, 1)
+				a.logger.Warn("Rate limit error querying for health check info", "error", err)
+			} else {
+				a.logger.Warn("Error querying for health check info", "error", err)
+			}
 			continue
 		}
 		lastIndex = meta.LastIndex
