@@ -25,14 +25,6 @@ import (
 
 const externalCheckName = "externalNodeHealth"
 
-// Retry configuration for rate limit errors
-const (
-	maxRetries        = 10
-	initialBackoff    = 100 * time.Millisecond
-	maxBackoff        = 5 * time.Second
-	backoffMultiplier = 2
-)
-
 // defaultInterval is the check interval to use if one is not set.
 var defaultInterval = 30 * time.Second
 
@@ -463,30 +455,14 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
 	// Exit early if the check or node have been deregistered.
 	// consistent mode reduces convergency time particularly when services have many updates in a short time
-	var checks api.HealthChecks
-	var err error
-
-	// Retry loop for Health().Node() with exponential backoff on rate limit errors
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		checks, _, err = c.client.Health().Node(check.Node, &api.QueryOptions{
-			Namespace:         check.Namespace,
-			RequireConsistent: true,
-		})
-		if err == nil {
-			break
-		}
-
+	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{
+		Namespace:         check.Namespace,
+		RequireConsistent: true,
+	})
+	if err != nil {
 		if isRateLimitError(err) {
 			metrics.IncrCounter([]string{"esm", "checks", "health_node", "rate_limit_errors"}, 1)
-			if attempt < maxRetries {
-				backoff := calculateBackoff(attempt)
-				c.logger.Warn("rate limit error retrieving existing node entry, retrying",
-					"error", err, "attempt", attempt+1, "backoff", backoff)
-				time.Sleep(backoff)
-				continue
-			}
-			c.logger.Warn("rate limit error retrieving existing node entry, max retries exceeded",
-				"error", err, "maxRetries", maxRetries)
+			c.logger.Warn("rate limit error retrieving existing node entry", "error", err)
 		} else {
 			c.logger.Warn("error retrieving existing node entry", "error", err)
 		}
@@ -518,35 +494,17 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 			},
 		},
 	}
-
-	var ok bool
-	var resp *api.TxnResponse
-
-	// Retry loop for Txn() with exponential backoff on rate limit errors
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		metrics.IncrCounter([]string{"check", "txn"}, 1)
-		ok, resp, _, err = c.client.Txn().Txn(ops, nil)
-		if err == nil {
-			break
-		}
-
+	metrics.IncrCounter([]string{"check", "txn"}, 1)
+	ok, resp, _, err := c.client.Txn().Txn(ops, nil)
+	if err != nil {
 		if isRateLimitError(err) {
 			metrics.IncrCounter([]string{"esm", "checks", "txn", "rate_limit_errors"}, 1)
-			if attempt < maxRetries {
-				backoff := calculateBackoff(attempt)
-				c.logger.Warn("rate limit error updating check status in Consul, retrying",
-					"error", err, "attempt", attempt+1, "backoff", backoff)
-				time.Sleep(backoff)
-				continue
-			}
-			c.logger.Warn("rate limit error updating check status in Consul, max retries exceeded",
-				"error", err, "maxRetries", maxRetries)
+			c.logger.Warn("rate limit error updating check status in Consul", "error", err)
 		} else {
 			c.logger.Warn("Error updating check status in Consul", "error", err)
 		}
 		return
 	}
-
 	if len(resp.Errors) > 0 {
 		var errs error
 		for _, e := range resp.Errors {
@@ -646,16 +604,4 @@ func isRateLimitError(err error) bool {
 	}
 	errStr := err.Error()
 	return strings.Contains(errStr, "429") || strings.Contains(strings.ToLower(errStr), "rate limit")
-}
-
-// calculateBackoff returns the backoff duration for the given retry attempt
-func calculateBackoff(attempt int) time.Duration {
-	backoff := initialBackoff
-	for range attempt {
-		backoff *= backoffMultiplier
-		if backoff > maxBackoff {
-			return maxBackoff
-		}
-	}
-	return backoff
 }
