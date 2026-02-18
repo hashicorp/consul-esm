@@ -23,13 +23,13 @@ func TestCheckRunner_AgentlessOptimizations(t *testing.T) {
 	})
 
 	// Test CheckRunner creation in agentful mode
-	agentfulRunner := NewCheckRunner(logger, nil, 0, 0, &tls.Config{}, 1, 1, false)
+	agentfulRunner := NewCheckRunner(logger, nil, 0, 0, &tls.Config{}, 1, 1, false, 0)
 	if agentfulRunner.isAgentless != false {
 		t.Fatal("Expected agentful runner to have isAgentless=false")
 	}
 
 	// Test CheckRunner creation in agentless mode
-	agentlessRunner := NewCheckRunner(logger, nil, 0, 0, &tls.Config{}, 1, 1, true)
+	agentlessRunner := NewCheckRunner(logger, nil, 0, 0, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
 	if agentlessRunner.isAgentless != true {
 		t.Fatal("Expected agentless runner to have isAgentless=true")
 	}
@@ -71,7 +71,7 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 	})
 
 	// Test agentful mode batching initialization
-	agentfulRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, false)
+	agentfulRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, false, 0)
 	if agentfulRunner.batcher == nil {
 		t.Fatal("Expected batcher to be initialized")
 	}
@@ -83,14 +83,14 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 	}
 
 	// Test agentless mode batching initialization (should have longer interval)
-	agentlessRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true)
+	agentlessRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
 	if agentlessRunner.batcher == nil {
 		t.Fatal("Expected batcher to be initialized")
 	}
 	if !agentlessRunner.batcher.IsEnabled() {
 		t.Fatal("Expected batcher to be enabled for agentless mode")
 	}
-	expectedAgentlessInterval := 2 * defaultBatchFlushInterval
+	expectedAgentlessInterval := 500 * time.Millisecond
 	if agentlessRunner.batcher.flushInterval != expectedAgentlessInterval {
 		t.Fatalf("Expected agentless batch flush interval to be %v, got %v", expectedAgentlessInterval, agentlessRunner.batcher.flushInterval)
 	}
@@ -107,7 +107,7 @@ func TestCheckRunner_BatchQueueing(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true) // agentless mode
+	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond) // agentless mode
 
 	// Simulate queuing multiple check updates
 	checks := []*api.HealthCheck{
@@ -143,7 +143,7 @@ func TestCheckRunner_BatchDeduplication(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true) // agentless mode
+	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond) // agentless mode
 
 	check := &api.HealthCheck{Node: "node1", CheckID: "check1", Status: "passing"}
 
