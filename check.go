@@ -673,11 +673,26 @@ func (c *CheckRunner) executeBatchTransaction(ops api.TxnOps, updates []*pending
 	}
 
 	if len(resp.Errors) > 0 {
-		var errs error
+		// Check if errors are due to stale index (CAS failures)
+		staleIndexErrors := 0
 		for _, e := range resp.Errors {
-			errs = multierror.Append(errs, errors.New(e.What))
+			if strings.Contains(e.What, "index is stale") {
+				staleIndexErrors++
+			}
 		}
-		c.logger.Warn("Error(s) returned from batched txn when updating check status", "error", errs, "failedOps", len(resp.Errors))
+
+		// If we have stale index errors, retry those specific operations
+		if staleIndexErrors > 0 {
+			c.logger.Debug("Detected stale index errors in batch, retrying failed operations",
+				"staleErrors", staleIndexErrors, "totalErrors", len(resp.Errors))
+			c.retryFailedBatchOperations(updates, resp.Errors)
+		} else {
+			var errs error
+			for _, e := range resp.Errors {
+				errs = multierror.Append(errs, errors.New(e.What))
+			}
+			c.logger.Warn("Error(s) returned from batched txn when updating check status", "error", errs, "failedOps", len(resp.Errors))
+		}
 		return
 	}
 
@@ -690,6 +705,99 @@ func (c *CheckRunner) executeBatchTransaction(ops api.TxnOps, updates []*pending
 	// This ensures anti-flapping logic works correctly regardless of batch timing.
 
 	c.logger.Debug("Successfully executed batched check update", "batchSize", len(ops))
+}
+
+// retryFailedBatchOperations retries check updates that failed due to stale index.
+func (c *CheckRunner) retryFailedBatchOperations(updates []*pendingCheckUpdate, errors api.TxnErrors) {
+	// Build a map of failed operation indices
+	failedIndices := make(map[int]string)
+	for _, e := range errors {
+		if strings.Contains(e.What, "index is stale") {
+			failedIndices[e.OpIndex] = e.What
+		}
+	}
+
+	if len(failedIndices) == 0 {
+		return
+	}
+
+	c.logger.Info("Retrying failed batch operations with fresh state", "count", len(failedIndices))
+	metrics.IncrCounter([]string{"check", "txn", "retry"}, float32(len(failedIndices)))
+
+	// Retry each failed update individually with fresh state
+	for idx, errMsg := range failedIndices {
+		if idx >= len(updates) {
+			c.logger.Warn("Invalid error index in transaction response", "index", idx, "updatesCount", len(updates))
+			continue
+		}
+
+		update := updates[idx]
+		c.logger.Trace("Retrying check update", "node", update.check.Node, "checkID", update.check.CheckID, "error", errMsg)
+
+		// Fetch fresh state for this specific check
+		checks, _, err := c.client.Health().Node(update.check.Node, &api.QueryOptions{
+			Namespace:         update.check.Namespace,
+			RequireConsistent: true,
+		})
+		if err != nil {
+			c.logger.Warn("error retrieving node for retry", "error", err, "node", update.check.Node)
+			continue
+		}
+
+		// Find the specific check
+		checkID := strings.TrimPrefix(string(update.check.CheckID), update.check.Node+"/")
+		var existing *api.HealthCheck
+		for _, check := range checks {
+			if check.CheckID == checkID {
+				existing = check
+				break
+			}
+		}
+
+		if existing == nil {
+			c.logger.Trace("Check no longer exists during retry, skipping", "checkID", checkID)
+			continue
+		}
+
+		// Update with fresh ModifyIndex
+		existing.Status = update.status
+		existing.Output = update.output
+
+		// Execute single-operation transaction with fresh state
+		ops := api.TxnOps{
+			&api.TxnOp{
+				Check: &api.CheckTxnOp{
+					Verb:  api.CheckCAS,
+					Check: *existing,
+				},
+			},
+		}
+
+		var queryOpts *api.QueryOptions
+		if c.isAgentless {
+			queryOpts = &api.QueryOptions{
+				RequireConsistent: true,
+			}
+		}
+
+		ok, retryResp, _, err := c.client.Txn().Txn(ops, queryOpts)
+		if err != nil {
+			c.logger.Warn("error during retry", "error", err, "node", update.check.Node, "checkID", checkID)
+			continue
+		}
+
+		if len(retryResp.Errors) > 0 {
+			c.logger.Warn("retry still failed", "node", update.check.Node, "checkID", checkID, "error", retryResp.Errors[0].What)
+			continue
+		}
+
+		if !ok {
+			c.logger.Warn("retry transaction returned not ok", "node", update.check.Node, "checkID", checkID)
+			continue
+		}
+
+		c.logger.Debug("Successfully retried check update", "node", update.check.Node, "checkID", checkID)
+	}
 }
 
 // reapServices is a long running goroutine that looks for checks that have been
