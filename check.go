@@ -146,7 +146,7 @@ func (m *stopMap[K, V]) StopAll() {
 
 func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	minimumInterval time.Duration, tlsConfig *tls.Config, passingThreshold int,
-	criticalThreshold int, isAgentless bool,
+	criticalThreshold int, isAgentless bool, batchFlushInterval time.Duration,
 ) *CheckRunner {
 	runner := &CheckRunner{
 		logger:              logger,
@@ -162,7 +162,16 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	// Configure batching based on mode
 	batchInterval := defaultBatchFlushInterval
 	if isAgentless {
-		batchInterval = 2 * defaultBatchFlushInterval
+		logger.Info("Configuring CheckRunner batch interval", "received_interval", batchFlushInterval, "is_agentless", isAgentless)
+		// Use configured batch flush interval for agentless mode
+		if batchFlushInterval > 0 {
+			batchInterval = batchFlushInterval
+			logger.Info("Using configured batch flush interval", "interval", batchInterval)
+		} else {
+			// Fallback to default if not configured
+			batchInterval = 500 * time.Millisecond
+			logger.Info("Using default batch flush interval", "interval", batchInterval)
+		}
 	}
 
 	// Initialize batcher with callback to process batched updates

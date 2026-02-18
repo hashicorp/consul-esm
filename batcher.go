@@ -87,9 +87,11 @@ func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) 
 		return true
 	}
 
-	// Start or reset the flush timer
+	// Start timer only if not already running
+	// This ensures batch flushes at regular intervals regardless of update rate
 	if b.flushTimer == nil {
 		b.flushTimer = time.AfterFunc(b.flushInterval, b.Flush)
+		b.logger.Trace("Started batch flush timer", "interval", b.flushInterval)
 	}
 
 	return true
@@ -142,7 +144,33 @@ func (b *CheckUpdateBatcher) Stop() {
 	if !b.enabled {
 		return
 	}
-	b.Flush()
+
+	// Force flush all pending updates on shutdown, bypassing minimum batch size
+	b.pendingUpdatesMu.Lock()
+	defer b.pendingUpdatesMu.Unlock()
+
+	// Stop the timer
+	if b.flushTimer != nil {
+		b.flushTimer.Stop()
+		b.flushTimer = nil
+	}
+
+	if len(b.pendingUpdates) == 0 {
+		return
+	}
+
+	// Collect and flush all pending updates (force flush on shutdown)
+	updates := make([]*pendingCheckUpdate, 0, len(b.pendingUpdates))
+	for _, update := range b.pendingUpdates {
+		updates = append(updates, update)
+	}
+	b.pendingUpdates = make(map[string]*pendingCheckUpdate)
+
+	b.pendingUpdatesMu.Unlock()
+	if b.processFunc != nil {
+		b.processFunc(updates)
+	}
+	b.pendingUpdatesMu.Lock()
 }
 
 // IsEnabled returns whether batching is enabled
