@@ -569,8 +569,10 @@ LOCK_WAIT:
 	if lock == nil {
 		var err error
 		opts := &api.LockOptions{
-			Key:         a.config.KVPath + sessionKey,
-			SessionName: sessionKey,
+			Key:              a.config.KVPath + sessionKey,
+			SessionName:      sessionKey,
+			MonitorRetries:   3,
+			MonitorRetryTime: 2 * time.Second,
 		}
 		lock, err = a.client.LockOpts(opts)
 		opts.SessionOpts = &api.SessionEntry{
@@ -804,8 +806,19 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 	go a.checkRunner.reapServices(a.shutdownCh)
 	defer a.checkRunner.Stop()
 
+	a.logger.Info("Starting health check watcher",
+		"query_concurrency", a.config.HealthCheckQueryConcurrency)
+
+	// Context tied to agent shutdown.
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+	go func() {
+		<-a.shutdownCh
+		cancelFunc()
+	}()
+
 	var ourNodes map[string]bool
-	var waitIndex uint64
+	nsWaitIndexes := make(map[string]uint64)
 	checkCount := 0
 	for {
 		select {
@@ -813,7 +826,7 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 			return
 		case ourNodes = <-nodeListCh:
 			// Re-run if there's a change to the watched node list.
-			waitIndex = 0
+			nsWaitIndexes = make(map[string]uint64)
 		case <-time.After(retryTime):
 			// Sleep here to limit how much load we put on the Consul servers.
 		}
@@ -824,12 +837,12 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 		start := time.Now()
 
-		ourChecks, lastIndex := a.getHealthChecks(waitIndex, ourNodes)
+		ourChecks, newWaitIndexes := a.getHealthChecks(ctx, nsWaitIndexes, ourNodes)
 		if len(ourChecks) == 0 {
 			continue
 		}
 
-		waitIndex = lastIndex
+		nsWaitIndexes = newWaitIndexes
 		a.checkRunner.UpdateChecks(ourChecks)
 
 		a.recordHealthCheckMetrics(start, ourNodes, ourChecks)
@@ -842,46 +855,88 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 	}
 }
 
-func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
+func (a *Agent) getHealthChecks(ctx context.Context, nsWaitIndexes map[string]uint64, nodes map[string]bool) (api.HealthChecks, map[string]uint64) {
 	namespaces, err := namespacesList(a.client, a.config)
 	if err != nil {
 		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
 		namespaces = []*api.Namespace{{Name: ""}}
 	}
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	opts := &api.QueryOptions{
-		NodeMeta:  a.config.NodeMeta,
-		WaitIndex: waitIndex,
+	type nsResult struct {
+		checks    api.HealthChecks
+		lastIndex uint64
+		namespace string
 	}
-	opts = opts.WithContext(ctx)
-	a.HasPartition(func(partition string) {
-		opts.Partition = partition
-	})
-	defer cancelFunc()
+
+	// Use a bounded worker pool keeping goroutine count at O(concurrency).
+	// The caller-provided context ensures stalled blocking queries
+	// can be canceled on shutdown.
+	nsCh := make(chan *api.Namespace, len(namespaces))
+	for _, ns := range namespaces {
+		nsCh <- ns
+	}
+	close(nsCh)
+
+	resultCh := make(chan nsResult, len(namespaces))
+	var wg sync.WaitGroup
+
+	concurrency := a.config.HealthCheckQueryConcurrency
+	if concurrency > len(namespaces) {
+		concurrency = len(namespaces)
+	}
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ns := range nsCh {
+				// Check for cancellation before each query
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				opts := &api.QueryOptions{
+					NodeMeta:  a.config.NodeMeta,
+					WaitIndex: nsWaitIndexes[ns.Name],
+					Namespace: ns.Name,
+				}
+				opts = opts.WithContext(ctx)
+				a.HasPartition(func(partition string) {
+					opts.Partition = partition
+				})
+
+				if ns.Name != "" { // ns.Name only set on enterprise version
+					a.logger.Info("checking namespaces for services", "name", ns.Name)
+				}
+
+				checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+				if err != nil {
+					a.logger.Warn("Error querying for health check info", "error", err, "namespace", ns.Name)
+					continue
+				}
+
+				resultCh <- nsResult{
+					checks:    checks,
+					lastIndex: meta.LastIndex,
+					namespace: ns.Name,
+				}
+			}
+		}()
+	}
+
+	// Close the result channel once all workers complete
 	go func() {
-		select {
-		case <-a.shutdownCh:
-			cancelFunc()
-		case <-ctx.Done():
-		}
+		wg.Wait()
+		close(resultCh)
 	}()
 
 	ourChecks := make(api.HealthChecks, 0)
-	var lastIndex uint64
-	for _, ns := range namespaces {
-		opts.Namespace = ns.Name
-		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
-		if err != nil {
-			a.logger.Warn("Error querying for health check info", "error", err)
-			continue
-		}
-		lastIndex = meta.LastIndex
-
-		for _, c := range checks {
+	newWaitIndexes := make(map[string]uint64)
+	for r := range resultCh {
+		newWaitIndexes[r.namespace] = r.lastIndex
+		for _, c := range r.checks {
 			if nodes[c.Node] && c.CheckID != externalCheckName {
 				ourChecks = append(ourChecks, c)
 				a.logger.Info("found check", "name", c.Name)
@@ -889,7 +944,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		}
 	}
 
-	return ourChecks, lastIndex
+	return ourChecks, newWaitIndexes
 }
 
 // Check last visible node status.

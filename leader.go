@@ -68,7 +68,9 @@ LEADER_WAIT:
 		var err error
 		if a.isAgentLess() {
 			opts := &api.LockOptions{
-				Key: a.config.KVPath + LeaderKey,
+				Key:              a.config.KVPath + LeaderKey,
+				MonitorRetries:   3,
+				MonitorRetryTime: 2 * time.Second,
 			}
 			lock, err = a.client.LockOpts(opts)
 			opts.SessionOpts = &api.SessionEntry{
