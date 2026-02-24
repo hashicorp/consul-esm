@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -681,7 +682,7 @@ func TestAgent_getHealthChecks(t *testing.T) {
 
 		ourNodes := map[string]bool{"foo": true}
 
-		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		ourChecks, _ := agent.getHealthChecks(context.Background(), make(map[string]uint64), ourNodes)
 		if len(ourChecks) != 1 {
 			t.Error("should be 1 checks, got", len(ourChecks))
 		}
@@ -728,17 +729,19 @@ func TestAgent_getHealthChecks(t *testing.T) {
 
 		ourNodes := map[string]bool{"foo": true}
 
-		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		ourChecks, _ := agent.getHealthChecks(context.Background(), make(map[string]uint64), ourNodes)
 		if len(ourChecks) != 2 {
 			t.Error("should be 2 checks, got", len(ourChecks))
 		}
-		ns1check := ourChecks[0]
-		ns2check := ourChecks[1]
-		if ns1check.CheckID != "ns1_svc_ck" {
-			t.Error("Wrong check id:", ns1check.CheckID)
+		checkIDs := map[string]bool{}
+		for _, c := range ourChecks {
+			checkIDs[string(c.CheckID)] = true
 		}
-		if ns2check.CheckID != "ns2_svc_ck" {
-			t.Error("Wrong check id:", ns1check.CheckID)
+		if !checkIDs["ns1_svc_ck"] {
+			t.Error("Missing check id: ns1_svc_ck")
+		}
+		if !checkIDs["ns2_svc_ck"] {
+			t.Error("Missing check id: ns2_svc_ck")
 		}
 	})
 }
@@ -838,17 +841,19 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 		defer agent.Shutdown()
 
 		ourNodes := map[string]bool{"foo": true}
-		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		ourChecks, _ := agent.getHealthChecks(context.Background(), make(map[string]uint64), ourNodes)
 		if len(ourChecks) != 2 {
 			t.Error("should be 2 checks, got", len(ourChecks))
 		}
-		ns1check := ourChecks[0]
-		ns2check := ourChecks[1]
-		if ns1check.CheckID != "ns1_svc_ck" {
-			t.Error("Wrong check id:", ns1check.CheckID)
+		checkIDs := map[string]bool{}
+		for _, c := range ourChecks {
+			checkIDs[string(c.CheckID)] = true
 		}
-		if ns2check.CheckID != "ns2_svc_ck" {
-			t.Error("Wrong check id:", ns1check.CheckID)
+		if !checkIDs["ns1_svc_ck"] {
+			t.Error("Missing check id: ns1_svc_ck")
+		}
+		if !checkIDs["ns2_svc_ck"] {
+			t.Error("Missing check id: ns2_svc_ck")
 		}
 
 		// test the state API is called for each namespace in an agent's partition

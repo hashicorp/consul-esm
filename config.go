@@ -76,6 +76,8 @@ type Config struct {
 
 	PassingThreshold  int
 	CriticalThreshold int
+
+	HealthCheckQueryConcurrency int
 }
 
 func (c *Config) ClientConfig() *api.Config {
@@ -144,7 +146,8 @@ func DefaultConfig() (*Config, error) {
 		LogRotateMaxFiles:         0,
 		LogRotateDuration:         0,
 
-		EnableAgentless: false,
+		EnableAgentless:             false,
+		HealthCheckQueryConcurrency: 10,
 	}, nil
 }
 
@@ -221,6 +224,8 @@ type HumanConfig struct {
 
 	PassingThreshold  intValue `mapstructure:"passing_threshold"`
 	CriticalThreshold intValue `mapstructure:"critical_threshold"`
+
+	HealthCheckQueryConcurrency intValue `mapstructure:"health_check_query_concurrency"`
 }
 
 // intValue provides a flag value that's aware if it has been set.
@@ -356,6 +361,10 @@ func ValidateConfig(conf *Config) error {
 
 	if conf.CriticalThreshold < 0 {
 		return fmt.Errorf("critical_threshold cannot be negative")
+	}
+
+	if conf.HealthCheckQueryConcurrency < 1 {
+		return fmt.Errorf("health_check_query_concurrency must be at least 1")
 	}
 
 	return nil
@@ -521,6 +530,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 
 	src.PassingThreshold.Merge(&dst.PassingThreshold)
 	src.CriticalThreshold.Merge(&dst.CriticalThreshold)
+	src.HealthCheckQueryConcurrency.Merge(&dst.HealthCheckQueryConcurrency)
 
 	src.LogFile.Merge(&dst.LogFile)
 	src.LogRotateBytes.Merge(&dst.LogRotateBytes)
