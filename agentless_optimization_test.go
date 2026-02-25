@@ -34,8 +34,8 @@ func TestCheckRunner_AgentlessOptimizations(t *testing.T) {
 		t.Fatal("Expected agentless runner to have isAgentless=true")
 	}
 
-	t.Log("✅ Agentless mode detection working correctly")
-	t.Log("✅ CheckRunner properly configured for both modes")
+	t.Log("Agentless mode detection working correctly")
+	t.Log("CheckRunner properly configured for both modes")
 }
 
 // TestCheckRunner_AgentlessBatching verifies that agentless mode uses
@@ -58,7 +58,7 @@ func TestCheckRunner_AgentlessBatching(t *testing.T) {
 		t.Fatal("Expected agentless batching to use longer intervals")
 	}
 
-	t.Log("✅ Agentless mode uses enhanced batching intervals")
+	t.Log("Agentless mode uses enhanced batching intervals")
 }
 
 // TestCheckRunner_BatchingInitialization verifies that batching is properly
@@ -95,8 +95,8 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 		t.Fatalf("Expected agentless batch flush interval to be %v, got %v", expectedAgentlessInterval, agentlessRunner.batcher.flushInterval)
 	}
 
-	t.Log("✅ Batching properly initialized for agentful mode")
-	t.Log("✅ Batching properly initialized for agentless mode with longer interval")
+	t.Log("Batching properly initialized for agentful mode")
+	t.Log("Batching properly initialized for agentless mode with longer interval")
 }
 
 // TestCheckRunner_BatchQueueing verifies that check updates are properly queued
@@ -132,7 +132,7 @@ func TestCheckRunner_BatchQueueing(t *testing.T) {
 		t.Fatalf("Expected 3 pending updates, got %d", pendingCount)
 	}
 
-	t.Log("✅ Check updates properly queued for batching")
+	t.Log("Check updates properly queued for batching")
 }
 
 // TestCheckRunner_BatchDeduplication verifies that duplicate updates are deduplicated
@@ -169,7 +169,7 @@ func TestCheckRunner_BatchDeduplication(t *testing.T) {
 		t.Fatalf("Expected last output to be 'update 4', got '%s'", lastOutput)
 	}
 
-	t.Log("✅ Duplicate check updates properly deduplicated (only latest kept)")
+	t.Log("Duplicate check updates properly deduplicated (only latest kept)")
 }
 
 // TestCheckRunner_MaxBatchSize verifies the max batch size constant
@@ -177,5 +177,5 @@ func TestCheckRunner_MaxBatchSize(t *testing.T) {
 	if maxTxnOps != 64 {
 		t.Fatalf("Expected maxTxnOps to be 64, got %d", maxTxnOps)
 	}
-	t.Logf("✅ Max batch size correctly set to %d operations", maxTxnOps)
+	t.Logf("Max batch size correctly set to %d operations", maxTxnOps)
 }
