@@ -569,10 +569,8 @@ LOCK_WAIT:
 	if lock == nil {
 		var err error
 		opts := &api.LockOptions{
-			Key:              a.config.KVPath + sessionKey,
-			SessionName:      sessionKey,
-			MonitorRetries:   3,
-			MonitorRetryTime: 2 * time.Second,
+			Key:         a.config.KVPath + sessionKey,
+			SessionName: sessionKey,
 		}
 		lock, err = a.client.LockOpts(opts)
 		opts.SessionOpts = &api.SessionEntry{
@@ -855,17 +853,17 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 	}
 }
 
+type nsResult struct {
+	checks    api.HealthChecks
+	lastIndex uint64
+	namespace string
+}
+
 func (a *Agent) getHealthChecks(ctx context.Context, nsWaitIndexes map[string]uint64, nodes map[string]bool) (api.HealthChecks, map[string]uint64) {
 	namespaces, err := namespacesList(a.client, a.config)
 	if err != nil {
 		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
 		namespaces = []*api.Namespace{{Name: ""}}
-	}
-
-	type nsResult struct {
-		checks    api.HealthChecks
-		lastIndex uint64
-		namespace string
 	}
 
 	// Use a bounded worker pool keeping goroutine count at O(concurrency).
@@ -884,6 +882,8 @@ func (a *Agent) getHealthChecks(ctx context.Context, nsWaitIndexes map[string]ui
 	if concurrency > len(namespaces) {
 		concurrency = len(namespaces)
 	}
+
+	a.logger.Info("Querying health checks for namespaces", "namespaceCount", len(namespaces), "concurrency", concurrency)
 
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
