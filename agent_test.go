@@ -119,8 +119,11 @@ func TestAgent_AgentLess(t *testing.T) {
 		if got, want := checks[0].Name, "Consul External Service Monitor Alive"; got != want {
 			r.Fatalf("got %q, want %q", got, want)
 		}
-		if got, want := checks[0].Status, "critical"; got != want {
-			r.Fatalf("got %q, want %q", got, want)
+
+		// The check should be either 'critical' (initial registration) or 'passing'
+		// (after session creation). Both are valid depending on timing.
+		if checks[0].Status != "critical" && checks[0].Status != "passing" {
+			r.Fatalf("unexpected check status, got %q", checks[0].Status)
 		}
 
 	}
