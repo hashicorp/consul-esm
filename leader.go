@@ -68,17 +68,18 @@ LEADER_WAIT:
 		var err error
 		if a.isAgentLess() {
 			opts := &api.LockOptions{
-				Key: a.config.KVPath + LeaderKey,
+				Key:            a.config.KVPath + LeaderKey,
+				SessionTTL:     "30s",
+				MonitorRetries: 6,
+				SessionOpts: &api.SessionEntry{
+					Node:       a.agentlessNodeID(),
+					Name:       "consul-esm leader lock",
+					TTL:        "30s",
+					NodeChecks: []string{a.agentlessCheckID()},
+					Checks:     []string{a.agentlessCheckID()},
+				},
 			}
 			lock, err = a.client.LockOpts(opts)
-			opts.SessionOpts = &api.SessionEntry{
-				Node:       a.agentlessNodeID(),
-				Name:       opts.SessionName,
-				TTL:        opts.SessionTTL,
-				LockDelay:  opts.LockDelay,
-				NodeChecks: []string{a.agentlessCheckID()},
-				Checks:     []string{a.agentlessCheckID()},
-			}
 
 		} else {
 			lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
@@ -121,6 +122,8 @@ LEADER_WAIT:
 		case <-leaderCh:
 			a.logger.Warn("Lost leadership")
 			metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
+			lock.Unlock()
+			lock = nil
 			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return

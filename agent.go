@@ -569,19 +569,19 @@ LOCK_WAIT:
 	if lock == nil {
 		var err error
 		opts := &api.LockOptions{
-			Key:         a.config.KVPath + sessionKey,
-			SessionName: sessionKey,
+			Key:            a.config.KVPath + sessionKey,
+			SessionName:    sessionKey,
+			SessionTTL:     "30s",
+			MonitorRetries: 6,
+			SessionOpts: &api.SessionEntry{
+				Node:       a.agentlessNodeID(),
+				Name:       sessionKey,
+				TTL:        "30s",
+				NodeChecks: []string{a.agentlessCheckID()},
+				Checks:     []string{a.agentlessCheckID()},
+			},
 		}
 		lock, err = a.client.LockOpts(opts)
-		opts.SessionOpts = &api.SessionEntry{
-			Node:       a.agentlessNodeID(),
-			ID:         a.agentlessNodeID(),
-			Name:       opts.SessionName,
-			TTL:        opts.SessionTTL,
-			LockDelay:  opts.LockDelay,
-			NodeChecks: []string{a.agentlessCheckID()},
-			Checks:     []string{a.agentlessCheckID()},
-		}
 
 		if err != nil {
 			a.logger.Error("Agent: Error trying to create session lock (will retry)", "error", err)
@@ -619,6 +619,8 @@ LOCK_WAIT:
 		select {
 		case <-lockCh:
 			a.logger.Warn("Agent: Lost the lock")
+			lock.Unlock()
+			lock = nil
 			goto LOCK_WAIT
 		case <-a.shutdownCh:
 			return
