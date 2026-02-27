@@ -341,31 +341,19 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 }
 
 // getServiceInstances retuns a list of services with a 'passing' (healthy) state.
-// It loops over all available namespaces to get instances from each.
+// It checks for esm service instances from default namespace.
 func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry, error) {
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
 
-	namespaces, err := namespacesList(a.client, a.config)
+	a.logger.Info("checking default namespace for healthy ESM services")
+
+	healthyInstances, meta, err := a.client.Health().Service(a.config.Service,
+		a.config.Tag, true, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, ns := range namespaces {
-		if ns.Name != "" {
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		opts.Namespace = ns.Name
-		healthy, m, err := a.client.Health().Service(a.config.Service,
-			a.config.Tag, true, opts)
-		if err != nil {
-			return nil, err
-		}
-		meta = m // keep last good meta
-		for _, h := range healthy {
-			healthyInstances = append(healthyInstances, h)
-		}
-	}
 	opts.WaitIndex = meta.LastIndex
 
 	sort.Slice(healthyInstances, func(a, b int) bool {

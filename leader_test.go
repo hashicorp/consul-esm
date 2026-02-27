@@ -434,7 +434,7 @@ const namespacesJSON = `[
 ]`
 
 const healthserviceJSON = `[
-  { "Service": {"ID": "one", "Namespace": "foo" } },
+  { "Service": {"ID": "one", "Namespace": "default" } },
   { "Service": {"ID": "two", "Namespace": "default" } }
 ]`
 
@@ -541,16 +541,14 @@ func Test_getServiceInstances(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// 4 because test data has 2 namespaces each with 2 services
-			if len(serviceInstances) != 4 {
+			// 2 because test data has 2 services in default namespace only
+			if len(serviceInstances) != 2 {
 				t.Fatal("Wrong number of services", len(serviceInstances))
 			}
 			for _, si := range serviceInstances {
 				sv := si.Service
 				switch {
-				case sv.ID == "one" && sv.Namespace == "foo":
 				case sv.ID == "one" && sv.Namespace == "default":
-				case sv.ID == "two" && sv.Namespace == "foo":
 				case sv.ID == "two" && sv.Namespace == "default":
 				default:
 					t.Fatalf("Unknown service: %#v\n", si.Service)
