@@ -70,22 +70,16 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	// Test agentful mode batching initialization
+	// Test agentful mode - batcher should NOT be initialized (batching is agentless-only)
 	agentfulRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, false, 0)
-	if agentfulRunner.batcher == nil {
-		t.Fatal("Expected batcher to be initialized")
-	}
-	if agentfulRunner.batcher.IsEnabled() {
-		t.Fatal("Expected batcher to be disabled for agentful mode")
-	}
-	if agentfulRunner.batcher.flushInterval != defaultBatchFlushInterval {
-		t.Fatalf("Expected agentful batch flush interval to be %v, got %v", defaultBatchFlushInterval, agentfulRunner.batcher.flushInterval)
+	if agentfulRunner.batcher != nil {
+		t.Fatal("Expected batcher to be nil for agentful mode")
 	}
 
 	// Test agentless mode batching initialization (should have longer interval)
 	agentlessRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
 	if agentlessRunner.batcher == nil {
-		t.Fatal("Expected batcher to be initialized")
+		t.Fatal("Expected batcher to be initialized for agentless mode")
 	}
 	if !agentlessRunner.batcher.IsEnabled() {
 		t.Fatal("Expected batcher to be enabled for agentless mode")

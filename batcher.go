@@ -44,9 +44,6 @@ func NewCheckUpdateBatcher(config BatcherConfig) *CheckUpdateBatcher {
 	if config.MaxBatchSize == 0 {
 		config.MaxBatchSize = maxTxnOps
 	}
-	if config.FlushInterval == 0 {
-		config.FlushInterval = defaultBatchFlushInterval
-	}
 
 	return &CheckUpdateBatcher{
 		logger:         config.Logger,
