@@ -508,14 +508,14 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 // In agentless mode, updates are batched to reduce HTTP connections.
 // In agentful mode, updates are sent immediately (original behavior).
 func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
-	// Try batching first (only works if batcher is enabled - i.e., agentless mode)
-	if c.batcher != nil && c.batcher.Add(check, status, output) {
-		// Successfully queued for batching
-		return
+	if c.batcher != nil {
+		// Queue for batching. If the batcher has been stopped (e.g., during shutdown),
+		// the update is silently dropped rather than falling through to the immediate path.
+		c.batcher.Add(check, status, output)
+	} else {
+		// Agentful mode: send update immediately (original behavior)
+		c.handleCheckUpdateImmediate(check, status, output)
 	}
-
-	// Agentful mode: send update immediately (original behavior)
-	c.handleCheckUpdateImmediate(check, status, output)
 }
 
 // handleCheckUpdateImmediate sends a check update to Consul immediately without batching.
