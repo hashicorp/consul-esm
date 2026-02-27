@@ -28,6 +28,7 @@ const externalCheckName = "externalNodeHealth"
 // defaultInterval is the check interval to use if one is not set.
 var defaultInterval = 30 * time.Second
 
+// TODO: Evaluate the defaultBatchFlushInterval based on the feedback/observations
 // defaultBatchFlushInterval is the default interval for flushing batched updates.
 var defaultBatchFlushInterval = 500 * time.Millisecond
 
@@ -169,19 +170,18 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 			logger.Info("Using configured batch flush interval", "interval", batchInterval)
 		} else {
 			// Fallback to default if not configured
-			batchInterval = 500 * time.Millisecond
+			batchInterval = defaultBatchFlushInterval
 			logger.Info("Using default batch flush interval", "interval", batchInterval)
 		}
+		// Always initialize the batcher; enabled only for agentless mode
+		runner.batcher = NewCheckUpdateBatcher(BatcherConfig{
+			MaxBatchSize:  maxTxnOps,
+			FlushInterval: batchInterval,
+			Enabled:       true,
+			Logger:        logger,
+			ProcessFunc:   runner.processBatchedUpdates,
+		})
 	}
-
-	// Initialize batcher with callback to process batched updates
-	runner.batcher = NewCheckUpdateBatcher(BatcherConfig{
-		MaxBatchSize:  maxTxnOps,
-		FlushInterval: batchInterval,
-		Enabled:       isAgentless, // Only enabled for agentless mode
-		Logger:        logger,
-		ProcessFunc:   runner.processBatchedUpdates,
-	})
 
 	return runner
 }
