@@ -66,6 +66,6 @@ dev-tree:
 
 build:
 	mkdir -p dist/linux/amd64/
-	env CGO_ENABLED="0" GOOS=linux GOARCH=amd64 \
+	env CGO_ENABLED="0" \
 		go build -ldflags "${LD_FLAGS}" -o dist/linux/amd64/$(NAME)
 .PHONY: build
