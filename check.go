@@ -378,7 +378,6 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	if !ok {
 		return
 	}
-	defer func() { c.checks.Store(checkHash, check) }()
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
