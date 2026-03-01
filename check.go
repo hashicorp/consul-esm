@@ -374,11 +374,10 @@ func (c *CheckRunner) ServiceExists(serviceID structs.ServiceID) bool {
 // to push an update to the catalog.
 func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string) {
 	checkHash := checkID.ID
-	check, ok := c.checks.LoadAndDelete(checkHash)
+	check, ok := c.checks.Load(checkHash)
 	if !ok {
 		return
 	}
-	defer func() { c.checks.Store(checkHash, check) }()
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
