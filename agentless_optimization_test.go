@@ -78,7 +78,9 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 	}
 
 	// Test agentless mode batching initialization (should have longer interval)
-	agentlessRunner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+	// Create a mock client for agentless mode (batcher requires non-nil client)
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	agentlessRunner := NewCheckRunner(logger, mockClient, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
 	if agentlessRunner.batcher == nil {
 		t.Fatal("Expected batcher to be initialized for agentless mode")
 	}
@@ -86,6 +88,8 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 	if agentlessRunner.batcher.flushInterval != expectedAgentlessInterval {
 		t.Fatalf("Expected agentless batch flush interval to be %v, got %v", expectedAgentlessInterval, agentlessRunner.batcher.flushInterval)
 	}
+	// Stop the batcher to prevent timer from firing during test
+	agentlessRunner.Stop()
 
 	t.Log("Batching properly initialized for agentful mode")
 	t.Log("Batching properly initialized for agentless mode with longer interval")
@@ -99,7 +103,14 @@ func TestCheckRunner_BatchQueueing(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond) // agentless mode
+	// Create a mock client for agentless mode
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	runner := NewCheckRunner(logger, mockClient, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond) // agentless mode
+	defer runner.Stop()
+
+	if runner.batcher == nil {
+		t.Fatal("Batcher should be initialized for agentless mode with non-nil client")
+	}
 
 	// Simulate queuing multiple check updates
 	checks := []*api.HealthCheck{
@@ -135,7 +146,14 @@ func TestCheckRunner_BatchDeduplication(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond) // agentless mode
+	// Create a mock client for agentless mode
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	runner := NewCheckRunner(logger, mockClient, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond) // agentless mode
+	defer runner.Stop()
+
+	if runner.batcher == nil {
+		t.Fatal("Batcher should be initialized for agentless mode with non-nil client")
+	}
 
 	check := &api.HealthCheck{Node: "node1", CheckID: "check1", Status: "passing"}
 
@@ -180,7 +198,10 @@ func TestCheckRunner_StateReversion(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+	// Create a mock client for agentless mode
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	runner := NewCheckRunner(logger, mockClient, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+	defer runner.Stop()
 
 	// Create a test check with initial state
 	checkHash := types.CheckID("test-node/service:web/health")
@@ -289,7 +310,14 @@ func TestCheckRunner_OriginalStateInBatcher(t *testing.T) {
 		Output: LOGOUT,
 	})
 
-	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+	// Create a mock client for agentless mode
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	runner := NewCheckRunner(logger, mockClient, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+	defer runner.Stop()
+
+	if runner.batcher == nil {
+		t.Fatal("Batcher should be initialized for agentless mode with non-nil client")
+	}
 
 	check := &api.HealthCheck{
 		Node:      "test-node",
