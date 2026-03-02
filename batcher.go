@@ -19,7 +19,6 @@ type CheckUpdateBatcher struct {
 	// Configuration
 	maxBatchSize  int
 	flushInterval time.Duration
-	enabled       bool
 
 	// State
 	pendingUpdates   map[string]*pendingCheckUpdate
@@ -34,7 +33,6 @@ type CheckUpdateBatcher struct {
 type BatcherConfig struct {
 	MaxBatchSize  int
 	FlushInterval time.Duration
-	Enabled       bool
 	Logger        hclog.Logger
 	ProcessFunc   func([]*pendingCheckUpdate)
 }
@@ -49,19 +47,13 @@ func NewCheckUpdateBatcher(config BatcherConfig) *CheckUpdateBatcher {
 		logger:         config.Logger,
 		maxBatchSize:   config.MaxBatchSize,
 		flushInterval:  config.FlushInterval,
-		enabled:        config.Enabled,
 		pendingUpdates: make(map[string]*pendingCheckUpdate),
 		processFunc:    config.ProcessFunc,
 	}
 }
 
 // Add queues a check update for batching.
-// Returns true if the update was batched, false if batching is disabled.
-func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) bool {
-	if !b.enabled {
-		return false
-	}
-
+func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) {
 	b.pendingUpdatesMu.Lock()
 	defer b.pendingUpdatesMu.Unlock()
 
@@ -81,7 +73,7 @@ func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) 
 	if len(b.pendingUpdates) >= b.maxBatchSize {
 		b.logger.Debug("Batch size limit reached, flushing immediately", "batchSize", len(b.pendingUpdates))
 		b.flushLocked()
-		return true
+		return
 	}
 
 	// Start timer only if not already running
@@ -90,17 +82,11 @@ func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) 
 		b.flushTimer = time.AfterFunc(b.flushInterval, b.Flush)
 		b.logger.Trace("Started batch flush timer", "interval", b.flushInterval)
 	}
-
-	return true
 }
 
 // Flush flushes all pending check updates.
 // This is the public version that acquires the lock.
 func (b *CheckUpdateBatcher) Flush() {
-	if !b.enabled {
-		return
-	}
-
 	b.pendingUpdatesMu.Lock()
 	defer b.pendingUpdatesMu.Unlock()
 	b.flushLocked()
@@ -138,11 +124,7 @@ func (b *CheckUpdateBatcher) flushLocked() {
 
 // Stop stops the batcher and flushes any pending updates
 func (b *CheckUpdateBatcher) Stop() {
-	if !b.enabled {
-		return
-	}
-
-	// Force flush all pending updates on shutdown, bypassing minimum batch size
+	// Force flush all pending updates on shutdown
 	b.pendingUpdatesMu.Lock()
 	defer b.pendingUpdatesMu.Unlock()
 
@@ -168,11 +150,6 @@ func (b *CheckUpdateBatcher) Stop() {
 		b.processFunc(updates)
 	}
 	b.pendingUpdatesMu.Lock()
-}
-
-// IsEnabled returns whether batching is enabled
-func (b *CheckUpdateBatcher) IsEnabled() bool {
-	return b.enabled
 }
 
 // makeCheckKey creates a unique key for a check
