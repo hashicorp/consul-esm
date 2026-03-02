@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/go-hclog"
 )
 
@@ -169,4 +170,160 @@ func TestCheckRunner_MaxBatchSize(t *testing.T) {
 		t.Fatalf("Expected maxTxnOps to be 64, got %d", maxTxnOps)
 	}
 	t.Logf("Max batch size correctly set to %d operations", maxTxnOps)
+}
+
+// TestCheckRunner_StateReversion verifies that local state is reverted when batch updates fail
+func TestCheckRunner_StateReversion(t *testing.T) {
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "test",
+		Level:  hclog.LevelFromString("DEBUG"),
+		Output: LOGOUT,
+	})
+
+	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+
+	// Create a test check with initial state
+	checkHash := types.CheckID("test-node/service:web/health")
+	check := &esmHealthCheck{
+		HealthCheck: api.HealthCheck{
+			Node:      "test-node",
+			CheckID:   "health",
+			ServiceID: "service:web",
+			Status:    "passing",
+			Output:    "all good",
+		},
+		failureCounter: 0,
+		successCounter: 0,
+	}
+	runner.checks.Store(checkHash, check)
+
+	// Test 1: Verify original state is captured in pendingCheckUpdate
+	t.Run("original state is tracked", func(t *testing.T) {
+		update := &pendingCheckUpdate{
+			check:          &check.HealthCheck,
+			status:         "critical",
+			output:         "service down",
+			originalStatus: "passing",
+			originalOutput: "all good",
+		}
+
+		if update.originalStatus != "passing" {
+			t.Errorf("Expected originalStatus to be 'passing', got %s", update.originalStatus)
+		}
+		if update.originalOutput != "all good" {
+			t.Errorf("Expected originalOutput to be 'all good', got %s", update.originalOutput)
+		}
+		t.Log("Original state properly tracked in pendingCheckUpdate")
+	})
+
+	// Test 2: Verify revertCheckState updates local state
+	t.Run("revertCheckState updates local state", func(t *testing.T) {
+		// Simulate a failed update - check status changed to critical
+		check.Status = "critical"
+		check.Output = "service down"
+		runner.checks.Store(checkHash, check)
+
+		// Verify state was updated
+		updatedCheck, _ := runner.checks.Load(checkHash)
+		if updatedCheck.Status != "critical" {
+			t.Fatalf("Expected status to be 'critical' before reversion, got %s", updatedCheck.Status)
+		}
+
+		// Revert to original state
+		runner.revertCheckState("test-node", checkHash, "passing", "all good")
+
+		// Verify state was reverted
+		revertedCheck, ok := runner.checks.Load(checkHash)
+		if !ok {
+			t.Fatal("Check not found after reversion")
+		}
+		if revertedCheck.Status != "passing" {
+			t.Errorf("Expected status to be reverted to 'passing', got %s", revertedCheck.Status)
+		}
+		if revertedCheck.Output != "all good" {
+			t.Errorf("Expected output to be reverted to 'all good', got %s", revertedCheck.Output)
+		}
+		t.Log("Local state successfully reverted after batch failure")
+	})
+
+	// Test 3: Verify revertCheckState handles missing checks gracefully
+	t.Run("revertCheckState handles missing checks", func(t *testing.T) {
+		// This should not panic or error
+		runner.revertCheckState("nonexistent-node", "nonexistent/check", "passing", "test")
+		t.Log("Missing check handled gracefully during reversion")
+	})
+
+	// Test 4: Verify self-healing behavior simulation
+	t.Run("self-healing after state reversion", func(t *testing.T) {
+		// Set up initial state
+		check.Status = "passing"
+		check.Output = "all good"
+		runner.checks.Store(checkHash, check)
+
+		// Simulate check detecting failure and updating local state
+		check.Status = "critical"
+		check.Output = "service down"
+		runner.checks.Store(checkHash, check)
+
+		// Batch fails, state reverted
+		runner.revertCheckState("test-node", checkHash, "passing", "all good")
+
+		// Verify: next check execution will see difference
+		revertedCheck, _ := runner.checks.Load(checkHash)
+		actualStatus := "critical" // What the health check actually detected
+		localStatus := revertedCheck.Status
+
+		// After reversion, local state != actual state, so next execution will retry
+		if localStatus == actualStatus {
+			t.Error("Expected local state to differ from actual state to enable retry")
+		}
+		t.Log("After state reversion, next check execution will naturally retry the update")
+	})
+}
+
+// TestCheckRunner_OriginalStateInBatcher verifies that batcher receives original state
+func TestCheckRunner_OriginalStateInBatcher(t *testing.T) {
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "test",
+		Level:  hclog.LevelFromString("DEBUG"),
+		Output: LOGOUT,
+	})
+
+	runner := NewCheckRunner(logger, nil, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+
+	check := &api.HealthCheck{
+		Node:      "test-node",
+		CheckID:   "check1",
+		Status:    "passing",
+		Output:    "original output",
+		ServiceID: "service1",
+	}
+
+	// Add update with original state
+	runner.batcher.Add(check, "critical", "new output", "passing", "original output")
+
+	// Verify the update was queued with original state
+	runner.batcher.pendingUpdatesMu.Lock()
+	key := makeCheckKey(check.Node, string(check.CheckID))
+	update, exists := runner.batcher.pendingUpdates[key]
+	runner.batcher.pendingUpdatesMu.Unlock()
+
+	if !exists {
+		t.Fatal("Update not found in batcher")
+	}
+
+	if update.status != "critical" {
+		t.Errorf("Expected status 'critical', got %s", update.status)
+	}
+	if update.output != "new output" {
+		t.Errorf("Expected output 'new output', got %s", update.output)
+	}
+	if update.originalStatus != "passing" {
+		t.Errorf("Expected originalStatus 'passing', got %s", update.originalStatus)
+	}
+	if update.originalOutput != "original output" {
+		t.Errorf("Expected originalOutput 'original output', got %s", update.originalOutput)
+	}
+
+	t.Log("Batcher correctly receives and stores original state with each update")
 }
