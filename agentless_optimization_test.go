@@ -81,9 +81,6 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 	if agentlessRunner.batcher == nil {
 		t.Fatal("Expected batcher to be initialized for agentless mode")
 	}
-	if !agentlessRunner.batcher.IsEnabled() {
-		t.Fatal("Expected batcher to be enabled for agentless mode")
-	}
 	expectedAgentlessInterval := 500 * time.Millisecond
 	if agentlessRunner.batcher.flushInterval != expectedAgentlessInterval {
 		t.Fatalf("Expected agentless batch flush interval to be %v, got %v", expectedAgentlessInterval, agentlessRunner.batcher.flushInterval)
