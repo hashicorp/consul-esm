@@ -53,7 +53,7 @@ func NewCheckUpdateBatcher(config BatcherConfig) *CheckUpdateBatcher {
 }
 
 // Add queues a check update for batching.
-func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) {
+func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output, originalStatus, originalOutput string) {
 	b.pendingUpdatesMu.Lock()
 	defer b.pendingUpdatesMu.Unlock()
 
@@ -62,9 +62,11 @@ func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output string) 
 
 	// Store the update (overwrites any previous pending update for this check - deduplication)
 	b.pendingUpdates[checkKey] = &pendingCheckUpdate{
-		check:  check,
-		status: status,
-		output: output,
+		check:          check,
+		status:         status,
+		output:         output,
+		originalStatus: originalStatus,
+		originalOutput: originalOutput,
 	}
 
 	b.logger.Trace("Queued check update for batching", "checkID", check.CheckID, "pendingCount", len(b.pendingUpdates))

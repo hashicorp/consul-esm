@@ -63,9 +63,11 @@ type checkIDSet map[types.CheckID]bool
 
 // pendingCheckUpdate represents a check update waiting to be batched
 type pendingCheckUpdate struct {
-	check  *api.HealthCheck
-	status string
-	output string
+	check          *api.HealthCheck
+	status         string
+	output         string
+	originalStatus string // status before this update
+	originalOutput string // output before this update
 }
 
 type CheckRunner struct {
@@ -480,7 +482,9 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 				intv = time.Duration(uint64(c.CheckUpdateInterval)/2) + lib.RandomStagger(c.CheckUpdateInterval)
 			}
 			deferSync := time.AfterFunc(intv, func() {
-				c.handleCheckUpdate(&check.HealthCheck, status, output)
+				// For deferred updates, we don't need original state since the check
+				// has already stabilized at this status
+				c.handleCheckUpdate(&check.HealthCheck, status, output, "", "")
 				c.deferCheck.Delete(checkHash)
 			})
 			c.deferCheck.Store(checkHash, deferSync)
@@ -491,24 +495,27 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	// For agentless mode: update local state immediately before batching.
 	// This ensures anti-flapping logic and local state remain consistent
 	// while server updates are batched for efficiency.
+	// Store original state for potential reversion if batch fails.
 	// For agentful mode: local state is updated after successful catalog update
 	// (inside handleCheckUpdateImmediate) to maintain original behavior.
+	originalStatus := check.Status
+	originalOutput := check.Output
 	if c.isAgentless {
 		check.Status = status
 		check.Output = output
 	}
 
-	c.handleCheckUpdate(&check.HealthCheck, status, output)
+	c.handleCheckUpdate(&check.HealthCheck, status, output, originalStatus, originalOutput)
 }
 
 // handleCheckUpdate updates a check's status in Consul.
 // In agentless mode, updates are batched to reduce HTTP connections.
 // In agentful mode, updates are sent immediately (original behavior).
-func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
+func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output, originalStatus, originalOutput string) {
 	if c.batcher != nil {
 		// Queue for batching. If the batcher has been stopped (e.g., during shutdown),
 		// the update is silently dropped rather than falling through to the immediate path.
-		c.batcher.Add(check, status, output)
+		c.batcher.Add(check, status, output, originalStatus, originalOutput)
 	} else {
 		// Agentful mode: send update immediately (original behavior)
 		c.handleCheckUpdateImmediate(check, status, output)
@@ -793,7 +800,10 @@ func (c *CheckRunner) retryFailedBatchOperations(updates []*pendingCheckUpdate, 
 		}
 
 		if len(retryResp.Errors) > 0 {
-			c.logger.Warn("retry still failed", "node", update.check.Node, "checkID", checkID, "error", retryResp.Errors[0].What)
+			c.logger.Warn("retry still failed, reverting local state", "node", update.check.Node, "checkID", checkID, "error", retryResp.Errors[0].What)
+			// Revert local state to original so next check execution can retry
+			checkHash := hashCheck(update.check)
+			c.revertCheckState(update.check.Node, checkHash, update.originalStatus, update.originalOutput)
 			continue
 		}
 
@@ -862,6 +872,26 @@ func (c *CheckRunner) reapServicesInternal() {
 		}
 		return true
 	})
+}
+
+// revertCheckState reverts the local check state to previous values after a failed batch update.
+// This ensures the next check execution will detect the difference and retry the update.
+func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, originalStatus, originalOutput string) {
+	checkHash := checkID
+	check, ok := c.checks.Load(checkHash)
+	if !ok {
+		c.logger.Debug("Check not found for state reversion", "checkID", checkID)
+		return
+	}
+
+	c.logger.Debug("Reverting check state after batch failure",
+		"checkID", checkID,
+		"currentStatus", check.Status,
+		"revertToStatus", originalStatus)
+
+	check.Status = originalStatus
+	check.Output = originalOutput
+	c.checks.Store(checkHash, check)
 }
 
 func hashCheck(check *api.HealthCheck) types.CheckID {
