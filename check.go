@@ -162,9 +162,8 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 		isAgentless:         isAgentless,
 	}
 
-	// Only initialize batcher for agentless mode AND when client is not nil
-	// (tests may create CheckRunner with nil client)
-	if isAgentless && client != nil {
+	// Only initialize batcher for agentless mode
+	if isAgentless {
 		batchInterval := defaultBatchFlushInterval
 		logger.Info("Configuring CheckRunner batch interval", "received_interval", batchFlushInterval, "is_agentless", isAgentless)
 		// Use configured batch flush interval for agentless mode
@@ -596,9 +595,9 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 		return
 	}
 
-	// Safety check for tests that create CheckRunner with nil client
+	// Safety check: client should never be nil in production, but guard against misconfiguration
 	if c.client == nil {
-		c.logger.Warn("Cannot process batched updates: client is nil (test scenario)")
+		c.logger.Error("Cannot process batched updates: client is nil")
 		return
 	}
 

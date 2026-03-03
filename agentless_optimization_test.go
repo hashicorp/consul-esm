@@ -24,15 +24,23 @@ func TestCheckRunner_AgentlessOptimizations(t *testing.T) {
 	})
 
 	// Test CheckRunner creation in agentful mode
-	agentfulRunner := NewCheckRunner(logger, nil, 0, 0, &tls.Config{}, 1, 1, false, 0)
+	// Creating a mock client with default config for agentful mode to ensure batcher is not initialized (batching is agentless-only)
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	agentfulRunner := NewCheckRunner(logger, mockClient, 0, 0, &tls.Config{}, 1, 1, false, 0)
 	if agentfulRunner.isAgentless != false {
 		t.Fatal("Expected agentful runner to have isAgentless=false")
 	}
+	if agentfulRunner.batcher != nil {
+		t.Fatal("Expected agentful runner to have nil batcher")
+	}
 
 	// Test CheckRunner creation in agentless mode
-	agentlessRunner := NewCheckRunner(logger, nil, 0, 0, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
+	agentlessRunner := NewCheckRunner(logger, mockClient, 0, 0, &tls.Config{}, 1, 1, true, 500*time.Millisecond)
 	if agentlessRunner.isAgentless != true {
 		t.Fatal("Expected agentless runner to have isAgentless=true")
+	}
+	if agentlessRunner.batcher == nil {
+		t.Fatal("Expected agentless runner to have non-nil batcher")
 	}
 
 	t.Log("Agentless mode detection working correctly")
