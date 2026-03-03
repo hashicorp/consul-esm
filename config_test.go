@@ -25,6 +25,7 @@ consul_service = "service"
 consul_service_tag = "asdf"
 consul_kv_path = "custom-esm/"
 node_reconnect_timeout = "22s"
+node_health_refresh_interval = "23s"
 node_probe_interval = "12s"
 external_node_meta {
 	a = "1"
@@ -75,14 +76,15 @@ log_json = true
 `)
 
 	expected := &Config{
-		LogLevel:                 "INFO",
-		EnableDebug:              true,
-		InstanceID:               "test-instance-id",
-		Service:                  "service",
-		Tag:                      "asdf",
-		KVPath:                   "custom-esm/",
-		NodeReconnectTimeout:     22 * time.Second,
-		CoordinateUpdateInterval: 12 * time.Second,
+		LogLevel:                  "INFO",
+		EnableDebug:               true,
+		InstanceID:                "test-instance-id",
+		Service:                   "service",
+		Tag:                       "asdf",
+		KVPath:                    "custom-esm/",
+		NodeReconnectTimeout:      22 * time.Second,
+		NodeHealthRefreshInterval: 23 * time.Second,
+		CoordinateUpdateInterval:  12 * time.Second,
 		NodeMeta: map[string]string{
 			"a": "1",
 			"b": "2",
