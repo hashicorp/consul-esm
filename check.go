@@ -63,9 +63,9 @@ type checkIDSet map[types.CheckID]bool
 
 // pendingCheckUpdate represents a check update waiting to be batched
 type pendingCheckUpdate struct {
-	check          *api.HealthCheck
-	status         string
-	output         string
+	check     *api.HealthCheck
+	status    string
+	output    string
 	oldStatus string // status before this update
 	oldOutput string // output before this update
 }
@@ -594,7 +594,7 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 		return
 	}
 
-	// Safety check: client should never be nil in production, but guard against misconfiguration
+	// Safety check: client should never be nil here since batcher is only initialized when client is available, but we check to avoid panics during shutdown or misconfiguration
 	if c.client == nil {
 		c.logger.Error("Cannot process batched updates: client is nil")
 		return
