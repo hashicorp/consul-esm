@@ -843,16 +843,11 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
-	namespaces, err := namespacesList(a.client, a.config)
-	if err != nil {
-		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
-		namespaces = []*api.Namespace{{Name: ""}}
-	}
-
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
+		Namespace: "*",
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
@@ -868,28 +863,21 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	}()
 
 	ourChecks := make(api.HealthChecks, 0)
-	var lastIndex uint64
-	for _, ns := range namespaces {
-		opts.Namespace = ns.Name
-		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
-		if err != nil {
-			a.logger.Warn("Error querying for health check info", "error", err)
-			continue
-		}
-		lastIndex = meta.LastIndex
+	a.logger.Info("checking for services in all namespaces")
+	checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+	if err != nil {
+		a.logger.Warn("Error querying for health check info", "error", err)
+		return ourChecks, waitIndex
+	}
 
-		for _, c := range checks {
-			if nodes[c.Node] && c.CheckID != externalCheckName {
-				ourChecks = append(ourChecks, c)
-				a.logger.Info("found check", "name", c.Name)
-			}
+	for _, c := range checks {
+		if nodes[c.Node] && c.CheckID != externalCheckName {
+			ourChecks = append(ourChecks, c)
+			a.logger.Debug("found check", "name", c.Name, "node", c.Node)
 		}
 	}
 
-	return ourChecks, lastIndex
+	return ourChecks, meta.LastIndex
 }
 
 // Check last visible node status.
