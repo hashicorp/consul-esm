@@ -66,8 +66,8 @@ type pendingCheckUpdate struct {
 	check          *api.HealthCheck
 	status         string
 	output         string
-	originalStatus string // status before this update
-	originalOutput string // output before this update
+	oldStatus string // status before this update
+	oldOutput string // output before this update
 }
 
 type CheckRunner struct {
@@ -501,24 +501,24 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	// Store original state for potential reversion if batch fails.
 	// For agentful mode: local state is updated after successful catalog update
 	// (inside handleCheckUpdateImmediate) to maintain original behavior.
-	originalStatus := check.Status
-	originalOutput := check.Output
+	oldStatus := check.Status
+	oldOutput := check.Output
 	if c.isAgentless {
 		check.Status = status
 		check.Output = output
 	}
 
-	c.handleCheckUpdate(&check.HealthCheck, status, output, originalStatus, originalOutput)
+	c.handleCheckUpdate(&check.HealthCheck, status, output, oldStatus, oldOutput)
 }
 
 // handleCheckUpdate updates a check's status in Consul.
 // In agentless mode, updates are batched to reduce HTTP connections.
 // In agentful mode, updates are sent immediately (original behavior).
-func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output, originalStatus, originalOutput string) {
+func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output, oldStatus, oldOutput string) {
 	if c.batcher != nil {
 		// Queue for batching. If the batcher has been stopped (e.g., during shutdown),
 		// the update is silently dropped rather than falling through to the immediate path.
-		c.batcher.Add(check, status, output, originalStatus, originalOutput)
+		c.batcher.Add(check, status, output, oldStatus, oldOutput)
 	} else {
 		// Agentful mode: send update immediately (original behavior)
 		c.handleCheckUpdateImmediate(check, status, output)
@@ -812,7 +812,7 @@ func (c *CheckRunner) retryFailedBatchOperations(updates []*pendingCheckUpdate, 
 			c.logger.Warn("retry still failed, reverting local state", "node", update.check.Node, "checkID", checkID, "error", retryResp.Errors[0].What)
 			// Revert local state to original so next check execution can retry
 			checkHash := hashCheck(update.check)
-			c.revertCheckState(update.check.Node, checkHash, update.originalStatus, update.originalOutput)
+			c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
 			continue
 		}
 
@@ -885,7 +885,7 @@ func (c *CheckRunner) reapServicesInternal() {
 
 // revertCheckState reverts the local check state to previous values after a failed batch update.
 // This ensures the next check execution will detect the difference and retry the update.
-func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, originalStatus, originalOutput string) {
+func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, oldStatus, oldOutput string) {
 	checkHash := checkID
 	check, ok := c.checks.Load(checkHash)
 	if !ok {
@@ -896,10 +896,10 @@ func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, origi
 	c.logger.Debug("Reverting check state after batch failure",
 		"checkID", checkID,
 		"currentStatus", check.Status,
-		"revertToStatus", originalStatus)
+		"revertToStatus", oldStatus)
 
-	check.Status = originalStatus
-	check.Output = originalOutput
+	check.Status = oldStatus
+	check.Output = oldOutput
 	c.checks.Store(checkHash, check)
 }
 
