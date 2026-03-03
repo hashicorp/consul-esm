@@ -221,18 +221,18 @@ func TestCheckRunner_StateReversion(t *testing.T) {
 	// Test 1: Verify original state is captured in pendingCheckUpdate
 	t.Run("original state is tracked", func(t *testing.T) {
 		update := &pendingCheckUpdate{
-			check:          &check.HealthCheck,
-			status:         "critical",
-			output:         "service down",
-			originalStatus: "passing",
-			originalOutput: "all good",
+			check:     &check.HealthCheck,
+			status:    "critical",
+			output:    "service down",
+			oldStatus: "passing",
+			oldOutput: "all good",
 		}
 
-		if update.originalStatus != "passing" {
-			t.Errorf("Expected originalStatus to be 'passing', got %s", update.originalStatus)
+		if update.oldStatus != "passing" {
+			t.Errorf("Expected oldStatus to be 'passing', got %s", update.oldStatus)
 		}
-		if update.originalOutput != "all good" {
-			t.Errorf("Expected originalOutput to be 'all good', got %s", update.originalOutput)
+		if update.oldOutput != "all good" {
+			t.Errorf("Expected oldOutput to be 'all good', got %s", update.oldOutput)
 		}
 		t.Log("Original state properly tracked in pendingCheckUpdate")
 	})
@@ -346,11 +346,11 @@ func TestCheckRunner_OriginalStateInBatcher(t *testing.T) {
 	if update.output != "new output" {
 		t.Errorf("Expected output 'new output', got %s", update.output)
 	}
-	if update.originalStatus != "passing" {
-		t.Errorf("Expected originalStatus 'passing', got %s", update.originalStatus)
+	if update.oldStatus != "passing" {
+		t.Errorf("Expected oldStatus 'passing', got %s", update.oldStatus)
 	}
-	if update.originalOutput != "original output" {
-		t.Errorf("Expected originalOutput 'original output', got %s", update.originalOutput)
+	if update.oldOutput != "original output" {
+		t.Errorf("Expected oldOutput 'original output', got %s", update.oldOutput)
 	}
 
 	t.Log("Batcher correctly receives and stores original state with each update")
