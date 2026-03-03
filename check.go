@@ -604,48 +604,22 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 	c.logger.Debug("Processing batched check updates", "totalUpdates", len(updates), "agentless", c.isAgentless)
 	defer metrics.MeasureSince([]string{"check", "batch", "flush"}, time.Now())
 
-	// First, fetch current state for all nodes involved
-	nodeChecks := make(map[string]map[string]*api.HealthCheck) // node -> checkID -> check
-	for _, update := range updates {
-		if _, exists := nodeChecks[update.check.Node]; !exists {
-			checks, _, err := c.client.Health().Node(update.check.Node, &api.QueryOptions{
-				Namespace:         update.check.Namespace,
-				RequireConsistent: true,
-			})
-			if err != nil {
-				c.logger.Warn("error retrieving existing node entry for batch", "error", err, "node", update.check.Node)
-				continue
-			}
-			nodeChecks[update.check.Node] = make(map[string]*api.HealthCheck)
-			for _, check := range checks {
-				nodeChecks[update.check.Node][check.CheckID] = check
-			}
-		}
-	}
-
-	// Build transaction operations
+	// Build transaction operations directly from pending updates
+	// Use the ModifyIndex from the local check state. If it's stale,
+	// the CAS will fail and retryFailedBatchOperations() will handle it.
 	var ops api.TxnOps
 	var processedChecks []*pendingCheckUpdate
 
 	for _, update := range updates {
-		checkID := strings.TrimPrefix(string(update.check.CheckID), update.check.Node+"/")
-		nodeMap, nodeExists := nodeChecks[update.check.Node]
-		if !nodeExists {
-			continue
-		}
-		existing, checkExists := nodeMap[checkID]
-		if !checkExists {
-			c.logger.Trace("Check no longer exists, skipping", "checkID", checkID)
-			continue
-		}
-
-		existing.Status = update.status
-		existing.Output = update.output
+		// Create a copy of the check with updated status/output
+		checkToUpdate := *update.check
+		checkToUpdate.Status = update.status
+		checkToUpdate.Output = update.output
 
 		ops = append(ops, &api.TxnOp{
 			Check: &api.CheckTxnOp{
 				Verb:  api.CheckCAS,
-				Check: *existing,
+				Check: checkToUpdate,
 			},
 		})
 		processedChecks = append(processedChecks, update)
