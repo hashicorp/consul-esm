@@ -96,6 +96,11 @@ type Agent struct {
 	knownNodeStatusesLock sync.Mutex
 
 	metrics *lib.MetricsConfig
+
+	// namespaceWildcard is the namespace query value to use for health checks.
+	// Set to "*" for Enterprise Consul (multi-namespace support) or "" for OSS.
+	namespaceWildcard     string
+	namespaceWildcardOnce sync.Once
 }
 
 // Can add counter and histogram definitions here if needed
@@ -847,7 +852,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
-		Namespace: "*",
+		Namespace: a.getNamespaceWildcard(),
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
@@ -873,11 +878,33 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	for _, c := range checks {
 		if nodes[c.Node] && c.CheckID != externalCheckName {
 			ourChecks = append(ourChecks, c)
-			a.logger.Debug("found check", "name", c.Name, "node", c.Node)
+			a.logger.Debug("found check", "name", c.Name)
 		}
 	}
 
 	return ourChecks, meta.LastIndex
+}
+
+// getNamespaceWildcard returns the namespace query value for health check queries.
+// Returns "*" for Enterprise Consul (wildcard across all namespaces) or "" for OSS.
+func (a *Agent) getNamespaceWildcard() string {
+	a.namespaceWildcardOnce.Do(func() {
+		_, _, err := a.client.Namespaces().List(a.ConsulQueryOption())
+		if e, ok := err.(api.StatusError); ok && e.Code == 404 {
+			// OSS Consul: namespaces not available
+			a.namespaceWildcard = ""
+			a.logger.Debug("Consul OSS detected, using default namespace for health checks")
+		} else if err != nil {
+			// Error checking namespaces, fall back to default namespace
+			a.namespaceWildcard = ""
+			a.logger.Warn("Error checking namespace support, using default namespace", "error", err)
+		} else {
+			// Enterprise Consul: use wildcard to query all namespaces
+			a.namespaceWildcard = "*"
+			a.logger.Debug("Consul Enterprise detected, using wildcard namespace for health checks")
+		}
+	})
+	return a.namespaceWildcard
 }
 
 // Check last visible node status.
