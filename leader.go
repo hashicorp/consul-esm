@@ -69,12 +69,12 @@ LEADER_WAIT:
 		if a.isAgentLess() {
 			opts := &api.LockOptions{
 				Key:            a.config.KVPath + LeaderKey,
-				SessionTTL:     "30s",
-				MonitorRetries: 6,
+				SessionTTL:     sessionTTL,
+				MonitorRetries: sessionMonitorRetries,
 				SessionOpts: &api.SessionEntry{
 					Node:       a.agentlessNodeID(),
 					Name:       "consul-esm leader lock",
-					TTL:        "30s",
+					TTL:        sessionTTL,
 					NodeChecks: []string{a.agentlessCheckID()},
 					Checks:     []string{a.agentlessCheckID()},
 				},
@@ -97,6 +97,7 @@ LEADER_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
+			lock = nil
 			time.Sleep(retryTime)
 			goto LEADER_WAIT
 		} else {

@@ -26,6 +26,14 @@ import (
 
 const LeaderKey = "leader"
 
+const (
+	// TTL used for Consul sessions created by ESM instances
+	sessionTTL = "30s"
+
+	// Number of times to retry monitoring a session before giving up
+	sessionMonitorRetries = 6
+)
+
 var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
 	// determines how often we poll the agent to check on service
@@ -571,12 +579,12 @@ LOCK_WAIT:
 		opts := &api.LockOptions{
 			Key:            a.config.KVPath + sessionKey,
 			SessionName:    sessionKey,
-			SessionTTL:     "30s",
-			MonitorRetries: 6,
+			SessionTTL:     sessionTTL,
+			MonitorRetries: sessionMonitorRetries,
 			SessionOpts: &api.SessionEntry{
 				Node:       a.agentlessNodeID(),
 				Name:       sessionKey,
-				TTL:        "30s",
+				TTL:        sessionTTL,
 				NodeChecks: []string{a.agentlessCheckID()},
 				Checks:     []string{a.agentlessCheckID()},
 			},
@@ -596,6 +604,7 @@ LOCK_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Agent: Unable to use session lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
+			lock = nil
 			time.Sleep(retryTime)
 			goto LOCK_WAIT
 		} else {
