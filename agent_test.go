@@ -639,6 +639,23 @@ func testHealthChecks(ns string) string {
 	return string(j)
 }
 
+func testAllNamespaceHealthChecks() string {
+	var hcs api.HealthChecks
+	for _, ns := range []string{"ns1", "ns2"} {
+		hc := xxxHealthCheck
+		name := ns + "_svc"
+		hc.ServiceName, hc.ServiceID = name, name+"1"
+		hc.CheckID, hc.Name = name+"_ck", name+"_ck1"
+		hc.Namespace = ns
+		hcs = append(hcs, &hc)
+	}
+	j, err := json.Marshal(hcs)
+	if err != nil {
+		panic(err)
+	}
+	return string(j)
+}
+
 func testNamespaces() string {
 	ns := []*api.Namespace{{Name: "default"}, {Name: "ns1"}, {Name: "ns2"}}
 	j, err := json.Marshal(ns)
@@ -704,14 +721,13 @@ func TestAgent_getHealthChecks(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					fmt.Fprint(w, testNamespaces())
 				case "/v1/health/state/any":
-					namespace := r.URL.Query()["ns"][0]
-					if namespace == "default" {
-						fmt.Fprint(w, "[]")
+					ns := r.URL.Query().Get("ns")
+					if ns == "*" {
+						fmt.Fprint(w, testAllNamespaceHealthChecks())
+					} else {
+						fmt.Fprint(w, testHealthChecks(ns))
 					}
-					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
 				default:
 					// t.Log("unhandled:", r.URL.EscapedPath())
 				}
@@ -778,7 +794,6 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 		require.NoError(t, err)
 		port := listener.Addr().(*net.TCPAddr).Port
 		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		testNs := map[string]bool{}
 		ts := httptest.NewUnstartedServer(http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.EscapedPath() {
@@ -786,17 +801,14 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
-					fmt.Fprint(w, testNamespaces())
 				case "/v1/health/state/any":
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
-					namespace := r.URL.Query()["ns"][0]
-					testNs[namespace] = true
-					if namespace == "default" {
-						fmt.Fprint(w, "[]")
+					ns := r.URL.Query().Get("ns")
+					if ns == "*" {
+						fmt.Fprint(w, testAllNamespaceHealthChecks())
+					} else {
+						fmt.Fprint(w, testHealthChecks(ns))
 					}
-					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
 				case "/v1/agent/service/consul-esm:not-unique-instance-id":
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					// write status 404, to tell the service is not registered and proceed with registration
@@ -850,9 +862,6 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 		if ns2check.CheckID != "ns2_svc_ck" {
 			t.Error("Wrong check id:", ns1check.CheckID)
 		}
-
-		// test the state API is called for each namespace in an agent's partition
-		assert.Len(t, testNs, 3)
 	})
 }
 
