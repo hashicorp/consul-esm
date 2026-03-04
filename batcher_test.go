@@ -5,6 +5,8 @@ package main
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,9 +23,9 @@ func TestBatcher_TimerFlush(t *testing.T) {
 		Output:          LOGOUT,
 	})
 
-	flushCalled := false
+	var flushCalled atomic.Bool
 	processFunc := func(updates []*pendingCheckUpdate) {
-		flushCalled = true
+		flushCalled.Store(true)
 		if len(updates) != 1 {
 			t.Errorf("Expected 1 update, got %d", len(updates))
 		}
@@ -47,7 +49,7 @@ func TestBatcher_TimerFlush(t *testing.T) {
 	// Wait for timer to trigger flush
 	time.Sleep(200 * time.Millisecond)
 
-	if !flushCalled {
+	if !flushCalled.Load() {
 		t.Fatal("Expected flush to be called by timer")
 	}
 }
@@ -100,9 +102,9 @@ func TestBatcher_StopFlushes(t *testing.T) {
 		Output:          LOGOUT,
 	})
 
-	flushCalled := false
+	var flushCalled atomic.Bool
 	processFunc := func(updates []*pendingCheckUpdate) {
-		flushCalled = true
+		flushCalled.Store(true)
 		if len(updates) != 2 {
 			t.Errorf("Expected 2 updates, got %d", len(updates))
 		}
@@ -125,7 +127,7 @@ func TestBatcher_StopFlushes(t *testing.T) {
 	// Stop should flush pending updates
 	batcher.Stop()
 
-	if !flushCalled {
+	if !flushCalled.Load() {
 		t.Fatal("Expected flush to be called on Stop()")
 	}
 }
@@ -139,9 +141,12 @@ func TestBatcher_DeduplicationInQueue(t *testing.T) {
 		Output:          LOGOUT,
 	})
 
+	var mu sync.Mutex
 	var receivedUpdates []*pendingCheckUpdate
 	processFunc := func(updates []*pendingCheckUpdate) {
+		mu.Lock()
 		receivedUpdates = updates
+		mu.Unlock()
 	}
 
 	batcher := NewCheckUpdateBatcher(BatcherConfig{
@@ -167,14 +172,23 @@ func TestBatcher_DeduplicationInQueue(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Should only have 1 update (latest)
-	if len(receivedUpdates) != 1 {
-		t.Fatalf("Expected 1 deduplicated update, got %d", len(receivedUpdates))
+	mu.Lock()
+	updateCount := len(receivedUpdates)
+	var status, output string
+	if updateCount > 0 {
+		status = receivedUpdates[0].status
+		output = receivedUpdates[0].output
 	}
-	if receivedUpdates[0].status != "critical" {
-		t.Errorf("Expected latest status 'critical', got '%s'", receivedUpdates[0].status)
+	mu.Unlock()
+
+	if updateCount != 1 {
+		t.Fatalf("Expected 1 deduplicated update, got %d", updateCount)
 	}
-	if receivedUpdates[0].output != "third" {
-		t.Errorf("Expected latest output 'third', got '%s'", receivedUpdates[0].output)
+	if status != "critical" {
+		t.Errorf("Expected latest status 'critical', got '%s'", status)
+	}
+	if output != "third" {
+		t.Errorf("Expected latest output 'third', got '%s'", output)
 	}
 }
 
@@ -212,9 +226,12 @@ func TestBatcher_ConcurrentAdds(t *testing.T) {
 		Output:          LOGOUT,
 	})
 
+	var mu sync.Mutex
 	var receivedUpdates []*pendingCheckUpdate
 	processFunc := func(updates []*pendingCheckUpdate) {
+		mu.Lock()
 		receivedUpdates = append(receivedUpdates, updates...)
+		mu.Unlock()
 	}
 
 	batcher := NewCheckUpdateBatcher(BatcherConfig{
@@ -250,7 +267,11 @@ func TestBatcher_ConcurrentAdds(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Should have received updates (deduplicated since same check)
-	if len(receivedUpdates) == 0 {
+	mu.Lock()
+	updateCount := len(receivedUpdates)
+	mu.Unlock()
+
+	if updateCount == 0 {
 		t.Fatal("Expected at least one update")
 	}
 }
