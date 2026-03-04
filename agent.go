@@ -584,7 +584,6 @@ LOCK_WAIT:
 				Name:       sessionKey,
 				TTL:        sessionTTL,
 				NodeChecks: []string{a.agentlessCheckID()},
-				Checks:     []string{a.agentlessCheckID()},
 			},
 		}
 		lock, err = a.client.LockOpts(opts)
@@ -602,14 +601,12 @@ LOCK_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Agent: Unable to use session lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
-			lock = nil
-			time.Sleep(retryTime)
-			goto LOCK_WAIT
 		} else {
 			a.logger.Error("Agent: Error trying to get session lock (will retry)", "error", err)
-			time.Sleep(retryTime)
-			goto LOCK_WAIT
 		}
+		lock = nil
+		time.Sleep(retryTime)
+		goto LOCK_WAIT
 	}
 	if lockCh == nil {
 		// This is how the Lock() call lets us know that it quit because
