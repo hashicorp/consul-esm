@@ -69,7 +69,6 @@ LEADER_WAIT:
 		if a.isAgentLess() {
 			opts := &api.LockOptions{
 				Key:            a.config.KVPath + LeaderKey,
-				SessionTTL:     sessionTTL,
 				MonitorRetries: sessionMonitorRetries,
 				SessionOpts: &api.SessionEntry{
 					Node:       a.agentlessNodeID(),

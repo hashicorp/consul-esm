@@ -578,8 +578,6 @@ LOCK_WAIT:
 		var err error
 		opts := &api.LockOptions{
 			Key:            a.config.KVPath + sessionKey,
-			SessionName:    sessionKey,
-			SessionTTL:     sessionTTL,
 			MonitorRetries: sessionMonitorRetries,
 			SessionOpts: &api.SessionEntry{
 				Node:       a.agentlessNodeID(),
@@ -610,10 +608,6 @@ LOCK_WAIT:
 		} else {
 			a.logger.Error("Agent: Error trying to get session lock (will retry)", "error", err)
 			time.Sleep(retryTime)
-			if err != nil {
-				a.logger.Error("Agent: nested error trying to get session lock (will retry)", "error", err)
-			}
-
 			goto LOCK_WAIT
 		}
 	}
