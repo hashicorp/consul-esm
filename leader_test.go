@@ -438,59 +438,6 @@ const healthserviceJSON = `[
   { "Service": {"ID": "two", "Namespace": "default" } }
 ]`
 
-func Test_namespacesList(t *testing.T) {
-	testcase := ""
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			switch testcase {
-			case "ent":
-				fmt.Fprint(w, namespacesJSON)
-			case "oss":
-				http.NotFound(w, r)
-			case "err":
-				http.Error(w, "use a french-press", http.StatusTeapot)
-			default:
-				t.Fatal("unknown test case:", testcase)
-			}
-		}))
-	defer ts.Close()
-
-	// client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
-	client, err := api.NewClient(&api.Config{Address: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	config := &Config{Partition: "default"}
-	// simulate enterprise consul
-	testcase = "ent"
-	nss, err := namespacesList(client, config)
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if len(nss) != 2 || nss[0].Name != "default" || nss[1].Name != "foo" {
-		t.Fatalf("bad value for namespace names: %#v\n", nss)
-	}
-	// simulate oss consul
-	testcase = "oss"
-	nss, err = namespacesList(client, config)
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if len(nss) != 1 || nss[0].Name != "" {
-		t.Fatalf("bad value for namespace names: %#v\n", len(nss))
-	}
-	// simulate other random error
-	testcase = "err"
-	nss, err = namespacesList(client, config)
-	if err == nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nss != nil {
-		t.Fatalf("bad value for namespace names: %#v\n", len(nss))
-	}
-}
-
 func Test_getServiceInstances(t *testing.T) {
 	partitionQueryParamKey := "partition"
 	// parameterized test

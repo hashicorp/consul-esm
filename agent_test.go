@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -610,10 +611,10 @@ func TestAgent_notUniqueInstanceIDFails(t *testing.T) {
 	}
 }
 
-// XXX and YYY indicate values that need replacing
-var xxxHealthCheck = api.HealthCheck{
-	CheckID: "XXX_ck", Name: "XXX_ck1", ServiceID: "XXX1", ServiceName: "XXX",
-	Namespace: "YYY",
+// baseHealthCheck is a template health check with placeholder values.
+var baseHealthCheck = api.HealthCheck{
+	CheckID: "placeholder_ck", Name: "placeholder_ck1", ServiceID: "placeholder_svc1", ServiceName: "placeholder_svc",
+	Namespace: "placeholder_ns",
 	Node:      "foo", Status: "passing", Type: "http",
 	Definition: api.HealthCheckDefinition{
 		Interval: *api.NewReadableDuration(time.Second * 2),
@@ -623,7 +624,7 @@ var xxxHealthCheck = api.HealthCheck{
 }
 
 func testHealthChecks(ns string) string {
-	hc := xxxHealthCheck
+	hc := baseHealthCheck
 	name := "test_svc"
 	if ns != "" {
 		name = ns + "_svc"
@@ -642,7 +643,7 @@ func testHealthChecks(ns string) string {
 func testAllNamespaceHealthChecks() string {
 	var hcs api.HealthChecks
 	for _, ns := range []string{"ns1", "ns2"} {
-		hc := xxxHealthCheck
+		hc := baseHealthCheck
 		name := ns + "_svc"
 		hc.ServiceName, hc.ServiceID = name, name+"1"
 		hc.CheckID, hc.Name = name+"_ck", name+"_ck1"
@@ -665,6 +666,16 @@ func testNamespaces() string {
 	return string(j)
 }
 
+// testAgentSelfOSS returns a /v1/agent/self JSON response for Consul CE (no +ent).
+func testAgentSelfOSS() string {
+	return `{"Config": {"Version": "1.22.0", "Datacenter": "dc1"}, "Stats": {}}`
+}
+
+// testAgentSelfEnterprise returns a /v1/agent/self JSON response for Consul Enterprise.
+func testAgentSelfEnterprise() string {
+	return `{"Config": {"Version": "1.22.0+ent", "Datacenter": "dc1"}, "Stats": {}}`
+}
+
 func TestAgent_getHealthChecks(t *testing.T) {
 	// case 1: w/o namespaces
 	t.Run("no-namespaces", func(t *testing.T) {
@@ -677,9 +688,8 @@ func TestAgent_getHealthChecks(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					w.WriteHeader(404)
-					fmt.Fprint(w, "no namespaces in OSS version")
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
 					fmt.Fprint(w, testHealthChecks(""))
 				default:
@@ -721,8 +731,8 @@ func TestAgent_getHealthChecks(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				case "/v1/health/state/any":
 					ns := r.URL.Query().Get("ns")
 					if ns == "*" {
@@ -772,9 +782,8 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					w.WriteHeader(404)
-					fmt.Fprint(w, "Namespaces is a Consul Enterprise feature")
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
 				default:
 				}
 			}))
@@ -788,7 +797,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 		defer agent.Shutdown()
 
 		result := agent.getNamespaceWildcard()
-		assert.Equal(t, "", result, "OSS Consul should return empty namespace")
+		assert.Equal(t, "", result, "CE Consul should return empty namespace")
 	})
 
 	t.Run("enterprise-returns-wildcard", func(t *testing.T) {
@@ -801,8 +810,8 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				default:
 				}
 			}))
@@ -829,7 +838,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
+				case "/v1/agent/self":
 					w.WriteHeader(500)
 					fmt.Fprint(w, "Internal Server Error")
 				default:
@@ -849,7 +858,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 	})
 
 	t.Run("caches-result", func(t *testing.T) {
-		callCount := 0
+		var callCount int32
 		listener, err := net.Listen("tcp", ":0")
 		require.NoError(t, err)
 		port := listener.Addr().(*net.TCPAddr).Port
@@ -859,9 +868,9 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					callCount++
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					atomic.AddInt32(&callCount, 1)
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				default:
 				}
 			}))
@@ -881,7 +890,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 		assert.Equal(t, "*", result1)
 		assert.Equal(t, "*", result2)
 		assert.Equal(t, "*", result3)
-		assert.Equal(t, 1, callCount, "Namespaces endpoint should only be called once due to caching")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&callCount), "Agent self endpoint should only be called once due to caching")
 	})
 }
 
@@ -898,9 +907,8 @@ func TestAgent_getHealthChecks_nsQueryParam(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					w.WriteHeader(404)
-					fmt.Fprint(w, "Namespaces is a Consul Enterprise feature")
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
 					capturedNS = r.URL.Query().Get("ns")
 					fmt.Fprint(w, testHealthChecks(""))
@@ -933,8 +941,8 @@ func TestAgent_getHealthChecks_nsQueryParam(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				case "/v1/health/state/any":
 					capturedNS = r.URL.Query().Get("ns")
 					fmt.Fprint(w, testAllNamespaceHealthChecks())
@@ -978,8 +986,8 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					w.WriteHeader(404)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
 					fmt.Fprint(w, string(checksJSON))
 				default:
@@ -1015,8 +1023,8 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					w.WriteHeader(404)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
 					w.WriteHeader(500)
 					fmt.Fprint(w, "Internal Server Error")
@@ -1081,9 +1089,8 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				case "/v1/health/state/any":
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					ns := r.URL.Query().Get("ns")

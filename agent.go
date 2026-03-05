@@ -868,7 +868,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	}()
 
 	ourChecks := make(api.HealthChecks, 0)
-	a.logger.Info("checking for services in all namespaces")
+	a.logger.Debug("checking for services in all namespaces")
 	checks, meta, err := a.client.Health().State(api.HealthAny, opts)
 	if err != nil {
 		a.logger.Warn("Error querying for health check info", "error", err)
@@ -886,22 +886,53 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 }
 
 // getNamespaceWildcard returns the namespace query value for health check queries.
-// Returns "*" for Enterprise Consul (wildcard across all namespaces) or "" for OSS.
+// Returns "*" for Enterprise Consul (wildcard across all namespaces) or "" for OSS/CE.
+// Detection is done by checking the Consul version string from /v1/agent/self —
+// Enterprise builds include "+ent" in the version (e.g. "1.18.0+ent").
 func (a *Agent) getNamespaceWildcard() string {
 	a.namespaceWildcardOnce.Do(func() {
-		_, _, err := a.client.Namespaces().List(a.ConsulQueryOption())
-		if e, ok := err.(api.StatusError); ok && e.Code == 404 {
-			// OSS Consul: namespaces not available
+		maxRetries := 3
+		var agentInfo map[string]map[string]interface{}
+		var err error
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			agentInfo, err = a.client.Agent().Self()
+			if err == nil {
+				break
+			}
+			a.logger.Warn("Error fetching agent info for enterprise detection, will retry",
+				"attempt", attempt, "max_retries", maxRetries, "error", err)
+			if attempt < maxRetries {
+				time.Sleep(retryTime)
+			}
+		}
+
+		if err != nil {
 			a.namespaceWildcard = ""
-			a.logger.Debug("Consul OSS detected, using default namespace for health checks")
-		} else if err != nil {
-			// Error checking namespaces, fall back to default namespace
+			a.logger.Warn("Failed to detect Consul edition after retries, defaulting to CE behavior", "error", err)
+			return
+		}
+
+		versionRaw, ok := agentInfo["Config"]["Version"]
+		if !ok {
 			a.namespaceWildcard = ""
-			a.logger.Warn("Error checking namespace support, using default namespace", "error", err)
-		} else {
-			// Enterprise Consul: use wildcard to query all namespaces
+			a.logger.Warn("Could not determine Consul version from agent info, defaulting to CE behavior")
+			return
+		}
+
+		consulVersion, ok := versionRaw.(string)
+		if !ok {
+			a.namespaceWildcard = ""
+			a.logger.Warn("Unexpected Consul version format, defaulting to CE behavior")
+			return
+		}
+
+		if strings.Contains(consulVersion, "+ent") {
 			a.namespaceWildcard = "*"
-			a.logger.Debug("Consul Enterprise detected, using wildcard namespace for health checks")
+			a.logger.Debug("Consul Enterprise detected, using wildcard namespace for health checks", "version", consulVersion)
+		} else {
+			a.namespaceWildcard = ""
+			a.logger.Debug("Consul CE detected, using default namespace for health checks", "version", consulVersion)
 		}
 	})
 	return a.namespaceWildcard
