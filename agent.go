@@ -902,10 +902,16 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 // The result is cached after a successful detection. If detection fails,
 // it returns "" but will retry on the next call.
 func (a *Agent) getNamespaceWildcard() string {
+	// if already detected, return cached value without locking.
+	if a.namespaceWildcardDetected {
+		return a.namespaceWildcard
+	}
+
 	a.namespaceWildcardMu.Lock()
 	defer a.namespaceWildcardMu.Unlock()
 
-	// If we've already detected the namespace wildcard value, return it.
+	// Double-check after acquiring the lock, in case another goroutine
+	// completed detection while we were waiting here.
 	if a.namespaceWildcardDetected {
 		return a.namespaceWildcard
 	}
