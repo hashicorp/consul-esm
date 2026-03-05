@@ -24,7 +24,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const LeaderKey = "leader"
+const (
+	// LeaderKey is the KV key used for leader election in agentless mode and
+	// for the session lock in leader mode.
+	LeaderKey = "leader"
+
+	// maxRetriesEntDetection is the maximum number of attempts to detect
+	// if we're running in Enterprise Consul by checking for the presence of "+ent"
+	// in the version string.
+	maxRetriesEntDetection = 3
+)
 
 var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
@@ -96,6 +105,12 @@ type Agent struct {
 	knownNodeStatusesLock sync.Mutex
 
 	metrics *lib.MetricsConfig
+
+	// namespaceWildcard is the namespace query value to use for health checks.
+	// Set to "*" for Enterprise Consul (multi-namespace support) or "" for OSS.
+	namespaceWildcard         string
+	namespaceWildcardDetected bool
+	namespaceWildcardMu       sync.Mutex
 }
 
 // Can add counter and histogram definitions here if needed
@@ -843,16 +858,11 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
-	namespaces, err := namespacesList(a.client, a.config)
-	if err != nil {
-		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
-		namespaces = []*api.Namespace{{Name: ""}}
-	}
-
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
+		Namespace: a.getNamespaceWildcard(),
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
@@ -868,28 +878,86 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	}()
 
 	ourChecks := make(api.HealthChecks, 0)
-	var lastIndex uint64
-	for _, ns := range namespaces {
-		opts.Namespace = ns.Name
-		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
-		if err != nil {
-			a.logger.Warn("Error querying for health check info", "error", err)
-			continue
-		}
-		lastIndex = meta.LastIndex
+	a.logger.Debug("checking for services in all namespaces")
+	checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+	if err != nil {
+		a.logger.Warn("Error querying for health check info", "error", err)
+		return ourChecks, waitIndex
+	}
 
-		for _, c := range checks {
-			if nodes[c.Node] && c.CheckID != externalCheckName {
-				ourChecks = append(ourChecks, c)
-				a.logger.Info("found check", "name", c.Name)
-			}
+	for _, c := range checks {
+		if nodes[c.Node] && c.CheckID != externalCheckName {
+			ourChecks = append(ourChecks, c)
+			a.logger.Debug("found check", "name", c.Name)
 		}
 	}
 
-	return ourChecks, lastIndex
+	return ourChecks, meta.LastIndex
+}
+
+// getNamespaceWildcard returns the namespace query value for health check queries.
+// Returns "*" for Enterprise Consul (wildcard across all namespaces) or "" for OSS/CE.
+// Detection is done by checking the Consul version string from /v1/agent/self —
+// Enterprise builds include "+ent" in the version (e.g. "1.18.0+ent").
+// The result is cached after a successful detection. If detection fails,
+// it returns "" but will retry on the next call.
+func (a *Agent) getNamespaceWildcard() string {
+	// if already detected, return cached value without locking.
+	if a.namespaceWildcardDetected {
+		return a.namespaceWildcard
+	}
+
+	a.namespaceWildcardMu.Lock()
+	defer a.namespaceWildcardMu.Unlock()
+
+	// Double-check after acquiring the lock, in case another goroutine
+	// completed detection while we were waiting here.
+	if a.namespaceWildcardDetected {
+		return a.namespaceWildcard
+	}
+
+	var agentInfo map[string]map[string]interface{}
+	var err error
+
+	for attempt := 1; attempt <= maxRetriesEntDetection; attempt++ {
+		agentInfo, err = a.client.Agent().Self()
+		if err == nil {
+			break
+		}
+		a.logger.Error("Error fetching agent info for enterprise detection, will retry",
+			"attempt", attempt, "max_retries", maxRetriesEntDetection, "error", err)
+		if attempt < maxRetriesEntDetection {
+			time.Sleep(retryTime)
+		}
+	}
+
+	if err != nil {
+		a.logger.Error("Failed to detect Consul edition after retries, defaulting to CE behavior (will retry on next call)", "error", err)
+		return ""
+	}
+
+	versionRaw, ok := agentInfo["Config"]["Version"]
+	if !ok {
+		a.logger.Warn("Could not determine Consul version from agent info, defaulting to CE behavior (will retry on next call)")
+		return ""
+	}
+
+	consulVersion, ok := versionRaw.(string)
+	if !ok {
+		a.logger.Warn("Unexpected Consul version format, defaulting to CE behavior (will retry on next call)")
+		return ""
+	}
+
+	if strings.Contains(consulVersion, "+ent") {
+		a.namespaceWildcard = "*"
+		a.logger.Debug("Consul Enterprise detected, using wildcard namespace for health checks", "version", consulVersion)
+	} else {
+		a.namespaceWildcard = ""
+		a.logger.Debug("Consul CE detected, using default namespace for health checks", "version", consulVersion)
+	}
+
+	a.namespaceWildcardDetected = true
+	return a.namespaceWildcard
 }
 
 // Check last visible node status.

@@ -362,18 +362,3 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 
 	return healthyInstances, nil
 }
-
-// namespacesList returns a list of all accessable namespaces.
-// Returns namespace "" (none) if none found for consul OSS compatibility.
-func namespacesList(client *api.Client, config *Config) ([]*api.Namespace, error) {
-	opts := &api.QueryOptions{
-		Partition: config.Partition,
-	}
-	namespaces, _, err := client.Namespaces().List(opts)
-	if e, ok := err.(api.StatusError); ok && e.Code == 404 {
-		namespaces = []*api.Namespace{{Name: ""}}
-	} else if err != nil {
-		return nil, err
-	}
-	return namespaces, nil
-}

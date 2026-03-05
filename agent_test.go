@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -610,10 +611,10 @@ func TestAgent_notUniqueInstanceIDFails(t *testing.T) {
 	}
 }
 
-// XXX and YYY indicate values that need replacing
-var xxxHealthCheck = api.HealthCheck{
-	CheckID: "XXX_ck", Name: "XXX_ck1", ServiceID: "XXX1", ServiceName: "XXX",
-	Namespace: "YYY",
+// baseHealthCheck is a template health check with placeholder values.
+var baseHealthCheck = api.HealthCheck{
+	CheckID: "placeholder_ck", Name: "placeholder_ck1", ServiceID: "placeholder_svc1", ServiceName: "placeholder_svc",
+	Namespace: "placeholder_ns",
 	Node:      "foo", Status: "passing", Type: "http",
 	Definition: api.HealthCheckDefinition{
 		Interval: *api.NewReadableDuration(time.Second * 2),
@@ -623,7 +624,7 @@ var xxxHealthCheck = api.HealthCheck{
 }
 
 func testHealthChecks(ns string) string {
-	hc := xxxHealthCheck
+	hc := baseHealthCheck
 	name := "test_svc"
 	if ns != "" {
 		name = ns + "_svc"
@@ -632,6 +633,23 @@ func testHealthChecks(ns string) string {
 	hc.CheckID, hc.Name = name+"_ck", name+"_ck1"
 	hc.Namespace = ns
 	hcs := api.HealthChecks{&hc}
+	j, err := json.Marshal(hcs)
+	if err != nil {
+		panic(err)
+	}
+	return string(j)
+}
+
+func testAllNamespaceHealthChecks() string {
+	var hcs api.HealthChecks
+	for _, ns := range []string{"ns1", "ns2"} {
+		hc := baseHealthCheck
+		name := ns + "_svc"
+		hc.ServiceName, hc.ServiceID = name, name+"1"
+		hc.CheckID, hc.Name = name+"_ck", name+"_ck1"
+		hc.Namespace = ns
+		hcs = append(hcs, &hc)
+	}
 	j, err := json.Marshal(hcs)
 	if err != nil {
 		panic(err)
@@ -648,6 +666,16 @@ func testNamespaces() string {
 	return string(j)
 }
 
+// testAgentSelfOSS returns a /v1/agent/self JSON response for Consul CE (no +ent).
+func testAgentSelfOSS() string {
+	return `{"Config": {"Version": "1.22.0", "Datacenter": "dc1"}, "Stats": {}}`
+}
+
+// testAgentSelfEnterprise returns a /v1/agent/self JSON response for Consul Enterprise.
+func testAgentSelfEnterprise() string {
+	return `{"Config": {"Version": "1.22.0+ent", "Datacenter": "dc1"}, "Stats": {}}`
+}
+
 func TestAgent_getHealthChecks(t *testing.T) {
 	// case 1: w/o namespaces
 	t.Run("no-namespaces", func(t *testing.T) {
@@ -660,9 +688,8 @@ func TestAgent_getHealthChecks(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					w.WriteHeader(404)
-					fmt.Fprint(w, "no namespaces in OSS version")
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
 					fmt.Fprint(w, testHealthChecks(""))
 				default:
@@ -704,14 +731,15 @@ func TestAgent_getHealthChecks(t *testing.T) {
 				switch r.URL.EscapedPath() {
 				case "/v1/status/leader":
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				case "/v1/health/state/any":
-					namespace := r.URL.Query()["ns"][0]
-					if namespace == "default" {
-						fmt.Fprint(w, "[]")
+					ns := r.URL.Query().Get("ns")
+					if ns == "*" {
+						fmt.Fprint(w, testAllNamespaceHealthChecks())
+					} else {
+						fmt.Fprint(w, testHealthChecks(ns))
 					}
-					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
 				default:
 					// t.Log("unhandled:", r.URL.EscapedPath())
 				}
@@ -740,6 +768,332 @@ func TestAgent_getHealthChecks(t *testing.T) {
 		if ns2check.CheckID != "ns2_svc_ck" {
 			t.Error("Wrong check id:", ns1check.CheckID)
 		}
+	})
+}
+
+func TestAgent_getNamespaceWildcard(t *testing.T) {
+	t.Run("oss-returns-empty", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		result := agent.getNamespaceWildcard()
+		assert.Equal(t, "", result, "CE Consul should return empty namespace")
+	})
+
+	t.Run("enterprise-returns-wildcard", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		result := agent.getNamespaceWildcard()
+		assert.Equal(t, "*", result, "Enterprise Consul should return wildcard namespace")
+	})
+
+	t.Run("error-falls-back-to-empty", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					w.WriteHeader(500)
+					fmt.Fprint(w, "Internal Server Error")
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		result := agent.getNamespaceWildcard()
+		assert.Equal(t, "", result, "On error, should fall back to empty namespace")
+		assert.False(t, agent.namespaceWildcardDetected, "Detection should not be marked as successful on error")
+	})
+
+	t.Run("retries-after-initial-failure", func(t *testing.T) {
+		var shouldFail int32
+		atomic.StoreInt32(&shouldFail, 1)
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					if atomic.LoadInt32(&shouldFail) == 1 {
+						w.WriteHeader(500)
+						fmt.Fprint(w, "Internal Server Error")
+					} else {
+						fmt.Fprint(w, testAgentSelfEnterprise())
+					}
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		// First call: Consul is down, should return "" and not cache
+		result1 := agent.getNamespaceWildcard()
+		assert.Equal(t, "", result1, "Should return empty when Consul is unreachable")
+		assert.False(t, agent.namespaceWildcardDetected, "Should not be marked as detected on failure")
+
+		// Now Consul comes back up with Enterprise
+		atomic.StoreInt32(&shouldFail, 0)
+
+		// Second call: should retry and succeed
+		result2 := agent.getNamespaceWildcard()
+		assert.Equal(t, "*", result2, "Should detect Enterprise on retry after Consul comes back")
+		assert.True(t, agent.namespaceWildcardDetected, "Should be marked as detected after success")
+
+		// Third call: should use cached result
+		result3 := agent.getNamespaceWildcard()
+		assert.Equal(t, "*", result3, "Should return cached Enterprise result")
+	})
+
+	t.Run("caches-result", func(t *testing.T) {
+		var callCount int32
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					atomic.AddInt32(&callCount, 1)
+					fmt.Fprint(w, testAgentSelfEnterprise())
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		// Call multiple times — should only hit the endpoint once
+		result1 := agent.getNamespaceWildcard()
+		result2 := agent.getNamespaceWildcard()
+		result3 := agent.getNamespaceWildcard()
+		assert.Equal(t, "*", result1)
+		assert.Equal(t, "*", result2)
+		assert.Equal(t, "*", result3)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&callCount), "Agent self endpoint should only be called once due to caching")
+	})
+}
+
+func TestAgent_getHealthChecks_nsQueryParam(t *testing.T) {
+	// Verify the correct ns query parameter is sent based on namespace detection
+	t.Run("oss-sends-empty-ns", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		var capturedNS string
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
+				case "/v1/health/state/any":
+					capturedNS = r.URL.Query().Get("ns")
+					fmt.Fprint(w, testHealthChecks(""))
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.Tag = "test"
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"foo": true}
+		agent.getHealthChecks(0, ourNodes)
+		assert.Equal(t, "", capturedNS, "OSS should send empty ns query param")
+	})
+
+	t.Run("enterprise-sends-wildcard-ns", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		var capturedNS string
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
+				case "/v1/health/state/any":
+					capturedNS = r.URL.Query().Get("ns")
+					fmt.Fprint(w, testAllNamespaceHealthChecks())
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.Tag = "test"
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"foo": true}
+		agent.getHealthChecks(0, ourNodes)
+		assert.Equal(t, "*", capturedNS, "Enterprise should send wildcard ns query param")
+	})
+}
+
+func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
+	t.Run("filters-by-node-and-excludes-externalNodeHealth", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+		// Build checks that include a mix: our node + other node + externalNodeHealth check
+		checks := api.HealthChecks{
+			{Node: "node1", CheckID: "svc-check-1", Name: "svc-check-1", Status: api.HealthPassing},
+			{Node: "node1", CheckID: externalCheckName, Name: "External Node Status", Status: api.HealthPassing},
+			{Node: "node2", CheckID: "svc-check-2", Name: "svc-check-2", Status: api.HealthPassing},
+			{Node: "other-node", CheckID: "svc-check-3", Name: "svc-check-3", Status: api.HealthPassing},
+		}
+		checksJSON, _ := json.Marshal(checks)
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
+				case "/v1/health/state/any":
+					fmt.Fprint(w, string(checksJSON))
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"node1": true, "node2": true}
+		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+
+		// Should include svc-check-1 and svc-check-2, but NOT externalNodeHealth and NOT other-node
+		assert.Len(t, ourChecks, 2, "Should return 2 checks (filtering out externalNodeHealth and other-node)")
+		checkIDs := []string{string(ourChecks[0].CheckID), string(ourChecks[1].CheckID)}
+		assert.Contains(t, checkIDs, "svc-check-1")
+		assert.Contains(t, checkIDs, "svc-check-2")
+	})
+
+	t.Run("returns-empty-on-api-error", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
+				case "/v1/health/state/any":
+					w.WriteHeader(500)
+					fmt.Fprint(w, "Internal Server Error")
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"node1": true}
+		ourChecks, lastIndex := agent.getHealthChecks(0, ourNodes)
+		assert.Len(t, ourChecks, 0, "Should return empty checks on API error")
+		assert.Equal(t, uint64(0), lastIndex, "Should return original waitIndex on error")
 	})
 }
 
@@ -778,7 +1132,6 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 		require.NoError(t, err)
 		port := listener.Addr().(*net.TCPAddr).Port
 		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		testNs := map[string]bool{}
 		ts := httptest.NewUnstartedServer(http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.EscapedPath() {
@@ -786,17 +1139,16 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					fmt.Fprint(w, `"`+addr+`"`)
-				case "/v1/namespaces":
-					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
-					fmt.Fprint(w, testNamespaces())
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfEnterprise())
 				case "/v1/health/state/any":
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
-					namespace := r.URL.Query()["ns"][0]
-					testNs[namespace] = true
-					if namespace == "default" {
-						fmt.Fprint(w, "[]")
+					ns := r.URL.Query().Get("ns")
+					if ns == "*" {
+						fmt.Fprint(w, testAllNamespaceHealthChecks())
+					} else {
+						fmt.Fprint(w, testHealthChecks(ns))
 					}
-					fmt.Fprint(w, testHealthChecks(r.URL.Query()["ns"][0]))
 				case "/v1/agent/service/consul-esm:not-unique-instance-id":
 					assert.Equal(t, testPartition, r.URL.Query().Get(partitionQueryParamKey))
 					// write status 404, to tell the service is not registered and proceed with registration
@@ -850,9 +1202,6 @@ func TestAgent_getHealthChecksWithPartition(t *testing.T) {
 		if ns2check.CheckID != "ns2_svc_ck" {
 			t.Error("Wrong check id:", ns1check.CheckID)
 		}
-
-		// test the state API is called for each namespace in an agent's partition
-		assert.Len(t, testNs, 3)
 	})
 }
 
