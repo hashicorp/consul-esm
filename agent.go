@@ -12,7 +12,6 @@ import (
 	"net/http/pprof"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/armon/go-metrics"
@@ -110,7 +109,7 @@ type Agent struct {
 	// namespaceWildcard is the namespace query value to use for health checks.
 	// Set to "*" for Enterprise Consul (multi-namespace support) or "" for OSS.
 	namespaceWildcard         string
-	namespaceWildcardDetected atomic.Bool
+	namespaceWildcardDetected bool
 	namespaceWildcardMu       sync.Mutex
 }
 
@@ -904,7 +903,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 // it returns "" but will retry on the next call.
 func (a *Agent) getNamespaceWildcard() string {
 	// if already detected, return cached value without locking.
-	if a.namespaceWildcardDetected.Load() {
+	if a.namespaceWildcardDetected {
 		return a.namespaceWildcard
 	}
 
@@ -913,7 +912,7 @@ func (a *Agent) getNamespaceWildcard() string {
 
 	// Double-check after acquiring the lock, in case another goroutine
 	// completed detection while we were waiting here.
-	if a.namespaceWildcardDetected.Load() {
+	if a.namespaceWildcardDetected {
 		return a.namespaceWildcard
 	}
 
@@ -957,7 +956,7 @@ func (a *Agent) getNamespaceWildcard() string {
 		a.logger.Debug("Consul CE detected, using default namespace for health checks", "version", consulVersion)
 	}
 
-	a.namespaceWildcardDetected.Store(true)
+	a.namespaceWildcardDetected = true
 	return a.namespaceWildcard
 }
 
