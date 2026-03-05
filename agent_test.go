@@ -855,7 +855,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 
 		result := agent.getNamespaceWildcard()
 		assert.Equal(t, "", result, "On error, should fall back to empty namespace")
-		assert.False(t, agent.namespaceWildcardDetected, "Detection should not be marked as successful on error")
+		assert.False(t, agent.namespaceWildcardDetected.Load(), "Detection should not be marked as successful on error")
 	})
 
 	t.Run("retries-after-initial-failure", func(t *testing.T) {
@@ -892,7 +892,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 		// First call: Consul is down, should return "" and not cache
 		result1 := agent.getNamespaceWildcard()
 		assert.Equal(t, "", result1, "Should return empty when Consul is unreachable")
-		assert.False(t, agent.namespaceWildcardDetected, "Should not be marked as detected on failure")
+		assert.False(t, agent.namespaceWildcardDetected.Load(), "Should not be marked as detected on failure")
 
 		// Now Consul comes back up with Enterprise
 		atomic.StoreInt32(&shouldFail, 0)
@@ -900,7 +900,7 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 		// Second call: should retry and succeed
 		result2 := agent.getNamespaceWildcard()
 		assert.Equal(t, "*", result2, "Should detect Enterprise on retry after Consul comes back")
-		assert.True(t, agent.namespaceWildcardDetected, "Should be marked as detected after success")
+		assert.True(t, agent.namespaceWildcardDetected.Load(), "Should be marked as detected after success")
 
 		// Third call: should use cached result
 		result3 := agent.getNamespaceWildcard()
