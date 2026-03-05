@@ -1,3 +1,16 @@
+## v0.9.2 (Mar 10, 2026)
+
+BUG FIXES:
+* Fix delay in rebalancing health check monitoring when scaling out ESM instances by restricting the leader's ESM service lookup to the default namespace, eliminating multi-minute blocking queries on non-default namespaces where consul-esm is not registered [[GH-346](https://github.com/hashicorp/consul-esm/pull/346)]
+* Fix session lock reliability in agentless mode by setting a 30s TTL and 6 monitor retries on Consul locks, and properly unlocking and resetting the lock on loss to prevent "Lock already held" errors on reconnect [[GH-352](https://github.com/hashicorp/consul-esm/pull/352)]
+
+IMPROVEMENTS:
+* Add transaction batching for check updates in agentless mode, collecting updates over a configurable `batch_flush_interval` (default: 500ms) and sending up to 64 updates per Consul transaction; reduces Consul server connection count by ~97% at scale (~50K services) [[GH-348](https://github.com/hashicorp/consul-esm/pull/348)]
+* Optimise health check fetching by replacing sequential per-namespace blocking queries with a single API call using wildcard namespace (`*` for Enterprise, empty for CE/OSS); reduces new service detection time from several minutes to under 20 seconds at scale [[GH-354](https://github.com/hashicorp/consul-esm/pull/354)]
+
+SECURITY FIXES:
+* Upgrade Consul dependencies to address [CVE-2025-11374](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-11374), a DoS vulnerability in the Consul key/value endpoint caused by incorrect Content-Length header validation. Upgraded `consul` from v1.20.5 to v1.22.2, `consul/api` from v1.32.0 to v1.33.2, and `consul/sdk` from v0.16.2 to v0.17.1 [[GH-345](https://github.com/hashicorp/consul-esm/pull/345)]
+
 ## v0.9.1 (Sep 19, 2025)
 
 IMPROVEMENTS:
