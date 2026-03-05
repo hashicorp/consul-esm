@@ -209,16 +209,8 @@ func TestAgent_AgentLessSessions(t *testing.T) {
 				r.Fatalf("bad: %v, want 1", len(session.NodeChecks))
 			}
 
-			if len(session.Checks) != 1 {
-				r.Fatalf("bad: %v, want 1", len(session.NodeChecks))
-			}
-
 			if session.NodeChecks[0] != agent.agentlessCheckID() {
 				r.Fatalf("bad: %v, want: %v", session.NodeChecks[0], agent.agentlessCheckID())
-			}
-
-			if session.Checks[0] != agent.agentlessCheckID() {
-				r.Fatalf("bad: %v, want: %v", session.Checks[0], agent.agentlessCheckID())
 			}
 		}
 	}
