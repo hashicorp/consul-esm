@@ -855,6 +855,56 @@ func TestAgent_getNamespaceWildcard(t *testing.T) {
 
 		result := agent.getNamespaceWildcard()
 		assert.Equal(t, "", result, "On error, should fall back to empty namespace")
+		assert.False(t, agent.namespaceWildcardDetected, "Detection should not be marked as successful on error")
+	})
+
+	t.Run("retries-after-initial-failure", func(t *testing.T) {
+		var shouldFail int32
+		atomic.StoreInt32(&shouldFail, 1)
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					if atomic.LoadInt32(&shouldFail) == 1 {
+						w.WriteHeader(500)
+						fmt.Fprint(w, "Internal Server Error")
+					} else {
+						fmt.Fprint(w, testAgentSelfEnterprise())
+					}
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+		})
+		defer agent.Shutdown()
+
+		// First call: Consul is down, should return "" and not cache
+		result1 := agent.getNamespaceWildcard()
+		assert.Equal(t, "", result1, "Should return empty when Consul is unreachable")
+		assert.False(t, agent.namespaceWildcardDetected, "Should not be marked as detected on failure")
+
+		// Now Consul comes back up with Enterprise
+		atomic.StoreInt32(&shouldFail, 0)
+
+		// Second call: should retry and succeed
+		result2 := agent.getNamespaceWildcard()
+		assert.Equal(t, "*", result2, "Should detect Enterprise on retry after Consul comes back")
+		assert.True(t, agent.namespaceWildcardDetected, "Should be marked as detected after success")
+
+		// Third call: should use cached result
+		result3 := agent.getNamespaceWildcard()
+		assert.Equal(t, "*", result3, "Should return cached Enterprise result")
 	})
 
 	t.Run("caches-result", func(t *testing.T) {
