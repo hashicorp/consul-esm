@@ -48,6 +48,7 @@ type Config struct {
 	Interval                  time.Duration
 	DeregisterAfter           time.Duration
 	CheckUpdateInterval       time.Duration
+	BatchFlushInterval        time.Duration
 	CoordinateUpdateInterval  time.Duration
 	NodeHealthRefreshInterval time.Duration
 	NodeReconnectTimeout      time.Duration
@@ -133,6 +134,7 @@ func DefaultConfig() (*Config, error) {
 		Interval:                  10 * time.Second,
 		DeregisterAfter:           72 * time.Hour,
 		CheckUpdateInterval:       5 * time.Minute,
+		BatchFlushInterval:        500 * time.Millisecond,
 		CoordinateUpdateInterval:  10 * time.Second,
 		NodeHealthRefreshInterval: 1 * time.Hour,
 		NodeReconnectTimeout:      72 * time.Hour,
@@ -196,6 +198,7 @@ type HumanConfig struct {
 
 	NodeReconnectTimeout flags.DurationValue `mapstructure:"node_reconnect_timeout"`
 	NodeProbeInterval    flags.DurationValue `mapstructure:"node_probe_interval"`
+	BatchFlushInterval   flags.DurationValue `mapstructure:"batch_flush_interval"`
 
 	HTTPAddr      flags.StringValue `mapstructure:"http_addr"`
 	Token         flags.StringValue `mapstructure:"token"`
@@ -496,6 +499,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	}
 	src.NodeReconnectTimeout.Merge(&dst.NodeReconnectTimeout)
 	src.NodeProbeInterval.Merge(&dst.CoordinateUpdateInterval)
+	src.BatchFlushInterval.Merge(&dst.BatchFlushInterval)
 	src.HTTPAddr.Merge(&dst.HTTPAddr)
 	src.Token.Merge(&dst.Token)
 	src.Datacenter.Merge(&dst.Datacenter)

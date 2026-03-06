@@ -28,6 +28,15 @@ const externalCheckName = "externalNodeHealth"
 // defaultInterval is the check interval to use if one is not set.
 var defaultInterval = 30 * time.Second
 
+// TODO: Evaluate the defaultBatchFlushInterval based on the feedback/observations
+// defaultBatchFlushInterval is the default interval for flushing batched updates.
+var defaultBatchFlushInterval = 500 * time.Millisecond
+
+// maxTxnOps is the maximum number of operations allowed in a single transaction.
+// Consul supports up to 64 operations per transaction as documented in the API docs
+// https://developer.hashicorp.com/consul/api-docs/txn .
+const maxTxnOps = 64
+
 var ChecksGauges = []prometheus.GaugeDefinition{
 	{
 		Name: []string{"esm", "checks"},
@@ -52,6 +61,15 @@ var ChecksSummary = []prometheus.SummaryDefinition{
 
 type checkIDSet map[types.CheckID]bool
 
+// pendingCheckUpdate represents a check update waiting to be batched
+type pendingCheckUpdate struct {
+	check     *api.HealthCheck
+	status    string
+	output    string
+	oldStatus string // status before this update
+	oldOutput string // output before this update
+}
+
 type CheckRunner struct {
 	logger hclog.Logger
 	client *api.Client
@@ -69,6 +87,9 @@ type CheckRunner struct {
 	// Used to track checks that are being deferred
 	deferCheck checkMap[types.CheckID, *time.Timer]
 
+	// Batcher handles batching of check updates (enabled for agentless mode)
+	batcher *CheckUpdateBatcher
+
 	CheckUpdateInterval time.Duration
 	MinimumInterval     time.Duration
 
@@ -76,6 +97,7 @@ type CheckRunner struct {
 
 	PassingThreshold  int
 	CriticalThreshold int
+	isAgentless       bool
 }
 
 type esmHealthCheck struct {
@@ -127,9 +149,9 @@ func (m *stopMap[K, V]) StopAll() {
 
 func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 	minimumInterval time.Duration, tlsConfig *tls.Config, passingThreshold int,
-	criticalThreshold int,
+	criticalThreshold int, isAgentless bool, batchFlushInterval time.Duration,
 ) *CheckRunner {
-	return &CheckRunner{
+	runner := &CheckRunner{
 		logger:              logger,
 		client:              client,
 		CheckUpdateInterval: updateInterval,
@@ -137,10 +159,40 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 		tlsConfig:           tlsConfig,
 		PassingThreshold:    passingThreshold,
 		CriticalThreshold:   criticalThreshold,
+		isAgentless:         isAgentless,
 	}
+
+	// Only initialize batcher for agentless mode
+	if isAgentless {
+		batchInterval := defaultBatchFlushInterval
+		logger.Info("Configuring CheckRunner batch interval", "received_interval", batchFlushInterval, "is_agentless", isAgentless)
+		// Use configured batch flush interval for agentless mode
+		if batchFlushInterval > 0 {
+			batchInterval = batchFlushInterval
+			logger.Info("Using configured batch flush interval", "interval", batchInterval)
+		} else {
+			// Fallback to default if not configured
+			batchInterval = defaultBatchFlushInterval
+			logger.Info("Using default batch flush interval", "interval", batchInterval)
+		}
+		// Initialise batcher for agentless mode only
+		runner.batcher = NewCheckUpdateBatcher(BatcherConfig{
+			MaxBatchSize:  maxTxnOps,
+			FlushInterval: batchInterval,
+			Logger:        logger,
+			ProcessFunc:   runner.processBatchedUpdates,
+		})
+	}
+
+	return runner
 }
 
 func (c *CheckRunner) Stop() {
+	// Stop batcher and flush any pending updates
+	if c.batcher != nil {
+		c.batcher.Stop()
+	}
+
 	c.checksHTTP.StopAll()
 	c.checksTCP.StopAll()
 }
@@ -421,9 +473,19 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	if c.CheckUpdateInterval > 0 && check.Status == status {
 		check.Output = output
 		if _, ok := c.deferCheck.Load(checkHash); !ok {
-			intv := time.Duration(uint64(c.CheckUpdateInterval)/2) + lib.RandomStagger(c.CheckUpdateInterval)
+			// Enhanced batching for agentless mode - use longer intervals for better server efficiency
+			var intv time.Duration
+			if c.isAgentless {
+				// Agentless mode: use more aggressive batching to reduce server load
+				intv = time.Duration(uint64(c.CheckUpdateInterval)) + lib.RandomStagger(c.CheckUpdateInterval)
+			} else {
+				// Agent mode: use original batching logic
+				intv = time.Duration(uint64(c.CheckUpdateInterval)/2) + lib.RandomStagger(c.CheckUpdateInterval)
+			}
 			deferSync := time.AfterFunc(intv, func() {
-				c.handleCheckUpdate(&check.HealthCheck, status, output)
+				// For deferred updates, we don't need original state since the check
+				// has already stabilized at this status
+				c.handleCheckUpdate(&check.HealthCheck, status, output, "", "")
 				c.deferCheck.Delete(checkHash)
 			})
 			c.deferCheck.Store(checkHash, deferSync)
@@ -431,12 +493,39 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 		return
 	}
 
-	c.handleCheckUpdate(&check.HealthCheck, status, output)
+	// For agentless mode: update local state immediately before batching.
+	// This ensures anti-flapping logic and local state remain consistent
+	// while server updates are batched for efficiency.
+	// Store original state for potential reversion if batch fails.
+	// For agentful mode: local state is updated after successful catalog update
+	// (inside handleCheckUpdateImmediate) to maintain original behavior.
+	oldStatus := check.Status
+	oldOutput := check.Output
+	if c.isAgentless {
+		check.Status = status
+		check.Output = output
+	}
+
+	c.handleCheckUpdate(&check.HealthCheck, status, output, oldStatus, oldOutput)
 }
 
-// handleCheckUpdate writes a check's status to the catalog and updates the local check state.
-// Should only be called when the lock is held.
-func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output string) {
+// handleCheckUpdate updates a check's status in Consul.
+// In agentless mode, updates are batched to reduce HTTP connections.
+// In agentful mode, updates are sent immediately (original behavior).
+func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output, oldStatus, oldOutput string) {
+	if c.batcher != nil {
+		// Queue for batching. If the batcher has been stopped (e.g., during shutdown),
+		// the update is silently dropped rather than falling through to the immediate path.
+		c.batcher.Add(check, status, output, oldStatus, oldOutput)
+	} else {
+		// Agentful mode: send update immediately (original behavior)
+		c.handleCheckUpdateImmediate(check, status, output)
+	}
+}
+
+// handleCheckUpdateImmediate sends a check update to Consul immediately without batching.
+// This is the exact original behavior preserved for agentful mode.
+func (c *CheckRunner) handleCheckUpdateImmediate(check *api.HealthCheck, status, output string) {
 	// Exit early if the check or node have been deregistered.
 	// consistent mode reduces convergency time particularly when services have many updates in a short time
 	checks, _, err := c.client.Health().Node(check.Node, &api.QueryOptions{
@@ -498,6 +587,242 @@ func (c *CheckRunner) handleCheckUpdate(check *api.HealthCheck, status, output s
 	check.Output = output
 }
 
+// processBatchedUpdates processes a slice of check updates in batches of maxTxnOps.
+// This is called by the batcher when it's time to flush updates.
+func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
+	if len(updates) == 0 {
+		return
+	}
+
+	// Safety check: client should never be nil here since batcher is only initialized when client is available, but we check to avoid panics during shutdown or misconfiguration
+	if c.client == nil {
+		c.logger.Error("Cannot process batched updates: client is nil")
+		return
+	}
+
+	c.logger.Debug("Processing batched check updates", "totalUpdates", len(updates), "agentless", c.isAgentless)
+	defer metrics.MeasureSince([]string{"check", "batch", "flush"}, time.Now())
+
+	// First, fetch current state for all nodes involved
+	nodeChecks := make(map[string]map[string]*api.HealthCheck) // node -> checkID -> check
+	for _, update := range updates {
+		if _, exists := nodeChecks[update.check.Node]; !exists {
+			checks, _, err := c.client.Health().Node(update.check.Node, &api.QueryOptions{
+				Namespace:         update.check.Namespace,
+				RequireConsistent: true,
+			})
+			if err != nil {
+				c.logger.Warn("error retrieving existing node entry for batch", "error", err, "node", update.check.Node)
+				continue
+			}
+			nodeChecks[update.check.Node] = make(map[string]*api.HealthCheck)
+			for _, check := range checks {
+				nodeChecks[update.check.Node][check.CheckID] = check
+			}
+		}
+	}
+
+	// Build transaction operations
+	var ops api.TxnOps
+	var processedChecks []*pendingCheckUpdate
+
+	for _, update := range updates {
+		checkID := strings.TrimPrefix(string(update.check.CheckID), update.check.Node+"/")
+		nodeMap, nodeExists := nodeChecks[update.check.Node]
+		if !nodeExists {
+			continue
+		}
+		existing, checkExists := nodeMap[checkID]
+		if !checkExists {
+			c.logger.Trace("Check no longer exists, skipping", "checkID", checkID)
+			continue
+		}
+
+		existing.Status = update.status
+		existing.Output = update.output
+
+		ops = append(ops, &api.TxnOp{
+			Check: &api.CheckTxnOp{
+				Verb:  api.CheckCAS,
+				Check: *existing,
+			},
+		})
+		processedChecks = append(processedChecks, update)
+
+		// Flush when we hit the batch size limit
+		if len(ops) >= maxTxnOps {
+			c.executeBatchTransaction(ops, processedChecks)
+			ops = nil
+			processedChecks = nil
+		}
+	}
+
+	// Flush any remaining operations
+	if len(ops) > 0 {
+		c.executeBatchTransaction(ops, processedChecks)
+	}
+}
+
+// executeBatchTransaction executes a batch of check updates in a single transaction.
+func (c *CheckRunner) executeBatchTransaction(ops api.TxnOps, updates []*pendingCheckUpdate) {
+	if len(ops) == 0 {
+		return
+	}
+
+	metrics.IncrCounter([]string{"check", "txn"}, 1)
+	metrics.SetGauge([]string{"check", "txn", "batch_size"}, float32(len(ops)))
+
+	c.logger.Info("Executing batched check update transaction", "batchSize", len(ops), "agentless", c.isAgentless)
+
+	// Agentless mode optimizations for enhanced server communication
+	var queryOpts *api.QueryOptions
+	if c.isAgentless {
+		queryOpts = &api.QueryOptions{
+			RequireConsistent: true,
+		}
+	}
+
+	ok, resp, _, err := c.client.Txn().Txn(ops, queryOpts)
+	if err != nil {
+		if c.isAgentless {
+			c.logger.Warn("Error updating check status in Consul (agentless mode, batched)", "error", err, "batchSize", len(ops))
+		} else {
+			c.logger.Warn("Error updating check status in Consul (batched)", "error", err, "batchSize", len(ops))
+		}
+		return
+	}
+
+	if len(resp.Errors) > 0 {
+		// Check if errors are due to stale index (CAS failures)
+		staleIndexErrors := 0
+		for _, e := range resp.Errors {
+			if strings.Contains(e.What, "index is stale") {
+				staleIndexErrors++
+			}
+		}
+
+		// If we have stale index errors, retry those specific operations
+		if staleIndexErrors > 0 {
+			c.logger.Debug("Detected stale index errors in batch, retrying failed operations",
+				"staleErrors", staleIndexErrors, "totalErrors", len(resp.Errors))
+			c.retryFailedBatchOperations(updates, resp.Errors)
+		} else {
+			var errs error
+			for _, e := range resp.Errors {
+				errs = multierror.Append(errs, errors.New(e.What))
+			}
+			c.logger.Warn("Error(s) returned from batched txn when updating check status", "error", errs, "failedOps", len(resp.Errors))
+		}
+		return
+	}
+
+	if !ok {
+		c.logger.Warn("Failed to atomically update batched check status in Consul")
+		return
+	}
+
+	// Note: Local state is already updated in UpdateCheck() before queuing.
+	// This ensures anti-flapping logic works correctly regardless of batch timing.
+
+	c.logger.Debug("Successfully executed batched check update", "batchSize", len(ops))
+}
+
+// retryFailedBatchOperations retries check updates that failed due to stale index.
+func (c *CheckRunner) retryFailedBatchOperations(updates []*pendingCheckUpdate, errors api.TxnErrors) {
+	// Build a map of failed operation indices
+	failedIndices := make(map[int]string)
+	for _, e := range errors {
+		if strings.Contains(e.What, "index is stale") {
+			failedIndices[e.OpIndex] = e.What
+		}
+	}
+
+	if len(failedIndices) == 0 {
+		return
+	}
+
+	c.logger.Info("Retrying failed batch operations with fresh state", "count", len(failedIndices))
+	metrics.IncrCounter([]string{"check", "txn", "retry"}, float32(len(failedIndices)))
+
+	// Retry each failed update individually with fresh state
+	for idx, errMsg := range failedIndices {
+		if idx >= len(updates) {
+			c.logger.Warn("Invalid error index in transaction response", "index", idx, "updatesCount", len(updates))
+			continue
+		}
+
+		update := updates[idx]
+		c.logger.Trace("Retrying check update", "node", update.check.Node, "checkID", update.check.CheckID, "error", errMsg)
+
+		// Fetch fresh state for this specific check
+		checks, _, err := c.client.Health().Node(update.check.Node, &api.QueryOptions{
+			Namespace:         update.check.Namespace,
+			RequireConsistent: true,
+		})
+		if err != nil {
+			c.logger.Warn("error retrieving node for retry", "error", err, "node", update.check.Node)
+			continue
+		}
+
+		// Find the specific check
+		checkID := strings.TrimPrefix(string(update.check.CheckID), update.check.Node+"/")
+		var existing *api.HealthCheck
+		for _, check := range checks {
+			if check.CheckID == checkID {
+				existing = check
+				break
+			}
+		}
+
+		if existing == nil {
+			c.logger.Trace("Check no longer exists during retry, skipping", "checkID", checkID)
+			continue
+		}
+
+		// Update with fresh ModifyIndex
+		existing.Status = update.status
+		existing.Output = update.output
+
+		// Execute single-operation transaction with fresh state
+		ops := api.TxnOps{
+			&api.TxnOp{
+				Check: &api.CheckTxnOp{
+					Verb:  api.CheckCAS,
+					Check: *existing,
+				},
+			},
+		}
+
+		var queryOpts *api.QueryOptions
+		if c.isAgentless {
+			queryOpts = &api.QueryOptions{
+				RequireConsistent: true,
+			}
+		}
+
+		ok, retryResp, _, err := c.client.Txn().Txn(ops, queryOpts)
+		if err != nil {
+			c.logger.Warn("error during retry", "error", err, "node", update.check.Node, "checkID", checkID)
+			continue
+		}
+
+		if len(retryResp.Errors) > 0 {
+			c.logger.Warn("retry still failed, reverting local state", "node", update.check.Node, "checkID", checkID, "error", retryResp.Errors[0].What)
+			// Revert local state to original so next check execution can retry
+			checkHash := hashCheck(update.check)
+			c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
+			continue
+		}
+
+		if !ok {
+			c.logger.Warn("retry transaction returned not ok", "node", update.check.Node, "checkID", checkID)
+			continue
+		}
+
+		c.logger.Debug("Successfully retried check update", "node", update.check.Node, "checkID", checkID)
+	}
+}
+
 // reapServices is a long running goroutine that looks for checks that have been
 // critical too long and deregisters their associated services.
 func (c *CheckRunner) reapServices(shutdownCh <-chan struct{}) {
@@ -554,6 +879,26 @@ func (c *CheckRunner) reapServicesInternal() {
 		}
 		return true
 	})
+}
+
+// revertCheckState reverts the local check state to previous values after a failed batch update.
+// This ensures the next check execution will detect the difference and retry the update.
+func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, oldStatus, oldOutput string) {
+	checkHash := checkID
+	check, ok := c.checks.Load(checkHash)
+	if !ok {
+		c.logger.Debug("Check not found for state reversion", "checkID", checkID)
+		return
+	}
+
+	c.logger.Debug("Reverting check state after batch failure",
+		"checkID", checkID,
+		"currentStatus", check.Status,
+		"revertToStatus", oldStatus)
+
+	check.Status = oldStatus
+	check.Output = oldOutput
+	c.checks.Store(checkHash, check)
 }
 
 func hashCheck(check *api.HealthCheck) types.CheckID {
