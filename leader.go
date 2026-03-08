@@ -68,17 +68,16 @@ LEADER_WAIT:
 		var err error
 		if a.isAgentLess() {
 			opts := &api.LockOptions{
-				Key: a.config.KVPath + LeaderKey,
+				Key:            a.config.KVPath + LeaderKey,
+				MonitorRetries: sessionMonitorRetries,
+				SessionOpts: &api.SessionEntry{
+					Node:       a.agentlessNodeID(),
+					Name:       "consul-esm leader lock",
+					TTL:        sessionTTL,
+					NodeChecks: []string{a.agentlessCheckID()},
+				},
 			}
 			lock, err = a.client.LockOpts(opts)
-			opts.SessionOpts = &api.SessionEntry{
-				Node:       a.agentlessNodeID(),
-				Name:       opts.SessionName,
-				TTL:        opts.SessionTTL,
-				LockDelay:  opts.LockDelay,
-				NodeChecks: []string{a.agentlessCheckID()},
-				Checks:     []string{a.agentlessCheckID()},
-			}
 
 		} else {
 			lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
@@ -96,13 +95,12 @@ LEADER_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
 		} else {
 			a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
 		}
+		lock = nil
+		time.Sleep(retryTime)
+		goto LEADER_WAIT
 	}
 	if leaderCh == nil {
 		// This is how the Lock() call lets us know that it quit because
@@ -121,6 +119,8 @@ LEADER_WAIT:
 		case <-leaderCh:
 			a.logger.Warn("Lost leadership")
 			metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
+			lock.Unlock()
+			lock = nil
 			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return

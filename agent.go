@@ -35,6 +35,14 @@ const (
 	maxRetriesEntDetection = 3
 )
 
+const (
+	// TTL used for Consul sessions created by ESM instances
+	sessionTTL = "30s"
+
+	// Number of times to retry monitoring a session before giving up
+	sessionMonitorRetries = 6
+)
+
 var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
 	// determines how often we poll the agent to check on service
@@ -584,19 +592,16 @@ LOCK_WAIT:
 	if lock == nil {
 		var err error
 		opts := &api.LockOptions{
-			Key:         a.config.KVPath + sessionKey,
-			SessionName: sessionKey,
+			Key:            a.config.KVPath + sessionKey,
+			MonitorRetries: sessionMonitorRetries,
+			SessionOpts: &api.SessionEntry{
+				Node:       a.agentlessNodeID(),
+				Name:       sessionKey,
+				TTL:        sessionTTL,
+				NodeChecks: []string{a.agentlessCheckID()},
+			},
 		}
 		lock, err = a.client.LockOpts(opts)
-		opts.SessionOpts = &api.SessionEntry{
-			Node:       a.agentlessNodeID(),
-			ID:         a.agentlessNodeID(),
-			Name:       opts.SessionName,
-			TTL:        opts.SessionTTL,
-			LockDelay:  opts.LockDelay,
-			NodeChecks: []string{a.agentlessCheckID()},
-			Checks:     []string{a.agentlessCheckID()},
-		}
 
 		if err != nil {
 			a.logger.Error("Agent: Error trying to create session lock (will retry)", "error", err)
@@ -611,17 +616,12 @@ LOCK_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Agent: Unable to use session lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
-			time.Sleep(retryTime)
-			goto LOCK_WAIT
 		} else {
 			a.logger.Error("Agent: Error trying to get session lock (will retry)", "error", err)
-			time.Sleep(retryTime)
-			if err != nil {
-				a.logger.Error("Agent: nested error trying to get session lock (will retry)", "error", err)
-			}
-
-			goto LOCK_WAIT
 		}
+		lock = nil
+		time.Sleep(retryTime)
+		goto LOCK_WAIT
 	}
 	if lockCh == nil {
 		// This is how the Lock() call lets us know that it quit because
@@ -634,6 +634,8 @@ LOCK_WAIT:
 		select {
 		case <-lockCh:
 			a.logger.Warn("Agent: Lost the lock")
+			lock.Unlock()
+			lock = nil
 			goto LOCK_WAIT
 		case <-a.shutdownCh:
 			return
