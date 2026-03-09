@@ -113,7 +113,6 @@ type Agent struct {
 
 	inflightPings map[string]struct{}
 	inflightLock  sync.Mutex
-	pingSemaphore chan struct{}
 
 	// Custom func to hook into for testing.
 	watchedNodeFunc       func(map[string]bool, []*api.Node)
@@ -192,7 +191,6 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		shutdownCh:        make(chan struct{}),
 		ready:             make(chan struct{}, 1),
 		inflightPings:     make(map[string]struct{}),
-		pingSemaphore:     make(chan struct{}, 64),
 		knownNodeStatuses: make(map[string]lastKnownStatus),
 		metrics:           metricsConf,
 	}

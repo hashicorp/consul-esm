@@ -86,11 +86,7 @@ func (a *Agent) updateCoords(nodeCh nodeChannel) {
 		} else {
 			a.inflightPings[node.Node] = struct{}{}
 			a.inflightLock.Unlock()
-			a.pingSemaphore <- struct{}{}
-			go func() {
-				defer func() { <-a.pingSemaphore }()
-				a.runNodePing(node)
-			}()
+			go a.runNodePing(node)
 		}
 	}
 }
