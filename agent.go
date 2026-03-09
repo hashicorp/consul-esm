@@ -870,11 +870,17 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	// WaitTime caps how long Consul holds the blocking query before responding.
+	// Without it, a load balancer (e.g., ALB with a 60s idle timeout) can silently
+	// drop the idle connection, leaving this goroutine stuck in read() forever
+	// with no error, no timeout, and no health updates. 45s provides margin below
+	// the typical ALB 60s idle timeout, ensuring Consul responds before the LB
+	// can kill the connection.
 	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
 		Namespace: a.getNamespaceWildcard(),
-		WaitTime:  1 * time.Minute,
+		WaitTime:  45 * time.Second,
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
