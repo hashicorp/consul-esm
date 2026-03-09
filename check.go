@@ -101,6 +101,7 @@ type CheckRunner struct {
 }
 
 type esmHealthCheck struct {
+	mu sync.Mutex
 	api.HealthCheck
 	failureCounter int
 	successCounter int
@@ -374,9 +375,9 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 
 		found[checkHash] = true
 		updatedCheck := &esmHealthCheck{
-			*check,
-			0,
-			0,
+			HealthCheck:    *check,
+			failureCounter: 0,
+			successCounter: 0,
 		}
 		if previousCheck, ok := c.checks.LoadAndDelete(checkHash); ok {
 			updatedCheck.failureCounter = previousCheck.failureCounter
@@ -430,6 +431,9 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	if !ok {
 		return
 	}
+
+	check.mu.Lock()
+	defer check.mu.Unlock()
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
@@ -914,6 +918,7 @@ func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, oldSt
 		return
 	}
 
+	check.mu.Lock()
 	c.logger.Debug("Reverting check state after batch failure",
 		"checkID", checkID,
 		"currentStatus", check.Status,
@@ -921,7 +926,7 @@ func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, oldSt
 
 	check.Status = oldStatus
 	check.Output = oldOutput
-	c.checks.Store(checkHash, check)
+	check.mu.Unlock()
 }
 
 func hashCheck(check *api.HealthCheck) types.CheckID {
