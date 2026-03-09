@@ -187,6 +187,7 @@ func (c *CheckRunner) Stop() {
 	// Stop batcher and flush any pending updates
 	if c.batcher != nil {
 		c.batcher.Stop()
+		c.batcher = nil
 	}
 
 	c.checksHTTP.StopAll()
