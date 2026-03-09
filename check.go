@@ -547,10 +547,11 @@ func (c *CheckRunner) handleCheckUpdateImmediate(check *api.HealthCheck, status,
 		return
 	}
 
+	oldStatus := existing.Status
 	existing.Status = status
 	existing.Output = output
 
-	c.logger.Info("Updating output and status for", "checkID", existing.CheckID)
+	c.logger.Debug("Updating output and status for", "checkID", existing.CheckID)
 
 	ops := api.TxnOps{
 		&api.TxnOp{
@@ -579,7 +580,7 @@ func (c *CheckRunner) handleCheckUpdateImmediate(check *api.HealthCheck, status,
 		return
 	}
 
-	c.logger.Trace("Registered check status to the catalog with ID", "checkId", strings.TrimPrefix(string(check.CheckID), check.Node+"/"))
+	c.logger.Debug("Updated check status in catalog", "checkID", existing.CheckID, "node", check.Node, "old", oldStatus, "new", status)
 
 	// Only update the local check state if we successfully updated the catalog
 	check.Status = status
