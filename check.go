@@ -684,11 +684,8 @@ func (c *CheckRunner) executeBatchTransaction(ops api.TxnOps, updates []*pending
 
 	ok, resp, _, err := c.client.Txn().Txn(ops, queryOpts)
 	if err != nil {
-		if c.isAgentless {
-			c.logger.Warn("Error updating check status in Consul (agentless mode, batched)", "error", err, "batchSize", len(ops))
-		} else {
-			c.logger.Warn("Error updating check status in Consul (batched)", "error", err, "batchSize", len(ops))
-		}
+		c.logger.Warn("Error updating check status in Consul (batched)", "error", err, "batchSize", len(ops))
+		c.revertAllUpdates(updates)
 		return
 	}
 
@@ -712,12 +709,14 @@ func (c *CheckRunner) executeBatchTransaction(ops api.TxnOps, updates []*pending
 				errs = multierror.Append(errs, errors.New(e.What))
 			}
 			c.logger.Warn("Error(s) returned from batched txn when updating check status", "error", errs, "failedOps", len(resp.Errors))
+			c.revertAllUpdates(updates)
 		}
 		return
 	}
 
 	if !ok {
 		c.logger.Warn("Failed to atomically update batched check status in Consul")
+		c.revertAllUpdates(updates)
 		return
 	}
 
@@ -879,6 +878,18 @@ func (c *CheckRunner) reapServicesInternal() {
 		}
 		return true
 	})
+}
+
+// revertAllUpdates reverts local state for all updates in a failed batch.
+// This ensures the next check execution will detect the difference and retry.
+func (c *CheckRunner) revertAllUpdates(updates []*pendingCheckUpdate) {
+	for _, update := range updates {
+		if update.oldStatus == "" && update.oldOutput == "" {
+			continue
+		}
+		checkHash := hashCheck(update.check)
+		c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
+	}
 }
 
 // revertCheckState reverts the local check state to previous values after a failed batch update.
