@@ -874,6 +874,7 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
 		Namespace: a.getNamespaceWildcard(),
+		WaitTime:  1 * time.Minute,
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
