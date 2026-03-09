@@ -393,7 +393,7 @@ func (a *Agent) registerCatalog() error {
 		return err
 	}
 
-	if containsService(a.serviceID(), services) && false {
+	if containsService(a.serviceID(), services) {
 		return &alreadyExistsError{a.serviceID()}
 	}
 
