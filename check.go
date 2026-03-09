@@ -605,6 +605,7 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 
 	// First, fetch current state for all nodes involved
 	nodeChecks := make(map[string]map[string]*api.HealthCheck) // node -> checkID -> check
+	failedNodes := make(map[string]bool)
 	for _, update := range updates {
 		if _, exists := nodeChecks[update.check.Node]; !exists {
 			checks, _, err := c.client.Health().Node(update.check.Node, &api.QueryOptions{
@@ -612,12 +613,23 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 				RequireConsistent: true,
 			})
 			if err != nil {
-				c.logger.Warn("error retrieving existing node entry for batch", "error", err, "node", update.check.Node)
+				c.logger.Warn("error retrieving existing node entry for batch, reverting updates for node", "error", err, "node", update.check.Node)
+				failedNodes[update.check.Node] = true
 				continue
 			}
 			nodeChecks[update.check.Node] = make(map[string]*api.HealthCheck)
 			for _, check := range checks {
 				nodeChecks[update.check.Node][check.CheckID] = check
+			}
+		}
+	}
+
+	// Revert local state for all updates belonging to nodes we couldn't fetch
+	for _, update := range updates {
+		if failedNodes[update.check.Node] {
+			if update.oldStatus != "" || update.oldOutput != "" {
+				checkHash := hashCheck(update.check)
+				c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
 			}
 		}
 	}
