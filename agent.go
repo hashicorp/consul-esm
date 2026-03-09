@@ -754,7 +754,8 @@ func (a *Agent) watchNodeList() {
 
 		var nodeList NodeWatchList
 		if err := json.Unmarshal(kv.Value, &nodeList); err != nil {
-			a.logger.Warn("Error deserializing node list", "error", err)
+			a.logger.Error("Error deserializing node list, skipping update", "error", err)
+			continue
 		}
 
 		// Format the node lists for the health check/ping runners.
