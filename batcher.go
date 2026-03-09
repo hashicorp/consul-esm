@@ -55,7 +55,6 @@ func NewCheckUpdateBatcher(config BatcherConfig) *CheckUpdateBatcher {
 // Add queues a check update for batching.
 func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output, oldStatus, oldOutput string) {
 	b.pendingUpdatesMu.Lock()
-	defer b.pendingUpdatesMu.Unlock()
 
 	// Create a unique key for this check
 	checkKey := makeCheckKey(check.Node, string(check.CheckID))
@@ -74,7 +73,9 @@ func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output, oldStat
 	// Flush immediately if we've reached the max batch size
 	if len(b.pendingUpdates) >= b.maxBatchSize {
 		b.logger.Debug("Batch size limit reached, flushing immediately", "batchSize", len(b.pendingUpdates))
-		b.flushLocked()
+		updates := b.drainLocked()
+		b.pendingUpdatesMu.Unlock()
+		b.processUpdates(updates)
 		return
 	}
 
@@ -84,19 +85,20 @@ func (b *CheckUpdateBatcher) Add(check *api.HealthCheck, status, output, oldStat
 		b.flushTimer = time.AfterFunc(b.flushInterval, b.Flush)
 		b.logger.Trace("Started batch flush timer", "interval", b.flushInterval)
 	}
+
+	b.pendingUpdatesMu.Unlock()
 }
 
 // Flush flushes all pending check updates.
 // This is the public version that acquires the lock.
 func (b *CheckUpdateBatcher) Flush() {
 	b.pendingUpdatesMu.Lock()
-	defer b.pendingUpdatesMu.Unlock()
-	b.flushLocked()
+	updates := b.drainLocked()
+	b.pendingUpdatesMu.Unlock()
+	b.processUpdates(updates)
 }
 
-// flushLocked flushes all pending check updates.
-// Caller must hold pendingUpdatesMu lock.
-func (b *CheckUpdateBatcher) flushLocked() {
+func (b *CheckUpdateBatcher) drainLocked() []*pendingCheckUpdate {
 	// Stop the timer if it's running
 	if b.flushTimer != nil {
 		b.flushTimer.Stop()
@@ -104,7 +106,7 @@ func (b *CheckUpdateBatcher) flushLocked() {
 	}
 
 	if len(b.pendingUpdates) == 0 {
-		return
+		return nil
 	}
 
 	// Collect all pending updates
@@ -116,42 +118,23 @@ func (b *CheckUpdateBatcher) flushLocked() {
 	// Clear pending updates
 	b.pendingUpdates = make(map[string]*pendingCheckUpdate)
 
-	// Process updates (must release lock during processing to avoid deadlocks)
-	b.pendingUpdatesMu.Unlock()
-	if b.processFunc != nil {
+	return updates
+}
+
+func (b *CheckUpdateBatcher) processUpdates(updates []*pendingCheckUpdate) {
+	if len(updates) > 0 && b.processFunc != nil {
+		b.logger.Debug("Processing batch of check updates", "batchSize", len(updates))
 		b.processFunc(updates)
 	}
-	b.pendingUpdatesMu.Lock()
 }
 
 // Stop stops the batcher and flushes any pending updates
 func (b *CheckUpdateBatcher) Stop() {
 	// Force flush all pending updates on shutdown
 	b.pendingUpdatesMu.Lock()
-	defer b.pendingUpdatesMu.Unlock()
-
-	// Stop the timer
-	if b.flushTimer != nil {
-		b.flushTimer.Stop()
-		b.flushTimer = nil
-	}
-
-	if len(b.pendingUpdates) == 0 {
-		return
-	}
-
-	// Collect and flush all pending updates (force flush on shutdown)
-	updates := make([]*pendingCheckUpdate, 0, len(b.pendingUpdates))
-	for _, update := range b.pendingUpdates {
-		updates = append(updates, update)
-	}
-	b.pendingUpdates = make(map[string]*pendingCheckUpdate)
-
+	updates := b.drainLocked()
 	b.pendingUpdatesMu.Unlock()
-	if b.processFunc != nil {
-		b.processFunc(updates)
-	}
-	b.pendingUpdatesMu.Lock()
+	b.processUpdates(updates)
 }
 
 // makeCheckKey creates a unique key for a check
