@@ -33,13 +33,20 @@ const (
 	// if we're running in Enterprise Consul by checking for the presence of "+ent"
 	// in the version string.
 	maxRetriesEntDetection = 3
-)
 
-const (
-	// TTL used for Consul sessions created by ESM instances
+	// sessionTTL is the TTL for Consul sessions created by ESM instances.
+	// The session is automatically invalidated by Consul if it is not renewed
+	// within this period. Must be longer than the total monitor window
+	// (sessionMonitorRetries × DefaultMonitorRetryTime) to avoid split-brain,
+	// where a new leader acquires the lock while the old session is still valid.
 	sessionTTL = "30s"
 
-	// Number of times to retry monitoring a session before giving up
+	// sessionMonitorRetries is the number of consecutive failed attempts to
+	// contact the Consul servers before the lock is considered lost and the
+	// session is released. Combined with the default MonitorRetryTime of 2s,
+	// this gives a monitor window of 6 × 2s = 12s — safely under the 30s
+	// session TTL, ensuring the session expires before a new leader can
+	// acquire the lock if Consul is truly unreachable.
 	sessionMonitorRetries = 6
 )
 
