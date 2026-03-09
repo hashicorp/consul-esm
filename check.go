@@ -683,7 +683,7 @@ func (c *CheckRunner) executeBatchTransaction(ops api.TxnOps, updates []*pending
 	metrics.IncrCounter([]string{"check", "txn"}, 1)
 	metrics.SetGauge([]string{"check", "txn", "batch_size"}, float32(len(ops)))
 
-	c.logger.Info("Executing batched check update transaction", "batchSize", len(ops), "agentless", c.isAgentless)
+	c.logger.Debug("Executing batched check update transaction", "batchSize", len(ops), "agentless", c.isAgentless)
 
 	// Agentless mode optimizations for enhanced server communication
 	var queryOpts *api.QueryOptions
@@ -751,7 +751,7 @@ func (c *CheckRunner) retryFailedBatchOperations(updates []*pendingCheckUpdate, 
 		return
 	}
 
-	c.logger.Info("Retrying failed batch operations with fresh state", "count", len(failedIndices))
+	c.logger.Debug("Retrying failed batch operations with fresh state", "count", len(failedIndices))
 	metrics.IncrCounter([]string{"check", "txn", "retry"}, float32(len(failedIndices)))
 
 	// Retry each failed update individually with fresh state
