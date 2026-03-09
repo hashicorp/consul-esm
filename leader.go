@@ -345,6 +345,11 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry, error) {
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
+	if a.getNamespaceWildcard() == "*" {
+		opts.Namespace = "default"
+	} else {
+		opts.Namespace = ""
+	}
 
 	a.logger.Info("checking default namespace for healthy ESM services")
 
