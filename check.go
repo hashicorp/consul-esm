@@ -101,6 +101,8 @@ type CheckRunner struct {
 }
 
 type esmHealthCheck struct {
+	// mu guards Status, Output, failureCounter, and successCounter from concurrent access
+	// by StatusHandler goroutines (via UpdateCheck) and the batcher's timer goroutine (via revertCheckState).
 	mu sync.Mutex
 	api.HealthCheck
 	failureCounter int
