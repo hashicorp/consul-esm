@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2017, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"github.com/armon/go-metrics/prometheus"
 	consulchecks "github.com/hashicorp/consul/agent/checks"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
@@ -26,6 +27,28 @@ const externalCheckName = "externalNodeHealth"
 
 // defaultInterval is the check interval to use if one is not set.
 var defaultInterval = 30 * time.Second
+
+var ChecksGauges = []prometheus.GaugeDefinition{
+	{
+		Name: []string{"esm", "checks"},
+		Help: "Total number of external checks being monitored",
+	},
+	{
+		Name: []string{"esm", "checks", "healthy"},
+		Help: "Number of external checks in passing state",
+	},
+	{
+		Name: []string{"esm", "checks", "unhealthy"},
+		Help: "Number of external checks in unhealthy state",
+	},
+}
+
+var ChecksSummary = []prometheus.SummaryDefinition{
+	{
+		Name: []string{"esm", "checks", "fetch_and_update", "duration"},
+		Help: "Measures the time taken to fetch and update health checks",
+	},
+}
 
 type checkIDSet map[types.CheckID]bool
 
@@ -427,11 +450,10 @@ func (c *CheckRunner) ServiceExists(serviceID structs.ServiceID) bool {
 // to push an update to the catalog.
 func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string) {
 	checkHash := checkID.ID
-	check, ok := c.checks.LoadAndDelete(checkHash)
+	check, ok := c.checks.Load(checkHash)
 	if !ok {
 		return
 	}
-	defer func() { c.checks.Store(checkHash, check) }()
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {

@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2017, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -14,15 +14,34 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armon/go-metrics"
+	prommetrics "github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/go-hclog"
-	"github.com/prometheus/client_golang/prometheus"
+	promclient "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const LeaderKey = "leader"
+const (
+	// LeaderKey is the KV key used for leader election in agentless mode and
+	// for the session lock in leader mode.
+	LeaderKey = "leader"
+
+	// maxRetriesEntDetection is the maximum number of attempts to detect
+	// if we're running in Enterprise Consul by checking for the presence of "+ent"
+	// in the version string.
+	maxRetriesEntDetection = 3
+)
+
+const (
+	// TTL used for Consul sessions created by ESM instances
+	sessionTTL = "30s"
+
+	// Number of times to retry monitoring a session before giving up
+	sessionMonitorRetries = 6
+)
 
 var (
 	// agentTTL controls the TTL of the "agent alive" check, and also
@@ -45,6 +64,24 @@ var (
 	// Specifies the maximum transaction size for kv store ops
 	maximumTransactionSize = 64
 )
+
+var AgentGauges = []prommetrics.GaugeDefinition{
+	{
+		Name: []string{"esm", "agent", "isLeader"},
+		Help: "Indicates if this ESM instance is the current cluster leader (1 for leader, 0 for follower)",
+	},
+}
+
+var MonitoredGauges = []prommetrics.GaugeDefinition{
+	{
+		Name: []string{"esm", "nodes", "monitored"},
+		Help: "Number of external nodes being monitored by this ESM instance",
+	},
+	{
+		Name: []string{"esm", "services", "monitored"},
+		Help: "Number of external services being monitored by this ESM instance",
+	},
+}
 
 type lastKnownStatus struct {
 	status string
@@ -76,6 +113,51 @@ type Agent struct {
 	knownNodeStatusesLock sync.Mutex
 
 	metrics *lib.MetricsConfig
+
+	// namespaceWildcard is the namespace query value to use for health checks.
+	// Set to "*" for Enterprise Consul (multi-namespace support) or "" for OSS.
+	namespaceWildcard         string
+	namespaceWildcardDetected bool
+	namespaceWildcardMu       sync.Mutex
+}
+
+// Can add counter and histogram definitions here if needed
+func getPrometheusDefs(config *Config) ([]prommetrics.GaugeDefinition, []prommetrics.SummaryDefinition) {
+	var gauges = [][]prommetrics.GaugeDefinition{
+		AgentGauges,
+		MonitoredGauges,
+		LeaderGauges,
+	}
+
+	// Flatten definitions and apply prefix
+	var gaugeDefs []prommetrics.GaugeDefinition
+	for _, g := range gauges {
+		var withPrefix []prommetrics.GaugeDefinition
+		for _, gauge := range g {
+			if config.Telemetry.MetricsPrefix != "" {
+				gauge.Name = append([]string{config.Telemetry.MetricsPrefix}, gauge.Name...)
+			}
+			withPrefix = append(withPrefix, gauge)
+		}
+		gaugeDefs = append(gaugeDefs, withPrefix...)
+	}
+
+	var summaries = [][]prommetrics.SummaryDefinition{
+		ChecksSummary,
+	}
+	var summaryDefs []prommetrics.SummaryDefinition
+	for _, s := range summaries {
+		var withPrefix []prommetrics.SummaryDefinition
+		for _, summary := range s {
+			if config.Telemetry.MetricsPrefix != "" {
+				summary.Name = append([]string{config.Telemetry.MetricsPrefix}, summary.Name...)
+			}
+			withPrefix = append(withPrefix, summary)
+		}
+		summaryDefs = append(summaryDefs, withPrefix...)
+	}
+
+	return gaugeDefs, summaryDefs
 }
 
 func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
@@ -85,6 +167,9 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 		return nil, err
 	}
 
+	gauges, summaries := getPrometheusDefs(config)
+	config.Telemetry.PrometheusOpts.GaugeDefinitions = gauges
+	config.Telemetry.PrometheusOpts.SummaryDefinitions = summaries
 	// Never used locally. I think we keep the reference to avoid GC.
 	metricsConf, err := lib.InitTelemetry(config.Telemetry, logger)
 	if err != nil {
@@ -116,6 +201,8 @@ func NewAgent(config *Config, logger hclog.Logger) (*Agent, error) {
 
 		time.Sleep(retryTime)
 	}
+
+	metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
 
 	return &agent, nil
 }
@@ -394,7 +481,7 @@ func (a *Agent) runHTTP() {
 			}),
 			ErrorHandling: promhttp.ContinueOnError,
 		}
-		mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOptions))
+		mux.Handle("/metrics", promhttp.HandlerFor(promclient.DefaultGatherer, handlerOptions))
 	}
 
 	if a.config.EnableDebug {
@@ -505,19 +592,16 @@ LOCK_WAIT:
 	if lock == nil {
 		var err error
 		opts := &api.LockOptions{
-			Key:         a.config.KVPath + sessionKey,
-			SessionName: sessionKey,
+			Key:            a.config.KVPath + sessionKey,
+			MonitorRetries: sessionMonitorRetries,
+			SessionOpts: &api.SessionEntry{
+				Node:       a.agentlessNodeID(),
+				Name:       sessionKey,
+				TTL:        sessionTTL,
+				NodeChecks: []string{a.agentlessCheckID()},
+			},
 		}
 		lock, err = a.client.LockOpts(opts)
-		opts.SessionOpts = &api.SessionEntry{
-			Node:       a.agentlessNodeID(),
-			ID:         a.agentlessNodeID(),
-			Name:       opts.SessionName,
-			TTL:        opts.SessionTTL,
-			LockDelay:  opts.LockDelay,
-			NodeChecks: []string{a.agentlessCheckID()},
-			Checks:     []string{a.agentlessCheckID()},
-		}
 
 		if err != nil {
 			a.logger.Error("Agent: Error trying to create session lock (will retry)", "error", err)
@@ -532,17 +616,12 @@ LOCK_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Agent: Unable to use session lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
-			time.Sleep(retryTime)
-			goto LOCK_WAIT
 		} else {
 			a.logger.Error("Agent: Error trying to get session lock (will retry)", "error", err)
-			time.Sleep(retryTime)
-			if err != nil {
-				a.logger.Error("Agent: nested error trying to get session lock (will retry)", "error", err)
-			}
-
-			goto LOCK_WAIT
 		}
+		lock = nil
+		time.Sleep(retryTime)
+		goto LOCK_WAIT
 	}
 	if lockCh == nil {
 		// This is how the Lock() call lets us know that it quit because
@@ -555,6 +634,8 @@ LOCK_WAIT:
 		select {
 		case <-lockCh:
 			a.logger.Warn("Agent: Lost the lock")
+			lock.Unlock()
+			lock = nil
 			goto LOCK_WAIT
 		case <-a.shutdownCh:
 			return
@@ -708,6 +789,12 @@ func (a *Agent) kvNodeListPath() string {
 	return a.config.KVPath + "agents/"
 }
 
+func (a *Agent) recordHealthCheckMetrics(start time.Time, nodes map[string]bool, checks api.HealthChecks) {
+	metrics.MeasureSince([]string{"esm", "checks", "fetch_and_update", "duration"}, start)
+	a.updateCheckMetrics(checks)
+	a.updateServiceMetrics(nodes, checks)
+}
+
 // watchHealthChecks does a blocking query to the Consul api to get
 // all health checks on nodes marked with the external node metadata
 // identifier and sends any updates through the given updateCh.
@@ -748,8 +835,11 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 			// Sleep here to limit how much load we put on the Consul servers.
 		}
 		if len(ourNodes) == 0 {
+			metrics.SetGauge([]string{"esm", "nodes", "monitored"}, 0)
 			continue
 		}
+
+		start := time.Now()
 
 		ourChecks, lastIndex := a.getHealthChecks(waitIndex, ourNodes)
 		if len(ourChecks) == 0 {
@@ -758,6 +848,8 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 		waitIndex = lastIndex
 		a.checkRunner.UpdateChecks(ourChecks)
+
+		a.recordHealthCheckMetrics(start, ourNodes, ourChecks)
 
 		if checkCount != len(ourChecks) {
 			checkCount = len(ourChecks)
@@ -768,16 +860,11 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 }
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
-	namespaces, err := namespacesList(a.client, a.config)
-	if err != nil {
-		a.logger.Warn("Error getting namespaces, falling back to default namespace", "error", err)
-		namespaces = []*api.Namespace{{Name: ""}}
-	}
-
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
+		Namespace: a.getNamespaceWildcard(),
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
@@ -793,28 +880,86 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	}()
 
 	ourChecks := make(api.HealthChecks, 0)
-	var lastIndex uint64
-	for _, ns := range namespaces {
-		opts.Namespace = ns.Name
-		if ns.Name != "" { // ns.Name only set on enterprise version
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		checks, meta, err := a.client.Health().State(api.HealthAny, opts)
-		if err != nil {
-			a.logger.Warn("Error querying for health check info", "error", err)
-			continue
-		}
-		lastIndex = meta.LastIndex
+	a.logger.Debug("checking for services in all namespaces")
+	checks, meta, err := a.client.Health().State(api.HealthAny, opts)
+	if err != nil {
+		a.logger.Warn("Error querying for health check info", "error", err)
+		return ourChecks, waitIndex
+	}
 
-		for _, c := range checks {
-			if nodes[c.Node] && c.CheckID != externalCheckName {
-				ourChecks = append(ourChecks, c)
-				a.logger.Info("found check", "name", c.Name)
-			}
+	for _, c := range checks {
+		if nodes[c.Node] && c.CheckID != externalCheckName {
+			ourChecks = append(ourChecks, c)
+			a.logger.Debug("found check", "name", c.Name)
 		}
 	}
 
-	return ourChecks, lastIndex
+	return ourChecks, meta.LastIndex
+}
+
+// getNamespaceWildcard returns the namespace query value for health check queries.
+// Returns "*" for Enterprise Consul (wildcard across all namespaces) or "" for OSS/CE.
+// Detection is done by checking the Consul version string from /v1/agent/self —
+// Enterprise builds include "+ent" in the version (e.g. "1.18.0+ent").
+// The result is cached after a successful detection. If detection fails,
+// it returns "" but will retry on the next call.
+func (a *Agent) getNamespaceWildcard() string {
+	// if already detected, return cached value without locking.
+	if a.namespaceWildcardDetected {
+		return a.namespaceWildcard
+	}
+
+	a.namespaceWildcardMu.Lock()
+	defer a.namespaceWildcardMu.Unlock()
+
+	// Double-check after acquiring the lock, in case another goroutine
+	// completed detection while we were waiting here.
+	if a.namespaceWildcardDetected {
+		return a.namespaceWildcard
+	}
+
+	var agentInfo map[string]map[string]interface{}
+	var err error
+
+	for attempt := 1; attempt <= maxRetriesEntDetection; attempt++ {
+		agentInfo, err = a.client.Agent().Self()
+		if err == nil {
+			break
+		}
+		a.logger.Error("Error fetching agent info for enterprise detection, will retry",
+			"attempt", attempt, "max_retries", maxRetriesEntDetection, "error", err)
+		if attempt < maxRetriesEntDetection {
+			time.Sleep(retryTime)
+		}
+	}
+
+	if err != nil {
+		a.logger.Error("Failed to detect Consul edition after retries, defaulting to CE behavior (will retry on next call)", "error", err)
+		return ""
+	}
+
+	versionRaw, ok := agentInfo["Config"]["Version"]
+	if !ok {
+		a.logger.Warn("Could not determine Consul version from agent info, defaulting to CE behavior (will retry on next call)")
+		return ""
+	}
+
+	consulVersion, ok := versionRaw.(string)
+	if !ok {
+		a.logger.Warn("Unexpected Consul version format, defaulting to CE behavior (will retry on next call)")
+		return ""
+	}
+
+	if strings.Contains(consulVersion, "+ent") {
+		a.namespaceWildcard = "*"
+		a.logger.Debug("Consul Enterprise detected, using wildcard namespace for health checks", "version", consulVersion)
+	} else {
+		a.namespaceWildcard = ""
+		a.logger.Debug("Consul CE detected, using default namespace for health checks", "version", consulVersion)
+	}
+
+	a.namespaceWildcardDetected = true
+	return a.namespaceWildcard
 }
 
 // Check last visible node status.
@@ -958,4 +1103,32 @@ func containsService(serviceID string, services []*api.CatalogService) bool {
 		}
 	}
 	return false
+}
+
+// Add this new method to the Agent struct
+func (a *Agent) updateCheckMetrics(checks api.HealthChecks) {
+	healthyCount := 0
+
+	for _, check := range checks {
+		if check.Status == api.HealthPassing {
+			healthyCount++
+		}
+	}
+
+	metrics.SetGauge([]string{"esm", "checks", "count"}, float32(len(checks)))
+	metrics.SetGauge([]string{"esm", "checks", "healthy"}, float32(healthyCount))
+	metrics.SetGauge([]string{"esm", "checks", "unhealthy"}, float32(len(checks)-healthyCount))
+}
+
+func (a *Agent) updateServiceMetrics(nodes map[string]bool, checks api.HealthChecks) {
+	monitoredServices := make(map[string]struct{})
+	for _, check := range checks {
+		if check.ServiceID != "" {
+			serviceKey := check.Node + ":" + check.ServiceID
+			monitoredServices[serviceKey] = struct{}{}
+		}
+	}
+
+	metrics.SetGauge([]string{"esm", "nodes", "monitored"}, float32(len(nodes)))
+	metrics.SetGauge([]string{"esm", "services", "monitored"}, float32(len(monitoredServices)))
 }

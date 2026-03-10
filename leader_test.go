@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2017, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
+	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -79,7 +81,7 @@ func (a *Agent) verifyUpdates(t *testing.T, expectedHealthNodes, expectedProbeNo
 		a.checkRunner.checks.Range(
 			func(_, _ any) bool { checksLen++; return true })
 		if len(ourChecks) != checksLen {
-			r.Fatalf("checks do not match: %+v, %+v", ourChecks, a.checkRunner.checks)
+			r.Fatalf("checks do not match: expected %d checks, got %d", len(ourChecks), checksLen)
 		}
 	})
 }
@@ -173,7 +175,6 @@ func TestLeader_rebalanceHealthWatches(t *testing.T) {
 
 func TestLeader_divideCoordinates(t *testing.T) {
 	t.Parallel()
-
 	s, err := NewTestServer(t)
 	if err != nil {
 		t.Fatal(err)
@@ -433,62 +434,9 @@ const namespacesJSON = `[
 ]`
 
 const healthserviceJSON = `[
-  { "Service": {"ID": "one", "Namespace": "foo" } },
+  { "Service": {"ID": "one", "Namespace": "default" } },
   { "Service": {"ID": "two", "Namespace": "default" } }
 ]`
-
-func Test_namespacesList(t *testing.T) {
-	testcase := ""
-	ts := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			switch testcase {
-			case "ent":
-				fmt.Fprint(w, namespacesJSON)
-			case "oss":
-				http.NotFound(w, r)
-			case "err":
-				http.Error(w, "use a french-press", http.StatusTeapot)
-			default:
-				t.Fatal("unknown test case:", testcase)
-			}
-		}))
-	defer ts.Close()
-
-	// client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
-	client, err := api.NewClient(&api.Config{Address: ts.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	config := &Config{Partition: "default"}
-	// simulate enterprise consul
-	testcase = "ent"
-	nss, err := namespacesList(client, config)
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if len(nss) != 2 || nss[0].Name != "default" || nss[1].Name != "foo" {
-		t.Fatalf("bad value for namespace names: %#v\n", nss)
-	}
-	// simulate oss consul
-	testcase = "oss"
-	nss, err = namespacesList(client, config)
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if len(nss) != 1 || nss[0].Name != "" {
-		t.Fatalf("bad value for namespace names: %#v\n", len(nss))
-	}
-	// simulate other random error
-	testcase = "err"
-	nss, err = namespacesList(client, config)
-	if err == nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if nss != nil {
-		t.Fatalf("bad value for namespace names: %#v\n", len(nss))
-	}
-}
 
 func Test_getServiceInstances(t *testing.T) {
 	partitionQueryParamKey := "partition"
@@ -540,16 +488,14 @@ func Test_getServiceInstances(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// 4 because test data has 2 namespaces each with 2 services
-			if len(serviceInstances) != 4 {
+			// 2 because test data has 2 services in default namespace only
+			if len(serviceInstances) != 2 {
 				t.Fatal("Wrong number of services", len(serviceInstances))
 			}
 			for _, si := range serviceInstances {
 				sv := si.Service
 				switch {
-				case sv.ID == "one" && sv.Namespace == "foo":
 				case sv.ID == "one" && sv.Namespace == "default":
-				case sv.ID == "two" && sv.Namespace == "foo":
 				case sv.ID == "two" && sv.Namespace == "default":
 				default:
 					t.Fatalf("Unknown service: %#v\n", si.Service)
@@ -557,4 +503,73 @@ func Test_getServiceInstances(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLeader_isLeaderMetric(t *testing.T) {
+	s, err := NewTestServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:            "consul-esm",
+		Level:           hclog.LevelFromString("INFO"),
+		IncludeLocation: true,
+		Output:          os.Stdout,
+	})
+
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf.HTTPAddr = s.HTTPAddr
+	conf.InstanceID = "test-leader-agent"
+	conf.KVPath = "consul-esm/"
+	conf.CoordinateUpdateInterval = 200 * time.Millisecond
+	conf.Telemetry.FilterDefault = true
+
+	agent, err := NewAgent(conf, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Shutdown()
+
+	sink := setupMetricsSink()
+
+	go func() {
+		if err := agent.Run(); err != nil {
+			panic(err)
+		}
+	}()
+	<-agent.ready
+
+	leaderLoopDone := make(chan struct{})
+	go func() {
+		defer close(leaderLoopDone)
+		agent.runLeaderLoop()
+	}()
+
+	// Wait for leadership to be obtained and the metric to be set
+	time.Sleep(3 * time.Second)
+
+	retry.RunWith(&retry.Timer{Timeout: 10 * time.Second, Wait: 500 * time.Millisecond}, t, func(r *retry.R) {
+		intervals := sink.Data()
+		if len(intervals) == 0 {
+			r.Fatal("Expected at least one metrics interval")
+		}
+
+		isLeaderKey := "consul-esm.esm.agent.isLeader"
+		for i, intv := range intervals {
+			if metric, exists := intv.Gauges[isLeaderKey]; exists {
+				r.Logf("Found isLeader metric in interval %d with value %f", i, metric.Value)
+				if metric.Value != 1 {
+					r.Fatalf("isLeader metric value is %f, expected 1", metric.Value)
+				}
+				return
+			}
+		}
+
+		r.Fatalf("did not find the key %q in any of the %d intervals", isLeaderKey, len(intervals))
+	})
 }

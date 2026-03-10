@@ -1,3 +1,13 @@
+## v0.9.1 (Sep 19, 2025)
+
+IMPROVEMENTS:
+Enhance ESM telemetry to include functional activity metrics [[GH-327](https://github.com/hashicorp/consul-esm/pull/327)]
+
+## v0.9.0 (May 9, 2025)
+
+IMPROVEMENTS:
+Enhance service deregistration logic for agentless mode [[GH-311](https://github.com/hashicorp/consul-esm/pull/311)]
+
 ## v0.8.0 (Sep 24, 2024)
 
 IMPROVEMENTS:

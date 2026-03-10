@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2017, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -124,7 +124,11 @@ log_json = true
 			BlockedPrefixes:                    []string{"bad", "worse"},
 			MetricsPrefix:                      "test",
 			PrometheusOpts: prometheus.PrometheusOpts{
-				Expiration: 5 * time.Hour,
+				Expiration:         5 * time.Hour,
+				GaugeDefinitions:   []prometheus.GaugeDefinition(nil),
+				SummaryDefinitions: []prometheus.SummaryDefinition(nil),
+				CounterDefinitions: []prometheus.CounterDefinition(nil),
+				Name:               "test",
 			},
 			StatsdAddr:   "example.io:8888",
 			StatsiteAddr: "5.6.7.8",

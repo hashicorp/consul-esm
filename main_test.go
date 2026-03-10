@@ -1,12 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2017, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package main
 
 import (
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"os"
 	"reflect"
 	"strings"

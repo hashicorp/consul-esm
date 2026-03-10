@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2017, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -10,12 +10,21 @@ import (
 	"sort"
 	"time"
 
+	"github.com/armon/go-metrics"
+	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul/api"
 )
 
 type NodeWatchList struct {
 	Nodes  []string
 	Probes []string
+}
+
+var LeaderGauges = []prometheus.GaugeDefinition{
+	{
+		Name: []string{"esm", "agents", "healthy"},
+		Help: "Total number of healthy ESM agents in the cluster",
+	},
 }
 
 func (a *Agent) runAgentlessLeaderLoop() {
@@ -44,6 +53,7 @@ func (a *Agent) runLeaderLoop() {
 		if lock != nil {
 			lock.Unlock()
 		}
+		metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
 	}()
 
 LEADER_WAIT:
@@ -52,24 +62,22 @@ LEADER_WAIT:
 		return
 	default:
 	}
-
 	// Wait to get the leader lock before running snapshots.
 	a.logger.Info("Trying to obtain leadership...")
 	if lock == nil {
 		var err error
 		if a.isAgentLess() {
 			opts := &api.LockOptions{
-				Key: a.config.KVPath + LeaderKey,
+				Key:            a.config.KVPath + LeaderKey,
+				MonitorRetries: sessionMonitorRetries,
+				SessionOpts: &api.SessionEntry{
+					Node:       a.agentlessNodeID(),
+					Name:       "consul-esm leader lock",
+					TTL:        sessionTTL,
+					NodeChecks: []string{a.agentlessCheckID()},
+				},
 			}
 			lock, err = a.client.LockOpts(opts)
-			opts.SessionOpts = &api.SessionEntry{
-				Node:       a.agentlessNodeID(),
-				Name:       opts.SessionName,
-				TTL:        opts.SessionTTL,
-				LockDelay:  opts.LockDelay,
-				NodeChecks: []string{a.agentlessCheckID()},
-				Checks:     []string{a.agentlessCheckID()},
-			}
 
 		} else {
 			lock, err = a.client.LockKey(a.config.KVPath + LeaderKey)
@@ -87,13 +95,12 @@ LEADER_WAIT:
 		if err == api.ErrLockHeld {
 			a.logger.Error("Unable to use leader lock that was held previously and presumed lost, giving up the lock (will retry)", "error", err)
 			lock.Unlock()
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
 		} else {
 			a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
-			time.Sleep(retryTime)
-			goto LEADER_WAIT
 		}
+		lock = nil
+		time.Sleep(retryTime)
+		goto LEADER_WAIT
 	}
 	if leaderCh == nil {
 		// This is how the Lock() call lets us know that it quit because
@@ -102,6 +109,8 @@ LEADER_WAIT:
 	}
 	a.logger.Info("Obtained leadership")
 
+	metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 1)
+
 	// Start a goroutine for computing the node watches.
 	go a.computeWatchedNodes(leaderCh)
 
@@ -109,6 +118,9 @@ LEADER_WAIT:
 		select {
 		case <-leaderCh:
 			a.logger.Warn("Lost leadership")
+			metrics.SetGauge([]string{"esm", "agent", "isLeader"}, 0)
+			lock.Unlock()
+			lock = nil
 			goto LEADER_WAIT
 		case <-a.shutdownCh:
 			return
@@ -164,6 +176,8 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	externalNodes := <-nodeCh
 	healthyInstances := <-instanceCh
 
+	metrics.SetGauge([]string{"esm", "agents", "healthy"}, float32(len(healthyInstances)))
+
 	var prevHealthNodes map[string][]string
 	var prevPingNodes map[string][]string
 
@@ -177,6 +191,7 @@ WATCH_NODES_WAIT:
 			return
 		case externalNodes = <-nodeCh:
 		case healthyInstances = <-instanceCh:
+			metrics.SetGauge([]string{"esm", "agents", "healthy"}, float32(len(healthyInstances)))
 		case <-retryTimer:
 		}
 
@@ -326,31 +341,19 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 }
 
 // getServiceInstances retuns a list of services with a 'passing' (healthy) state.
-// It loops over all available namespaces to get instances from each.
+// It checks for esm service instances from default namespace.
 func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry, error) {
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
 
-	namespaces, err := namespacesList(a.client, a.config)
+	a.logger.Info("checking default namespace for healthy ESM services")
+
+	healthyInstances, meta, err := a.client.Health().Service(a.config.Service,
+		a.config.Tag, true, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, ns := range namespaces {
-		if ns.Name != "" {
-			a.logger.Info("checking namespaces for services", "name", ns.Name)
-		}
-		opts.Namespace = ns.Name
-		healthy, m, err := a.client.Health().Service(a.config.Service,
-			a.config.Tag, true, opts)
-		if err != nil {
-			return nil, err
-		}
-		meta = m // keep last good meta
-		for _, h := range healthy {
-			healthyInstances = append(healthyInstances, h)
-		}
-	}
 	opts.WaitIndex = meta.LastIndex
 
 	sort.Slice(healthyInstances, func(a, b int) bool {
@@ -358,19 +361,4 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 	})
 
 	return healthyInstances, nil
-}
-
-// namespacesList returns a list of all accessable namespaces.
-// Returns namespace "" (none) if none found for consul OSS compatibility.
-func namespacesList(client *api.Client, config *Config) ([]*api.Namespace, error) {
-	opts := &api.QueryOptions{
-		Partition: config.Partition,
-	}
-	namespaces, _, err := client.Namespaces().List(opts)
-	if e, ok := err.(api.StatusError); ok && e.Code == 404 {
-		namespaces = []*api.Namespace{{Name: ""}}
-	} else if err != nil {
-		return nil, err
-	}
-	return namespaces, nil
 }
