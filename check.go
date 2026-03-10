@@ -28,9 +28,6 @@ const externalCheckName = "externalNodeHealth"
 // defaultInterval is the check interval to use if one is not set.
 var defaultInterval = 30 * time.Second
 
-// TODO: Evaluate the defaultBatchFlushInterval based on the feedback/observations
-// defaultBatchFlushInterval is the default interval for flushing batched updates.
-var defaultBatchFlushInterval = 500 * time.Millisecond
 
 // maxTxnOps is the maximum number of operations allowed in a single transaction.
 // Consul supports up to 64 operations per transaction as documented in the API docs
@@ -631,7 +628,7 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 		if failedNodes[update.check.Node] {
 			if update.oldStatus != "" || update.oldOutput != "" {
 				checkHash := hashCheck(update.check)
-				c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
+				c.revertCheckState(checkHash, update.oldStatus, update.oldOutput)
 			}
 		}
 	}
@@ -823,7 +820,7 @@ func (c *CheckRunner) retryFailedBatchOperations(updates []*pendingCheckUpdate, 
 			c.logger.Warn("retry still failed, reverting local state", "node", update.check.Node, "checkID", checkID, "error", retryResp.Errors[0].What)
 			// Revert local state to original so next check execution can retry
 			checkHash := hashCheck(update.check)
-			c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
+			c.revertCheckState(checkHash, update.oldStatus, update.oldOutput)
 			continue
 		}
 
@@ -902,13 +899,13 @@ func (c *CheckRunner) revertAllUpdates(updates []*pendingCheckUpdate) {
 			continue
 		}
 		checkHash := hashCheck(update.check)
-		c.revertCheckState(update.check.Node, checkHash, update.oldStatus, update.oldOutput)
+		c.revertCheckState(checkHash, update.oldStatus, update.oldOutput)
 	}
 }
 
 // revertCheckState reverts the local check state to previous values after a failed batch update.
 // This ensures the next check execution will detect the difference and retry the update.
-func (c *CheckRunner) revertCheckState(node string, checkID types.CheckID, oldStatus, oldOutput string) {
+func (c *CheckRunner) revertCheckState(checkID types.CheckID, oldStatus, oldOutput string) {
 	checkHash := checkID
 	check, ok := c.checks.Load(checkHash)
 	if !ok {

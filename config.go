@@ -24,6 +24,10 @@ import (
 const (
 	PingTypeUDP    = "udp"
 	PingTypeSocket = "socket"
+
+	// TODO: Evaluate the defaultBatchFlushInterval based on the feedback/observations
+	// defaultBatchFlushInterval is the default interval for flushing batched updates.
+	defaultBatchFlushInterval = 500 * time.Millisecond
 )
 
 type Config struct {
@@ -134,7 +138,7 @@ func DefaultConfig() (*Config, error) {
 		Interval:                  10 * time.Second,
 		DeregisterAfter:           72 * time.Hour,
 		CheckUpdateInterval:       5 * time.Minute,
-		BatchFlushInterval:        500 * time.Millisecond,
+		BatchFlushInterval:        defaultBatchFlushInterval,
 		CoordinateUpdateInterval:  10 * time.Second,
 		NodeHealthRefreshInterval: 1 * time.Hour,
 		NodeReconnectTimeout:      72 * time.Hour,
