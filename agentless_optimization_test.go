@@ -259,7 +259,7 @@ func TestCheckRunner_StateReversion(t *testing.T) {
 		}
 
 		// Revert to original state
-		runner.revertCheckState("test-node", checkHash, "passing", "all good")
+		runner.revertCheckState(checkHash, "passing", "all good")
 
 		// Verify state was reverted
 		revertedCheck, ok := runner.checks.Load(checkHash)
@@ -278,7 +278,7 @@ func TestCheckRunner_StateReversion(t *testing.T) {
 	// Test 3: Verify revertCheckState handles missing checks gracefully
 	t.Run("revertCheckState handles missing checks", func(t *testing.T) {
 		// This should not panic or error
-		runner.revertCheckState("nonexistent-node", "nonexistent/check", "passing", "test")
+		runner.revertCheckState("nonexistent/check", "passing", "test")
 		t.Log("Missing check handled gracefully during reversion")
 	})
 
@@ -295,7 +295,7 @@ func TestCheckRunner_StateReversion(t *testing.T) {
 		runner.checks.Store(checkHash, check)
 
 		// Batch fails, state reverted
-		runner.revertCheckState("test-node", checkHash, "passing", "all good")
+		runner.revertCheckState(checkHash, "passing", "all good")
 
 		// Verify: next check execution will see difference
 		revertedCheck, _ := runner.checks.Load(checkHash)
