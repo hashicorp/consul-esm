@@ -602,30 +602,35 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 	c.logger.Debug("Processing batched check updates", "totalUpdates", len(updates), "agentless", c.isAgentless)
 	defer metrics.MeasureSince([]string{"check", "batch", "flush"}, time.Now())
 
-	// First, fetch current state for all nodes involved
-	nodeChecks := make(map[string]map[string]*api.HealthCheck) // node -> checkID -> check
-	failedNodes := make(map[string]bool)
+	// First, fetch current state for all nodes involved.
+	// Key by node+namespace since Health().Node() is namespace-scoped and the
+	// same node can have checks in different namespaces.
+	type nodeNS struct{ node, namespace string }
+	nodeChecks := make(map[nodeNS]map[string]*api.HealthCheck)
+	failedKeys := make(map[nodeNS]bool)
 	for _, update := range updates {
-		if _, exists := nodeChecks[update.check.Node]; !exists {
+		key := nodeNS{update.check.Node, update.check.Namespace}
+		if _, exists := nodeChecks[key]; !exists {
 			checks, _, err := c.client.Health().Node(update.check.Node, &api.QueryOptions{
 				Namespace:         update.check.Namespace,
 				RequireConsistent: true,
 			})
 			if err != nil {
-				c.logger.Warn("error retrieving existing node entry for batch, reverting updates for node", "error", err, "node", update.check.Node)
-				failedNodes[update.check.Node] = true
+				c.logger.Warn("error retrieving existing node entry for batch, reverting updates for node", "error", err, "node", update.check.Node, "namespace", update.check.Namespace)
+				failedKeys[key] = true
 				continue
 			}
-			nodeChecks[update.check.Node] = make(map[string]*api.HealthCheck)
+			nodeChecks[key] = make(map[string]*api.HealthCheck)
 			for _, check := range checks {
-				nodeChecks[update.check.Node][check.CheckID] = check
+				nodeChecks[key][check.CheckID] = check
 			}
 		}
 	}
 
-	// Revert local state for all updates belonging to nodes we couldn't fetch
+	// Revert local state for all updates belonging to node+namespace pairs we couldn't fetch
 	for _, update := range updates {
-		if failedNodes[update.check.Node] {
+		key := nodeNS{update.check.Node, update.check.Namespace}
+		if failedKeys[key] {
 			if update.oldStatus != "" || update.oldOutput != "" {
 				checkHash := hashCheck(update.check)
 				c.revertCheckState(checkHash, update.oldStatus, update.oldOutput)
@@ -639,7 +644,8 @@ func (c *CheckRunner) processBatchedUpdates(updates []*pendingCheckUpdate) {
 
 	for _, update := range updates {
 		checkID := strings.TrimPrefix(string(update.check.CheckID), update.check.Node+"/")
-		nodeMap, nodeExists := nodeChecks[update.check.Node]
+		key := nodeNS{update.check.Node, update.check.Namespace}
+		nodeMap, nodeExists := nodeChecks[key]
 		if !nodeExists {
 			continue
 		}
