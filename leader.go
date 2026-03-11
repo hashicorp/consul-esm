@@ -27,24 +27,6 @@ var LeaderGauges = []prometheus.GaugeDefinition{
 	},
 }
 
-func (a *Agent) runAgentlessLeaderLoop() {
-	opts := &api.WriteOptions{
-		Partition: a.PartitionOrEmpty(),
-	}
-
-	lockKVPair := &api.KVPair{
-		Key: a.config.KVPath + LeaderKey,
-	}
-
-	_, err := a.client.KV().Put(lockKVPair, opts)
-	if err != nil {
-		a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
-		time.Sleep(retryTime)
-		return
-	}
-
-}
-
 func (a *Agent) runLeaderLoop() {
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
