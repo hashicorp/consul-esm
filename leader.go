@@ -328,7 +328,7 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
 
-	a.logger.Info("checking default namespace for healthy ESM services")
+	a.logger.Debug("checking default namespace for healthy ESM services")
 
 	healthyInstances, meta, err := a.client.Health().Service(a.config.Service,
 		a.config.Tag, true, opts)
