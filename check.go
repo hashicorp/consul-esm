@@ -28,7 +28,6 @@ const externalCheckName = "externalNodeHealth"
 // defaultInterval is the check interval to use if one is not set.
 var defaultInterval = 30 * time.Second
 
-
 // maxTxnOps is the maximum number of operations allowed in a single transaction.
 // Consul supports up to 64 operations per transaction as documented in the API docs
 // https://developer.hashicorp.com/consul/api-docs/txn .
@@ -386,7 +385,7 @@ func (c *CheckRunner) UpdateChecks(checks api.HealthChecks) {
 		check := _check.(*esmHealthCheck)
 		checkHash := hashCheck(&check.HealthCheck)
 		if _, ok := found[checkHash]; !ok {
-			c.logger.Debug("Deleting check %q", "checkHash", checkHash)
+			c.logger.Debug("Deleting check", "checkHash", checkHash)
 			c.checks.Delete(checkHash)
 			c.checksCritical.Delete(checkHash)
 
