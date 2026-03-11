@@ -215,7 +215,7 @@ WATCH_NODES_WAIT:
 			ops = append(ops, op)
 
 			// Flush any ops if we're nearing a transaction limit
-			if len(ops) >= maximumTransactionSize {
+			if len(ops) >= maxTxnOps {
 				if !a.commitOps(ops) {
 					retryTimer = time.After(retryTime)
 					goto WATCH_NODES_WAIT

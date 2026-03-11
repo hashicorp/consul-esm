@@ -67,9 +67,6 @@ var (
 
 	// Specifies a minimum interval that check's can run on
 	minimumInterval = 1 * time.Second
-
-	// Specifies the maximum transaction size for kv store ops
-	maximumTransactionSize = 64
 )
 
 var AgentGauges = []prommetrics.GaugeDefinition{
