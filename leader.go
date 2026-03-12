@@ -27,24 +27,6 @@ var LeaderGauges = []prometheus.GaugeDefinition{
 	},
 }
 
-func (a *Agent) runAgentlessLeaderLoop() {
-	opts := &api.WriteOptions{
-		Partition: a.PartitionOrEmpty(),
-	}
-
-	lockKVPair := &api.KVPair{
-		Key: a.config.KVPath + LeaderKey,
-	}
-
-	_, err := a.client.KV().Put(lockKVPair, opts)
-	if err != nil {
-		a.logger.Error("Error trying to get leader lock (will retry)", "error", err)
-		time.Sleep(retryTime)
-		return
-	}
-
-}
-
 func (a *Agent) runLeaderLoop() {
 	// Arrange to give up any held lock any time we exit the goroutine so
 	// another agent can pick up without delay.
@@ -233,7 +215,7 @@ WATCH_NODES_WAIT:
 			ops = append(ops, op)
 
 			// Flush any ops if we're nearing a transaction limit
-			if len(ops) >= maximumTransactionSize {
+			if len(ops) >= maxTxnOps {
 				if !a.commitOps(ops) {
 					retryTimer = time.After(retryTime)
 					goto WATCH_NODES_WAIT
@@ -346,7 +328,7 @@ func (a *Agent) getServiceInstances(opts *api.QueryOptions) ([]*api.ServiceEntry
 	var healthyInstances []*api.ServiceEntry
 	var meta *api.QueryMeta
 
-	a.logger.Info("checking default namespace for healthy ESM services")
+	a.logger.Debug("checking default namespace for healthy ESM services")
 
 	healthyInstances, meta, err := a.client.Health().Service(a.config.Service,
 		a.config.Tag, true, opts)

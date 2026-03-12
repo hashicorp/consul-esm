@@ -33,13 +33,20 @@ const (
 	// if we're running in Enterprise Consul by checking for the presence of "+ent"
 	// in the version string.
 	maxRetriesEntDetection = 3
-)
 
-const (
-	// TTL used for Consul sessions created by ESM instances
+	// sessionTTL is the TTL for Consul sessions created by ESM instances.
+	// The session is automatically invalidated by Consul if it is not renewed
+	// within this period. Must be longer than the total monitor window
+	// (sessionMonitorRetries × DefaultMonitorRetryTime) to avoid split-brain,
+	// where a new leader acquires the lock while the old session is still valid.
 	sessionTTL = "30s"
 
-	// Number of times to retry monitoring a session before giving up
+	// sessionMonitorRetries is the number of consecutive failed attempts to
+	// contact the Consul servers before the lock is considered lost and the
+	// session is released. Combined with the default MonitorRetryTime of 2s,
+	// this gives a monitor window of 6 × 2s = 12s — safely under the 30s
+	// session TTL, ensuring the session expires before a new leader can
+	// acquire the lock if Consul is truly unreachable.
 	sessionMonitorRetries = 6
 )
 
@@ -60,9 +67,6 @@ var (
 
 	// Specifies a minimum interval that check's can run on
 	minimumInterval = 1 * time.Second
-
-	// Specifies the maximum transaction size for kv store ops
-	maximumTransactionSize = 64
 )
 
 var AgentGauges = []prommetrics.GaugeDefinition{
@@ -386,7 +390,7 @@ func (a *Agent) registerCatalog() error {
 		return err
 	}
 
-	if containsService(a.serviceID(), services) && false {
+	if containsService(a.serviceID(), services) {
 		return &alreadyExistsError{a.serviceID()}
 	}
 
@@ -747,7 +751,8 @@ func (a *Agent) watchNodeList() {
 
 		var nodeList NodeWatchList
 		if err := json.Unmarshal(kv.Value, &nodeList); err != nil {
-			a.logger.Warn("Error deserializing node list", "error", err)
+			a.logger.Error("Error deserializing node list, skipping update", "error", err)
+			continue
 		}
 
 		// Format the node lists for the health check/ping runners.
@@ -862,10 +867,17 @@ func (a *Agent) watchHealthChecks(nodeListCh chan map[string]bool) {
 
 func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.HealthChecks, uint64) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	// WaitTime caps how long Consul holds the blocking query before responding.
+	// Without it, a load balancer (e.g., ALB with a 60s idle timeout) can silently
+	// drop the idle connection, leaving this goroutine stuck in read() forever
+	// with no error, no timeout, and no health updates. 45s provides margin below
+	// the typical ALB 60s idle timeout, ensuring Consul responds before the LB
+	// can kill the connection.
 	opts := &api.QueryOptions{
 		NodeMeta:  a.config.NodeMeta,
 		WaitIndex: waitIndex,
 		Namespace: a.getNamespaceWildcard(),
+		WaitTime:  45 * time.Second,
 	}
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
