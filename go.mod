@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
-	github.com/hashicorp/go-version v1.6.0
+	github.com/hashicorp/go-version v1.8.0
 	github.com/hashicorp/hcl v1.0.1-vault-7
 	github.com/hashicorp/serf v0.10.2
 	github.com/mitchellh/cli v1.1.5
