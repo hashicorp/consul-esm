@@ -1,11 +1,11 @@
 module github.com/hashicorp/consul-esm
 
-go 1.25.5
+go 1.25.7
 
 require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/go-ping/ping v1.1.0
-	github.com/hashicorp/consul v1.22.2
+	github.com/hashicorp/consul v1.22.5
 	github.com/hashicorp/consul/api v1.33.2
 	github.com/hashicorp/consul/sdk v0.17.1
 	github.com/hashicorp/go-hclog v1.6.3
@@ -29,7 +29,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
-	github.com/aws/aws-sdk-go v1.55.7 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bgentry/speakeasy v0.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -46,14 +46,14 @@ require (
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/consul-net-rpc v0.0.0-20240430162428-577c8c7c7d01 // indirect
-	github.com/hashicorp/consul/envoyextensions v0.9.0 // indirect
+	github.com/hashicorp/consul/envoyextensions v0.9.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-bexpr v0.1.14 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.2 // indirect
-	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.6 // indirect
 	github.com/hashicorp/go-syslog v1.0.0 // indirect
