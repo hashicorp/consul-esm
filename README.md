@@ -262,8 +262,17 @@ https_key_file = ""
 // Client address to expose API endpoints. Required in order to expose /metrics endpoint for Prometheus. Example: "127.0.0.1:8080"
 client_address = ""
 
-// The method to use for pinging external nodes. Defaults to "udp" but can
-// also be set to "socket" to use ICMP (which requires root privileges).
+// The method to use for pinging external nodes.
+// - "udp": Uses UDP packets to ping nodes. This method requires both IP and port
+//   to be reachable. In some environments, this may silently fail if the port is 
+//   closed or blocked, resulting in failed or missing health checks.
+//
+// - "socket": Uses ICMP (Internet Control Message Protocol) to ping nodes, similar 
+//   to the `ping` command. This method does not require a port and typically provides 
+//   more reliable results for basic node reachability checks.
+//
+// Defaults to "udp" but can also be set to "socket" to use ICMP
+// (which requires root privileges).
 ping_type = "udp"
 
 // The telemetry configuration which matches Consul's telemetry config options.
