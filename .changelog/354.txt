@@ -1,3 +1,0 @@
-```release-note: enhancements
-agent: Optimise health check fetching by replacing sequential per-namespace blocking queries with a single API call using wildcard namespace (`*` for Enterprise, empty for CE/OSS); reduces new service detection time from several minutes to under 20 seconds at scale
-```

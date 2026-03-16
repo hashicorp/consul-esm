@@ -1,3 +1,0 @@
-```release-note:security
-security: Document that Consul v1.22.2 upgrade also fixes CVE-2025-11375 (event endpoint DoS vulnerability) in addition to CVE-2025-11374.
-```

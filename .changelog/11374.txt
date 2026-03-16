@@ -1,3 +1,0 @@
-```release-note:security
-security: Upgrade Consul dependencies to address CVE-2025-11374 and CVE-2025-11375 - DoS vulnerabilities in Consul's key/value and event endpoints due to lack of maximum value on Content-Length header validation. Upgraded consul from v1.20.5 to v1.22.2, consul/api from v1.32.0 to v1.33.2, and consul/sdk from v0.16.2 to v0.17.1.
-```
