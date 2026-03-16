@@ -1,3 +1,18 @@
+## v0.10.0 (Mar 16, 2026)
+
+IMPROVEMENTS:
+* Speed up health check discovery across namespaces by using a single wildcard-namespace query where supported, reducing detection time for new services at scale [[GH-354](https://github.com/hashicorp/consul-esm/pull/354)]
+* Batch agentless health check updates into Consul transactions to reduce API round-trips and improve update throughput at scale [[GH-348](https://github.com/hashicorp/consul-esm/pull/348)]
+* Improve ESM resiliency, logging, and internal cleanup behavior [[GH-355](https://github.com/hashicorp/consul-esm/pull/355)]
+
+BUG FIXES:
+* Reduce delays when rebalancing health check monitoring to newly added ESM instances after scaling out [[GH-346](https://github.com/hashicorp/consul-esm/pull/346)]
+* Fix a race condition that could lead to goroutine leaks at scale [[GH-349](https://github.com/hashicorp/consul-esm/pull/349)]
+* Improve agentless session lock reliability [[GH-352](https://github.com/hashicorp/consul-esm/pull/352)]
+
+SECURITY FIXES:
+* Upgrade Consul Go module dependencies to address CVE-2025-11374 and CVE-2025-11375 [[GH-345](https://github.com/hashicorp/consul-esm/pull/345)], [[GH-347](https://github.com/hashicorp/consul-esm/pull/347)]
+
 ## v0.9.1 (Sep 19, 2025)
 
 IMPROVEMENTS:
