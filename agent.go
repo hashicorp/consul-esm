@@ -269,7 +269,7 @@ func (a *Agent) Run() error {
 	}()
 
 	a.ready <- struct{}{} // used for testing
-	defer func() {        // be sure to drain it between calls
+	defer func() { // be sure to drain it between alls
 		select {
 		case <-a.ready:
 		default:
@@ -766,7 +766,10 @@ func (a *Agent) watchNodeList() {
 			pingNodes[node] = true
 		}
 
-		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{NodeMeta: a.config.NodeMeta})
+		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{
+			NodeMeta:   a.config.NodeMeta,
+			AllowStale: true,
+		})
 		if err != nil {
 			a.logger.Warn("Error querying for node list", "error", err)
 			continue
@@ -878,7 +881,20 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		WaitIndex: waitIndex,
 		Namespace: a.getNamespaceWildcard(),
 		WaitTime:  45 * time.Second,
+		// Enable stale reads to allow follower servers to respond,
+		// reducing load on the Consul leader
+		AllowStale: true,
 	}
+
+	if len(nodes) > 0 {
+		var nodeList []string
+		for node := range nodes {
+			nodeList = append(nodeList, node)
+		}
+		// Use regex to match only the nodes we're responsible for
+		opts.Filter = fmt.Sprintf("CheckID != %s and Node matches \"^(%s)$\"", externalCheckName, strings.Join(nodeList, "|"))
+	}
+
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
 		opts.Partition = partition
@@ -900,9 +916,9 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		return ourChecks, waitIndex
 	}
 
+	ourChecks = checks
 	for _, c := range checks {
-		if nodes[c.Node] && c.CheckID != externalCheckName {
-			ourChecks = append(ourChecks, c)
+		if c.CheckID != externalCheckName {
 			a.logger.Debug("found check", "name", c.Name)
 		}
 	}
