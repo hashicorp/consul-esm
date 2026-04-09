@@ -163,19 +163,22 @@ func NewCheckRunner(logger hclog.Logger, client *api.Client, updateInterval,
 
 	// Only initialize batcher for agentless mode
 	if isAgentless {
-		batchInterval := defaultBatchFlushInterval
-		// Use configured batch flush interval for agentless mode
-		if batchFlushInterval > 0 {
-			batchInterval = batchFlushInterval
+		if batchFlushInterval == 0 {
+			logger.Debug("Agentless batching disabled", "is_agentless", isAgentless)
+		} else {
+			batchInterval := batchFlushInterval
+			if batchInterval < 0 {
+				batchInterval = defaultBatchFlushInterval
+			}
+			logger.Debug("Configuring CheckRunner batch interval", "interval", batchInterval, "is_agentless", isAgentless)
+			// Initialise batcher for agentless mode only
+			runner.batcher = NewCheckUpdateBatcher(BatcherConfig{
+				MaxBatchSize:  maxTxnOps,
+				FlushInterval: batchInterval,
+				Logger:        logger,
+				ProcessFunc:   runner.processBatchedUpdates,
+			})
 		}
-		logger.Debug("Configuring CheckRunner batch interval", "interval", batchInterval, "is_agentless", isAgentless)
-		// Initialise batcher for agentless mode only
-		runner.batcher = NewCheckUpdateBatcher(BatcherConfig{
-			MaxBatchSize:  maxTxnOps,
-			FlushInterval: batchInterval,
-			Logger:        logger,
-			ProcessFunc:   runner.processBatchedUpdates,
-		})
 	}
 
 	return runner
