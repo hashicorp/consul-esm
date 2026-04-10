@@ -209,6 +209,12 @@ disable_coordinate_updates = false
 // Can also be provided through the CONSUL_ENABLEAGENTLESS environment variable.
 enable_agentless = true/false
 
+// Controls how long ESM buffers agentless health check updates before flushing
+// them to Consul in a transaction. This only applies when enable_agentless is
+// true. Use a Go duration such as "100ms", "500ms", or "2s". If unset, ESM
+// uses the default of "500ms". Set this to "0s" to disable buffering.
+batch_flush_interval = "500ms"
+
 // The address of the local Consul agent.
 // or
 // The address of the Consul server to use if `enable_agentless` is set to true.
@@ -306,6 +312,45 @@ critical_threshold = 0
 ```
 
 [HCL]: https://github.com/hashicorp/hcl "HashiCorp Configuration Language (HCL)"
+
+### Batch Flushing for Agentless Check Updates
+
+When `enable_agentless = true`, Consul ESM buffers health check status updates for a
+short period and flushes them to Consul using transactions instead of sending one HTTP
+request per change. This reduces API round-trips and improves throughput when many
+external checks are updating at the same time.
+
+The buffering window is controlled by `batch_flush_interval`.
+
+```hcl
+enable_agentless = true
+http_addr = "consul.service.consul:8500"
+batch_flush_interval = "500ms"
+```
+
+Valid values:
+
+- Any positive [Go duration](https://pkg.go.dev/time#ParseDuration) string such as `50ms`, `250ms`, `1s`, or `2m`
+- If the value is omitted, ESM uses the default `500ms`
+- If the value is `0` or `0s`, ESM disables buffering and sends updates immediately
+- Negative values are not useful; if provided, ESM falls back to the default `500ms`
+
+How it behaves:
+
+- This setting only affects agentless mode; agent-based operation continues to update checks immediately
+- Setting `batch_flush_interval = "0s"` makes agentless mode also update checks immediately
+- Updates for the same check are deduplicated while they are buffered, so only the latest pending state is flushed
+- Buffered updates are flushed when the timer expires or sooner if the transaction reaches Consul's transaction batch limit of 64 operations
+
+Tuning guidance:
+
+- Lower values reduce the time a status update waits before it is written to Consul, but increase HTTP traffic and reduce batching efficiency
+- Higher values improve batching efficiency and can reduce load on Consul servers during bursts, but they add more delay before remote state is written
+- Start with the default `500ms` unless you have measured pressure in one direction or the other
+- Use a lower value if you need faster propagation of status changes and your Consul servers are not under write pressure
+- Use a higher value if you have large numbers of external checks, frequent status churn, or want to reduce transaction volume at the cost of slightly slower visibility
+
+In practice, values in the low hundreds of milliseconds are a good starting point for most deployments. Very small values can make batching ineffective, while very large values can make health status changes appear sluggish.
 
 ### Threshold for Updating Check Status
 

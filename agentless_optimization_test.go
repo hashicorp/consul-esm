@@ -103,6 +103,22 @@ func TestCheckRunner_BatchingInitialization(t *testing.T) {
 	t.Log("Batching properly initialized for agentless mode with longer interval")
 }
 
+func TestCheckRunner_BatchingDisabledWhenFlushIntervalIsZero(t *testing.T) {
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "test",
+		Level:  hclog.LevelFromString("INFO"),
+		Output: LOGOUT,
+	})
+
+	mockClient, _ := api.NewClient(api.DefaultConfig())
+	runner := NewCheckRunner(logger, mockClient, 5*time.Minute, 30*time.Second, &tls.Config{}, 1, 1, true, 0)
+	defer runner.Stop()
+
+	if runner.batcher != nil {
+		t.Fatal("Expected batcher to be nil when batch flush interval is zero")
+	}
+}
+
 // TestCheckRunner_BatchQueueing verifies that check updates are properly queued
 func TestCheckRunner_BatchQueueing(t *testing.T) {
 	logger := hclog.New(&hclog.LoggerOptions{
