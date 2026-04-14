@@ -104,6 +104,18 @@ node.json:
       "Timeout": "1s",
       "DeregisterCriticalServiceAfter": "30s"
      }
+  },{
+    "Node": "foo",
+    "CheckID": "service:web3",
+    "Name": "Web gRPC check",
+    "Notes": "",
+    "Status": "passing",
+    "ServiceID": "web1",
+    "Definition": {
+      "GRPC": "localhost:8000/myservice",
+      "Interval": "10s",
+      "Timeout": "5s"
+    }
   }]
 }
 ```

@@ -262,7 +262,7 @@ func TestCheck_GRPC_healthy(t *testing.T) {
 		IncludeLocation: true,
 		Output:          LOGOUT,
 	})
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1, false, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially critical grpc check
@@ -379,7 +379,7 @@ func TestCheck_GRPC_noValidTLS_unhealthy(t *testing.T) {
 		IncludeLocation: true,
 		Output:          LOGOUT,
 	})
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1, false, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially passing grpc check and GRPCUseTLS enabled
@@ -453,7 +453,7 @@ func TestCheck_GRPC_unhealthy(t *testing.T) {
 		IncludeLocation: true,
 		Output:          LOGOUT,
 	})
-	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1)
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 1, 1, false, 0)
 	defer runner.Stop()
 
 	// Register an external node with an initially passing grpc check
@@ -573,7 +573,7 @@ func TestStopExistingChecks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer s.Stop()
+		t.Cleanup(func() { s.Stop() })
 
 		client, err := api.NewClient(&api.Config{Address: s.HTTPAddr})
 		if err != nil {
