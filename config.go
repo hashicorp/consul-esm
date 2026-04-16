@@ -145,7 +145,7 @@ func DefaultConfig() (*Config, error) {
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
 		DisableCoordinateUpdates:  false,
-		StaleReadNodes:            true,
+		StaleReadNodes:            false,
 		Partition:                 "",
 		LogFile:                   "",
 		LogRotateBytes:            0,

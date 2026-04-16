@@ -13,6 +13,7 @@ import (
 	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul/lib"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDecodeMergeConfig(t *testing.T) {
@@ -369,6 +370,44 @@ func TestPartition(t *testing.T) {
 			// comparing partition only string
 			assert.Equal(t, tc.expectedConfig.Partition, result.Partition)
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestStaleReadNodesConfig(t *testing.T) {
+	cases := []struct {
+		name     string
+		config   string
+		expected bool
+	}{
+		{
+			name:     "defaults to false when not set",
+			config:   "",
+			expected: false,
+		},
+		{
+			name:     "can be disabled via config",
+			config:   `stale_read_nodes = false`,
+			expected: false,
+		},
+		{
+			name:     "can be explicitly enabled via config",
+			config:   `stale_read_nodes = true`,
+			expected: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := DefaultConfig()
+			require.NoError(t, err)
+
+			humanConfig, err := DecodeConfig(bytes.NewBufferString(tc.config))
+			require.NoError(t, err)
+
+			MergeConfig(result, humanConfig)
+
+			assert.Equal(t, tc.expected, result.StaleReadNodes)
 		})
 	}
 }

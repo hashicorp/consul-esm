@@ -884,15 +884,6 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		AllowStale: a.config.StaleReadNodes,
 	}
 
-	if len(nodes) > 0 {
-		var nodeList []string
-		for node := range nodes {
-			nodeList = append(nodeList, node)
-		}
-		// Use regex to match only the nodes we're responsible for
-		opts.Filter = fmt.Sprintf("CheckID != %s and Node matches \"^(%s)$\"", externalCheckName, strings.Join(nodeList, "|"))
-	}
-
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
 		opts.Partition = partition
@@ -914,9 +905,9 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 		return ourChecks, waitIndex
 	}
 
-	ourChecks = checks
 	for _, c := range checks {
-		if c.CheckID != externalCheckName {
+		if nodes[c.Node] && c.CheckID != externalCheckName {
+			ourChecks = append(ourChecks, c)
 			a.logger.Debug("found check", "name", c.Name)
 		}
 	}

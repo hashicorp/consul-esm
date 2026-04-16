@@ -1057,14 +1057,12 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 		assert.Contains(t, checkIDs, "svc-check-2")
 	})
 
-	t.Run("applies-server-side-filter-and-stale-reads", func(t *testing.T) {
+	t.Run("uses-stale-reads-when-configured", func(t *testing.T) {
 		listener, err := net.Listen("tcp", ":0")
 		require.NoError(t, err)
 		port := listener.Addr().(*net.TCPAddr).Port
 		addr := fmt.Sprintf("127.0.0.1:%d", port)
 
-		// Track whether the correct query parameters were sent
-		var receivedFilter string
 		var receivedStale bool
 
 		checks := api.HealthChecks{
@@ -1080,9 +1078,6 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 				case "/v1/agent/self":
 					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
-					// Capture the filter and stale parameters
-					receivedFilter = r.URL.Query().Get("filter")
-					// Consul API uses "stale" (empty value) or consistent=true
 					receivedStale = r.URL.Query().Has("stale")
 					fmt.Fprint(w, string(checksJSON))
 				default:
@@ -1094,30 +1089,24 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 
 		agent := testAgent(t, func(c *Config) {
 			c.HTTPAddr = addr
+			c.StaleReadNodes = true
 		})
 		defer agent.Shutdown()
 
-		ourNodes := map[string]bool{"node1": true, "node2": true}
+		ourNodes := map[string]bool{"node1": true}
 		_, _ = agent.getHealthChecks(0, ourNodes)
 
-		// Verify server-side filtering was applied
-		assert.NotEmpty(t, receivedFilter, "Should send filter parameter to server")
-		assert.Contains(t, receivedFilter, "CheckID != externalNodeHealth", "Filter should exclude externalNodeHealth")
-		assert.Contains(t, receivedFilter, "Node matches", "Filter should include node regex")
-		assert.Contains(t, receivedFilter, "node1", "Filter should include node1")
-		assert.Contains(t, receivedFilter, "node2", "Filter should include node2")
-
-		// Verify stale reads were enabled
-		assert.True(t, receivedStale, "Should enable stale reads (AllowStale=true)")
+		assert.True(t, receivedStale, "Should enable stale reads when StaleReadNodes=true")
 	})
 
-	t.Run("handles-empty-node-list", func(t *testing.T) {
+	t.Run("no-stale-reads-when-disabled", func(t *testing.T) {
 		listener, err := net.Listen("tcp", ":0")
 		require.NoError(t, err)
 		port := listener.Addr().(*net.TCPAddr).Port
 		addr := fmt.Sprintf("127.0.0.1:%d", port)
 
-		var receivedFilter string
+		var receivedStale bool
+
 		checks := api.HealthChecks{}
 		checksJSON, _ := json.Marshal(checks)
 
@@ -1129,7 +1118,7 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 				case "/v1/agent/self":
 					fmt.Fprint(w, testAgentSelfOSS())
 				case "/v1/health/state/any":
-					receivedFilter = r.URL.Query().Get("filter")
+					receivedStale = r.URL.Query().Has("stale")
 					fmt.Fprint(w, string(checksJSON))
 				default:
 				}
@@ -1140,15 +1129,14 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 
 		agent := testAgent(t, func(c *Config) {
 			c.HTTPAddr = addr
+			c.StaleReadNodes = false
 		})
 		defer agent.Shutdown()
 
-		ourNodes := map[string]bool{}
-		ourChecks, _ := agent.getHealthChecks(0, ourNodes)
+		ourNodes := map[string]bool{"node1": true}
+		_, _ = agent.getHealthChecks(0, ourNodes)
 
-		// When there are no nodes, filter should not be applied
-		assert.Empty(t, receivedFilter, "Should not send filter when node list is empty")
-		assert.Len(t, ourChecks, 0, "Should return empty checks")
+		assert.False(t, receivedStale, "Should not use stale reads when StaleReadNodes=false")
 	})
 
 	t.Run("returns-empty-on-api-error", func(t *testing.T) {
