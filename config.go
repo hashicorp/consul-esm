@@ -76,6 +76,7 @@ type Config struct {
 	PingType string
 
 	DisableCoordinateUpdates bool
+	StaleReadNodes           bool
 
 	Telemetry lib.TelemetryConfig
 
@@ -144,6 +145,7 @@ func DefaultConfig() (*Config, error) {
 		NodeReconnectTimeout:      72 * time.Hour,
 		PingType:                  PingTypeUDP,
 		DisableCoordinateUpdates:  false,
+		StaleReadNodes:            true,
 		Partition:                 "",
 		LogFile:                   "",
 		LogRotateBytes:            0,

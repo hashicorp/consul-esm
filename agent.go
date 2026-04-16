@@ -269,7 +269,7 @@ func (a *Agent) Run() error {
 	}()
 
 	a.ready <- struct{}{} // used for testing
-	defer func() { // be sure to drain it between alls
+	defer func() { // be sure to drain it between calls
 		select {
 		case <-a.ready:
 		default:
@@ -768,7 +768,7 @@ func (a *Agent) watchNodeList() {
 
 		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{
 			NodeMeta:   a.config.NodeMeta,
-			AllowStale: true,
+			AllowStale: a.config.StaleReadNodes,
 		})
 		if err != nil {
 			a.logger.Warn("Error querying for node list", "error", err)
@@ -877,13 +877,11 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	// the typical ALB 60s idle timeout, ensuring Consul responds before the LB
 	// can kill the connection.
 	opts := &api.QueryOptions{
-		NodeMeta:  a.config.NodeMeta,
-		WaitIndex: waitIndex,
-		Namespace: a.getNamespaceWildcard(),
-		WaitTime:  45 * time.Second,
-		// Enable stale reads to allow follower servers to respond,
-		// reducing load on the Consul leader
-		AllowStale: true,
+		NodeMeta:   a.config.NodeMeta,
+		WaitIndex:  waitIndex,
+		Namespace:  a.getNamespaceWildcard(),
+		WaitTime:   45 * time.Second,
+		AllowStale: a.config.StaleReadNodes,
 	}
 
 	if len(nodes) > 0 {
