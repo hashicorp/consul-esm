@@ -69,3 +69,11 @@ build:
 	env CGO_ENABLED="0" \
 		go build -ldflags "${LD_FLAGS}" -o dist/linux/amd64/$(NAME)
 .PHONY: build
+
+
+proto-gen:
+	protoc --proto_path=testutils/grpc/testservice/hello \
+	  --go_out=testutils/grpc/testservice/hello --go_opt=paths=source_relative \
+	  --go-grpc_out=testutils/grpc/testservice/hello --go-grpc_opt=paths=source_relative \
+	  testutils/grpc/testservice/hello/hello.proto
+.PHONY: proto-gen
