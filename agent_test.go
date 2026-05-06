@@ -1057,6 +1057,88 @@ func TestAgent_getHealthChecks_filtersCorrectly(t *testing.T) {
 		assert.Contains(t, checkIDs, "svc-check-2")
 	})
 
+	t.Run("uses-stale-reads-when-configured", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+		var receivedStale bool
+
+		checks := api.HealthChecks{
+			{Node: "node1", CheckID: "check-1", Name: "check-1", Status: api.HealthPassing},
+		}
+		checksJSON, _ := json.Marshal(checks)
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
+				case "/v1/health/state/any":
+					receivedStale = r.URL.Query().Has("stale")
+					fmt.Fprint(w, string(checksJSON))
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.StaleReadNodes = true
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"node1": true}
+		_, _ = agent.getHealthChecks(0, ourNodes)
+
+		assert.True(t, receivedStale, "Should enable stale reads when StaleReadNodes=true")
+	})
+
+	t.Run("no-stale-reads-when-disabled", func(t *testing.T) {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+		var receivedStale bool
+
+		checks := api.HealthChecks{}
+		checksJSON, _ := json.Marshal(checks)
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.EscapedPath() {
+				case "/v1/status/leader":
+					fmt.Fprint(w, `"`+addr+`"`)
+				case "/v1/agent/self":
+					fmt.Fprint(w, testAgentSelfOSS())
+				case "/v1/health/state/any":
+					receivedStale = r.URL.Query().Has("stale")
+					fmt.Fprint(w, string(checksJSON))
+				default:
+				}
+			}))
+		ts.Listener = listener
+		ts.Start()
+		defer ts.Close()
+
+		agent := testAgent(t, func(c *Config) {
+			c.HTTPAddr = addr
+			c.StaleReadNodes = false
+		})
+		defer agent.Shutdown()
+
+		ourNodes := map[string]bool{"node1": true}
+		_, _ = agent.getHealthChecks(0, ourNodes)
+
+		assert.False(t, receivedStale, "Should not use stale reads when StaleReadNodes=false")
+	})
+
 	t.Run("returns-empty-on-api-error", func(t *testing.T) {
 		listener, err := net.Listen("tcp", ":0")
 		require.NoError(t, err)

@@ -269,7 +269,7 @@ func (a *Agent) Run() error {
 	}()
 
 	a.ready <- struct{}{} // used for testing
-	defer func() {        // be sure to drain it between calls
+	defer func() { // be sure to drain it between calls
 		select {
 		case <-a.ready:
 		default:
@@ -766,7 +766,10 @@ func (a *Agent) watchNodeList() {
 			pingNodes[node] = true
 		}
 
-		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{NodeMeta: a.config.NodeMeta})
+		nodes, _, err := a.client.Catalog().Nodes(&api.QueryOptions{
+			NodeMeta:   a.config.NodeMeta,
+			AllowStale: a.config.StaleReadNodes,
+		})
 		if err != nil {
 			a.logger.Warn("Error querying for node list", "error", err)
 			continue
@@ -874,11 +877,13 @@ func (a *Agent) getHealthChecks(waitIndex uint64, nodes map[string]bool) (api.He
 	// the typical ALB 60s idle timeout, ensuring Consul responds before the LB
 	// can kill the connection.
 	opts := &api.QueryOptions{
-		NodeMeta:  a.config.NodeMeta,
-		WaitIndex: waitIndex,
-		Namespace: a.getNamespaceWildcard(),
-		WaitTime:  45 * time.Second,
+		NodeMeta:   a.config.NodeMeta,
+		WaitIndex:  waitIndex,
+		Namespace:  a.getNamespaceWildcard(),
+		WaitTime:   45 * time.Second,
+		AllowStale: a.config.StaleReadNodes,
 	}
+
 	opts = opts.WithContext(ctx)
 	a.HasPartition(func(partition string) {
 		opts.Partition = partition
