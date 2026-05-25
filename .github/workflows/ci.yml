@@ -12,21 +12,44 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         go: [^1]
+    outputs:
+      go-version: ${{ steps.setup-go.outputs.go-version }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Go
+        id: setup-go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: ${{ matrix.go }}
 
       - name: Install Consul for integration testing
         run: |
-          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
-          sudo apt-get update && sudo apt-get install consul
+          CONSUL_VERSION="2.0.0"
+          curl -sSLO "https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip"
+          unzip "consul_${CONSUL_VERSION}_linux_amd64.zip" -d /usr/local/bin
+          rm "consul_${CONSUL_VERSION}_linux_amd64.zip"
+          consul version
 
-      - name: Run tests
-        run: |
-          make test
+      - name: Run tests with coverage
+        run: go test -timeout=60s -p 1 -coverprofile=coverage.txt -covermode=set ./...
+
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: esm-coverage
+          path: coverage.txt
+          if-no-files-found: ignore
+
+  coverage-report:
+    needs: [run-tests]
+    uses: ./.github/workflows/reusable-coverage-report.yml
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    with:
+      go-version: ${{ needs.run-tests.outputs.go-version }}
+      pr-number: ${{ github.event.pull_request.number != 0 && toJson(github.event.pull_request.number) || '' }}

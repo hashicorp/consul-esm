@@ -1,0 +1,20 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+# Codecov configuration for consul-esm.
+# https://docs.codecov.com/docs/codecovyml-reference
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true   # never block PRs on coverage drop
+    patch:
+      default:
+        informational: true
+
+ignore:
+  - "**/*_test.go"
+  - "**/mocks/**"
+  - "**/mock_*"
+  - "version/**"
