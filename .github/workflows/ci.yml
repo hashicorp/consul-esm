@@ -12,21 +12,21 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         go: [^1]
-    outputs:
-      go-version: ${{ steps.setup-go.outputs.go-version }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Go
-        id: setup-go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: ${{ matrix.go }}
 
       - name: Install Consul for integration testing
+        env:
+          # Latest CE version — pinned so CI uses a known-good release.
+          # ENT versions need CONSUL_LICENSE and can't be used here.
+          CONSUL_VERSION: "2.0.0"
         run: |
-          CONSUL_VERSION="2.0.0"
           curl -sSLO "https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip"
           unzip -o "consul_${CONSUL_VERSION}_linux_amd64.zip" consul -d /usr/local/bin
           rm "consul_${CONSUL_VERSION}_linux_amd64.zip"
@@ -51,5 +51,4 @@ jobs:
       pull-requests: write
       id-token: write
     with:
-      go-version: ${{ needs.run-tests.outputs.go-version }}
       pr-number: ${{ github.event.pull_request.number != 0 && toJson(github.event.pull_request.number) || '' }}

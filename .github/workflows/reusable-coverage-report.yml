@@ -10,9 +10,6 @@ name: reusable-coverage-report
 on:
   workflow_call:
     inputs:
-      go-version:
-        required: true
-        type: string
       pr-number:
         required: false
         type: string
@@ -29,7 +26,9 @@ jobs:
 
       - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
-          go-version: ${{ inputs.go-version }}
+          # Use go-version-file so the correct toolchain is installed regardless
+          # of whether .go-version and go.mod are in sync.
+          go-version-file: go.mod
 
       - name: Download coverage profiles
         uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
