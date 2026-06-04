@@ -1,11 +1,3 @@
-## v0.11.0 (Unreleased)
-
-SECURITY FIXES:
-* Upgrade Go toolchain to 1.26.4 to address standard library CVEs including XSS in `html/template` (GO-2026-4982, GO-2026-4980, GO-2026-4865, GO-2026-4603), DoS in `net/http` and `crypto/tls` (GO-2026-4918, GO-2026-4870), certificate validation issues in `crypto/x509` (GO-2026-4947, GO-2026-4946), and a `mime` denial of service (GO-2026-5038) [[GH-378](https://github.com/hashicorp/consul-esm/pull/378)]
-* Upgrade `golang.org/x/net` to v0.55.0 to address [GO-2026-4918](https://pkg.go.dev/vuln/GO-2026-4918) (HTTP/2 infinite loop denial of service) [[GH-378](https://github.com/hashicorp/consul-esm/pull/378)]
-* Upgrade `golang.org/x/crypto` to v0.53.0 to address multiple `golang.org/x/crypto/ssh` vulnerabilities (GO-2026-5005 through GO-2026-5033) [[GH-378](https://github.com/hashicorp/consul-esm/pull/378)]
-* Upgrade `hashicorp/consul` to v1.22.7 to address [CVE-2025-11375](https://nvd.nist.gov/vuln/detail/CVE-2025-11375) (denial of service via uncapped Content-Length in the event endpoint) [[GH-378](https://github.com/hashicorp/consul-esm/pull/378)]
-
 ## v0.10.0 (Mar 16, 2026)
 
 IMPROVEMENTS:
