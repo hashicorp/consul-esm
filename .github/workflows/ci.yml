@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        go: ["1.26.4"]
+        go: [^1]
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -22,14 +22,11 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Install Consul for integration testing
-        env:
-          # Pinned to match the consul/api version in go.mod.
-          CONSUL_VERSION: "1.22.7"
         run: |
-          curl -sSLO "https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip"
-          unzip -o "consul_${CONSUL_VERSION}_linux_amd64.zip" consul -d /usr/local/bin
-          rm "consul_${CONSUL_VERSION}_linux_amd64.zip"
-          consul version
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+          sudo apt-get update && sudo apt-get install consul
 
       - name: Run tests
-        run: go test -timeout=60s -p 1 ./...
+        run: |
+          make test
