@@ -31,13 +31,5 @@ jobs:
           rm "consul_${CONSUL_VERSION}_linux_amd64.zip"
           consul version
 
-      - name: Run tests with coverage
-        run: go test -timeout=60s -p 1 -coverprofile=coverage.txt -covermode=set ./...
-
-      - name: Upload coverage profile
-        if: always()
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
-        with:
-          name: esm-coverage
-          path: coverage.txt
-          if-no-files-found: ignore
+      - name: Run tests
+        run: go test -timeout=60s -p 1 ./...
