@@ -225,6 +225,7 @@ type HumanConfig struct {
 	PingType flags.StringValue `mapstructure:"ping_type"`
 
 	DisableCoordinateUpdates flags.BoolValue `mapstructure:"disable_coordinate_updates"`
+	StaleReadNodes           flags.BoolValue `mapstructure:"stale_read_nodes"`
 
 	Telemetry []Telemetry `mapstructure:"telemetry"`
 
@@ -521,6 +522,7 @@ func MergeConfig(dst *Config, src *HumanConfig) error {
 	src.ClientAddress.Merge(&dst.ClientAddress)
 	src.PingType.Merge(&dst.PingType)
 	src.DisableCoordinateUpdates.Merge(&dst.DisableCoordinateUpdates)
+	src.StaleReadNodes.Merge(&dst.StaleReadNodes)
 	if len(src.Telemetry) == 1 {
 		t, err := convertTelemetry(src.Telemetry[0])
 		if err != nil {
