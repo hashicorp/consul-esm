@@ -22,11 +22,33 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Install Consul for integration testing
+        env:
+          # Latest CE version — pinned so CI uses a known-good release.
+          # ENT versions need CONSUL_LICENSE and can't be used here.
+          CONSUL_VERSION: "2.0.0"
         run: |
-          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
-          sudo apt-get update && sudo apt-get install consul
+          curl -sSLO "https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip"
+          unzip -o "consul_${CONSUL_VERSION}_linux_amd64.zip" consul -d /usr/local/bin
+          rm "consul_${CONSUL_VERSION}_linux_amd64.zip"
+          consul version
 
-      - name: Run tests
-        run: |
-          make test
+      - name: Run tests with coverage
+        run: go test -timeout=60s -p 1 -coverprofile=coverage.txt -covermode=set ./...
+
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: esm-coverage
+          path: coverage.txt
+          if-no-files-found: ignore
+
+  coverage-report:
+    needs: [run-tests]
+    uses: ./.github/workflows/reusable-coverage-report.yml
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    with:
+      pr-number: ${{ github.event.pull_request.number != 0 && toJson(github.event.pull_request.number) || '' }}
