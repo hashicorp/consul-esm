@@ -1,3 +1,8 @@
+## v0.11.0 (Unreleased)
+
+SECURITY FIXES:
+* Upgrade to Go 1.26.4 to pick up the latest standard library security fixes [[GH-378](https://github.com/hashicorp/consul-esm/pull/378)]
+
 ## v0.10.0 (Mar 16, 2026)
 
 IMPROVEMENTS:
