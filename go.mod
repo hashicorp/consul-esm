@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/armon/go-metrics v0.4.1
-	github.com/go-ping/ping v1.1.0
+	github.com/go-ping/ping v1.2.0
 	github.com/hashicorp/consul v1.22.5
 	github.com/hashicorp/consul/api v1.33.4
 	github.com/hashicorp/consul/sdk v0.17.2
