@@ -1,13 +1,13 @@
 module github.com/hashicorp/consul-esm
 
-go 1.26.4
+go 1.25.9
 
 require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/go-ping/ping v1.2.0
 	github.com/hashicorp/consul v1.22.7
-	github.com/hashicorp/consul/api v1.34.3
-	github.com/hashicorp/consul/sdk v0.18.1
+	github.com/hashicorp/consul/api v1.34.1
+	github.com/hashicorp/consul/sdk v0.18.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-uuid v1.0.3
