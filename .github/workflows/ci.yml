@@ -11,7 +11,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        go: [^1]
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -19,7 +18,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version: ${{ matrix.go }}
+          # Derive the Go version from go.mod so the test job always matches the
+          # module's required toolchain (avoids GOTOOLCHAIN=local failures on bumps).
+          go-version-file: go.mod
 
       - name: Install Consul for integration testing
         env:
