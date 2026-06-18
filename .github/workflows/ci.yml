@@ -53,3 +53,53 @@ jobs:
       id-token: write
     with:
       pr-number: ${{ github.event.pull_request.number != 0 && toJson(github.event.pull_request.number) || '' }}
+
+  coverage-gate:
+    name: coverage-gate
+    needs: [coverage-report]
+    runs-on: ubuntu-latest
+    env:
+      # Minimum total coverage required for the build to pass. This is a ratchet:
+      # raise it over time as coverage improves, but never set it above the current
+      # measured coverage or every PR will be blocked. Current main coverage ~67.0%.
+      COVERAGE_THRESHOLD: "65"
+    steps:
+      - name: Enforce coverage threshold
+        env:
+          TOTAL: ${{ needs.coverage-report.outputs.total }}
+        run: |
+          set -euo pipefail
+
+          echo "Measured total coverage: ${TOTAL:-<empty>}"
+          echo "Required threshold:      ${COVERAGE_THRESHOLD}%"
+
+          if [ -z "${TOTAL}" ] || [ "${TOTAL}" = "N/A" ]; then
+            echo "::error::Coverage could not be measured (no coverage profiles produced). Failing the gate."
+            {
+              echo "### ❌ Coverage gate failed"
+              echo ""
+              echo "Coverage could not be measured (no coverage profiles produced)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          PCT="${TOTAL%\%}"
+
+          if awk "BEGIN { exit !(${PCT} >= ${COVERAGE_THRESHOLD}) }"; then
+            echo "::notice::Coverage ${TOTAL} meets the ${COVERAGE_THRESHOLD}% threshold."
+            {
+              echo "### ✅ Coverage gate passed"
+              echo ""
+              echo "Total coverage **${TOTAL}** ≥ required **${COVERAGE_THRESHOLD}%**."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Coverage ${TOTAL} is below the required ${COVERAGE_THRESHOLD}% threshold."
+            {
+              echo "### ❌ Coverage gate failed"
+              echo ""
+              echo "Total coverage **${TOTAL}** is below the required **${COVERAGE_THRESHOLD}%** threshold."
+              echo ""
+              echo "Add tests to raise coverage, or adjust \`COVERAGE_THRESHOLD\` in \`.github/workflows/ci.yml\` (with reviewer sign-off)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

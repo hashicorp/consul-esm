@@ -13,6 +13,13 @@ on:
       pr-number:
         required: false
         type: string
+    outputs:
+      total:
+        description: >-
+          Total computed coverage as a percentage string (e.g. "67.0%"),
+          or "N/A" when no coverage profiles were found. Consumed by the
+          coverage-gate job to enforce the minimum threshold.
+        value: ${{ jobs.report.outputs.total }}
 
 jobs:
   report:
@@ -21,6 +28,8 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write  # required for OIDC tokenless Codecov upload
+    outputs:
+      total: ${{ steps.coverage.outputs.total }}
     steps:
       - uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v4.1.4
 
