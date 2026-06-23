@@ -4,7 +4,6 @@ go 1.26.4
 
 require (
 	github.com/armon/go-metrics v0.4.1
-	github.com/go-ping/ping v1.2.0
 	github.com/hashicorp/consul v1.22.7
 	github.com/hashicorp/consul/api v1.34.3
 	github.com/hashicorp/consul/sdk v0.18.1
@@ -16,6 +15,7 @@ require (
 	github.com/hashicorp/serf v0.10.2
 	github.com/mitchellh/cli v1.1.5
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/prometheus-community/pro-bing v0.8.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.81.1
