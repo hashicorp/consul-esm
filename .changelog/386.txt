@@ -1,0 +1,3 @@
+```release-note:security
+security: Upgrade consul/api to v1.34.4 and serf to v0.10.3.
+```
