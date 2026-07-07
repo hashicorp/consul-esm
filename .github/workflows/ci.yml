@@ -52,7 +52,7 @@ jobs:
       pull-requests: write
       id-token: write
     with:
-      pr-number: ${{ github.event.pull_request.number != 0 && toJson(github.event.pull_request.number) || '' }}
+      pr-number: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.number) || '' }}
 
   coverage-gate:
     name: coverage-gate
