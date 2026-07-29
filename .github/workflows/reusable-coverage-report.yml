@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload to Codecov
         if: steps.coverage.outputs.total != 'N/A'
-        uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # v4.5.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: merged-coverage.out
           use_oidc: true
