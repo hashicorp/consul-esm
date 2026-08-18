@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/go-ping/ping"
+	ping "github.com/prometheus-community/pro-bing"
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/serf/coordinate"
