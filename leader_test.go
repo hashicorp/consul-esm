@@ -573,3 +573,117 @@ func TestLeader_isLeaderMetric(t *testing.T) {
 		r.Fatalf("did not find the key %q in any of the %d intervals", isLeaderKey, len(intervals))
 	})
 }
+
+// testAgentWithoutRun builds an Agent that talks to addr without starting Run().
+func testAgentWithoutRun(t *testing.T, addr string) *Agent {
+	t.Helper()
+	client, err := api.NewClient(&api.Config{Address: addr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Agent{
+		config:     conf,
+		client:     client,
+		logger:     hclog.NewNullLogger(),
+		shutdownCh: make(chan struct{}),
+	}
+}
+
+func TestComputeWatchedNodes_doesNotBlockWhenCatalogErrorsThenStopped(t *testing.T) {
+	t.Parallel()
+
+	catalogCalls := make(chan struct{}, 8)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/catalog/nodes") {
+			select {
+			case catalogCalls <- struct{}{}:
+			default:
+			}
+			http.Error(w, "catalog unavailable", http.StatusInternalServerError)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/v1/health/service/") {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, "[]")
+			return
+		}
+		http.Error(w, "unexpected", http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	agent := testAgentWithoutRun(t, ts.URL)
+
+	stopCh := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		agent.computeWatchedNodes(stopCh)
+	}()
+
+	// First catalog query fails on the firstRun path (no stopCh check yet).
+	select {
+	case <-catalogCalls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for catalog query")
+	}
+
+	close(stopCh)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("computeWatchedNodes blocked on nodeCh after catalog error and stop")
+	}
+}
+
+func TestComputeWatchedNodes_doesNotBlockWhenInstancesNeverArriveThenStopped(t *testing.T) {
+	t.Parallel()
+
+	catalogCalls := make(chan struct{}, 8)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/v1/catalog/nodes") {
+			select {
+			case catalogCalls <- struct{}{}:
+			default:
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Consul-Index", "1")
+			fmt.Fprint(w, "[]")
+			return
+		}
+		if strings.Contains(r.URL.Path, "/v1/health/service/") {
+			http.Error(w, "health unavailable", http.StatusInternalServerError)
+			return
+		}
+		http.Error(w, "unexpected", http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	agent := testAgentWithoutRun(t, ts.URL)
+
+	stopCh := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		agent.computeWatchedNodes(stopCh)
+	}()
+
+	// Catalog succeeds and is sent on nodeCh; instance watch errors and never sends.
+	select {
+	case <-catalogCalls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for catalog query")
+	}
+
+	close(stopCh)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("computeWatchedNodes blocked on instanceCh after stop")
+	}
+}

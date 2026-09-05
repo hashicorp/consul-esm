@@ -155,8 +155,21 @@ func (a *Agent) computeWatchedNodes(stopCh <-chan struct{}) {
 	go a.watchExternalNodes(nodeCh, stopCh)
 	go a.watchServiceInstances(instanceCh, stopCh)
 
-	externalNodes := <-nodeCh
-	healthyInstances := <-instanceCh
+	// The watchers can return without sending if their first Consul query
+	// errors and stopCh is then closed. Select on stopCh so we don't block
+	// forever on those initial receives.
+	var externalNodes []*api.Node
+	select {
+	case <-stopCh:
+		return
+	case externalNodes = <-nodeCh:
+	}
+	var healthyInstances []*api.ServiceEntry
+	select {
+	case <-stopCh:
+		return
+	case healthyInstances = <-instanceCh:
+	}
 
 	metrics.SetGauge([]string{"esm", "agents", "healthy"}, float32(len(healthyInstances)))
 
@@ -282,7 +295,11 @@ func (a *Agent) watchExternalNodes(nodeCh chan []*api.Node, stopCh <-chan struct
 
 		a.logger.Info("Updating external node list", "items", len(externalNodes))
 
-		nodeCh <- externalNodes
+		select {
+		case <-stopCh:
+			return
+		case nodeCh <- externalNodes:
+		}
 	}
 }
 
@@ -313,7 +330,11 @@ func (a *Agent) watchServiceInstances(instanceCh chan []*api.ServiceEntry, stopC
 
 		switch healthyInstances, err := a.getServiceInstances(opts); err {
 		case nil:
-			instanceCh <- healthyInstances
+			select {
+			case <-stopCh:
+				return
+			case instanceCh <- healthyInstances:
+			}
 		default:
 			a.logger.Warn("[WARN] Error querying for health check info",
 				"error", err)
