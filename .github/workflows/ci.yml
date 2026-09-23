@@ -3,6 +3,8 @@ name: ci
 on:
   push:
   pull_request:
+    # ready_for_review lets coverage run when a draft is marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   run-tests:
@@ -46,6 +48,8 @@ jobs:
 
   coverage-report:
     needs: [run-tests]
+    # Skip coverage reporting/gating on draft PRs; it runs once marked ready.
+    if: ${{ !github.event.pull_request.draft }}
     uses: ./.github/workflows/reusable-coverage-report.yml
     permissions:
       contents: write
@@ -58,8 +62,9 @@ jobs:
     name: coverage-gate
     needs: [coverage-report]
     # Only meaningful on pull requests: patch coverage measures the lines a PR
-    # adds/modifies. Pushes to main have no "patch" to evaluate.
-    if: github.event_name == 'pull_request'
+    # adds/modifies. Pushes to main have no "patch" to evaluate. Draft PRs are
+    # skipped until marked ready for review.
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     env:
       # Minimum required coverage of the lines a PR adds/modifies (patch
