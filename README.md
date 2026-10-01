@@ -586,8 +586,14 @@ Results are uploaded as SARIF artifacts and to GitHub code scanning.
 
 Scans only run in `hashicorp/consul-esm` and require the
 `PRODSEC_SCANNER_READ_ONLY` repository secret to read the private
-`hashicorp/security-scanner` repository. Binary scans use the release scan
-configuration; container scans retain its suppressions and inspect locally
-built Docker images.
+`hashicorp/security-scanner` repository. All scan settings and suppressions come
+from [the release scan configuration](.release/security-scan.hcl). Container jobs
+use a temporary copy with local Docker image scanning enabled.
+
+Unsuppressed findings fail the scan jobs and mark the workflow as failed.
+The **List CVEs** step runs even after a failed scan and reports each CVE,
+vulnerable package, current version, and recommended fixed version in the job
+log and summary. Missing or ambiguous version information is shown as
+`Not reported`, rather than guessing a fix.
 
 [releases]: https://releases.hashicorp.com/consul-esm "Consul ESM Releases"

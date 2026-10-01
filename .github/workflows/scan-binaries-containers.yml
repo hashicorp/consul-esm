@@ -4,8 +4,9 @@
 # Build Consul ESM release artifacts for the selected branch, then scan
 # the repository, binaries, and production container images on GitHub runners.
 # Calling build.yml as a reusable workflow attaches its artifacts to this run.
-# Binary and container settings follow .release/security-scan.hcl; container
-# scans use the local Docker daemon rather than pulling published images.
+# All scan settings come from .release/security-scan.hcl. Container scans use a
+# temporary copy with the local Docker daemon enabled.
+# Unsuppressed findings fail scans; CVEs are listed even when a scan fails.
 # Scans require PRODSEC_SCANNER_READ_ONLY for the private security-scanner repo
 # and only run in hashicorp/consul-esm, not forks.
 name: Scan Binaries and Containers
@@ -59,21 +60,259 @@ jobs:
         uses: ./security-scanner
         with:
           repository: ${{ github.workspace }}
+          config-path: .release/security-scan.hcl
           sarif-profile: github
-          config: |
-            repository {
-              go_modules = true
-              osv        = true
+          fail-on-detection: true
 
-              secrets {
-                all = true
-              }
-            }
-
-      - name: Read SARIF output
+      - &check-scan-results
+        name: Check scan results
         if: always()
         shell: bash
-        run: jq . results.sarif
+        run: |
+          set -euo pipefail
+          sarif_file="${GITHUB_WORKSPACE}/results.sarif"
+          if [[ ! -s "${sarif_file}" ]]; then
+            echo "::error::SARIF report is missing or empty: ${sarif_file}" >&2
+            exit 1
+          fi
+
+          jq . "${sarif_file}"
+
+          # JSON scans can exit successfully even when SARIF contains findings.
+          finding_count=$(jq -ers '
+            if length != 1 then
+              error("Expected exactly one SARIF report")
+            else
+              .[0]
+            end |
+            if type != "object" then
+              error("Expected the SARIF report to be an object")
+            elif .version != "2.1.0" or (.runs | type) != "array" then
+              error("Expected a SARIF 2.1.0 report with a runs array")
+            else
+              [
+                .runs[] |
+                if type != "object" then
+                  error("Expected each SARIF run to be an object")
+                elif has("results") and (.results | type) != "array" then
+                  error("Expected SARIF results to be an array")
+                else
+                  .results[]?
+                end
+              ] | length
+            end
+          ' "${sarif_file}")
+
+          if [[ "${finding_count}" -gt 0 ]]; then
+            echo "::error::Security scan found ${finding_count} unsuppressed finding(s). See the CVE list and SARIF results for details." >&2
+            exit 1
+          fi
+          echo "Security scan found no unsuppressed findings."
+
+      - &list-cves
+        name: List CVEs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          sarif_file="${GITHUB_WORKSPACE}/results.sarif"
+          if [[ ! -s "${sarif_file}" ]]; then
+            echo "::error::SARIF report is missing or empty: ${sarif_file}" >&2
+            exit 1
+          fi
+
+          printf '### CVE findings\n\n' >> "$GITHUB_STEP_SUMMARY"
+          jq -rs '
+            def finding_rule($run; $finding):
+              ($run.tool.driver.rules | if . == null then [] else . end) as $rules |
+              ($finding.ruleId // $finding.rule.id) as $rule_id |
+              if ($rules | type) != "array" then
+                error("Expected SARIF rules to be an array")
+              else
+                first($rules[] | select($rule_id != null and .id == $rule_id)) //
+                (
+                  if $finding.ruleIndex == null then
+                    {}
+                  elif ($finding.ruleIndex | type) != "number" or
+                       $finding.ruleIndex < 0 or
+                       ($finding.ruleIndex | floor) != $finding.ruleIndex then
+                    error("Expected SARIF ruleIndex to be a non-negative integer")
+                  elif $finding.ruleIndex >= ($rules | length) then
+                    error("SARIF ruleIndex is outside the rules array")
+                  else
+                    $rules[$finding.ruleIndex]
+                  end
+                )
+              end;
+
+            def reported_text($properties; $key):
+              $properties[$key] as $value |
+              if $value == null then
+                null
+              elif ($value | type) != "string" then
+                error("Expected SARIF \($key) to be a string")
+              else
+                $value | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "") |
+                if length == 0 then null else . end
+              end;
+
+            def property_strings($properties; $key):
+              $properties[$key] as $value |
+              if $value == null then
+                empty
+              elif ($value | type) != "array" then
+                error("Expected SARIF \($key) to be an array")
+              else
+                $value[] |
+                if type != "string" then
+                  error("Expected SARIF \($key) entries to be strings")
+                else
+                  .
+                end
+              end;
+
+            # Older binary/container reports expose package metadata only in text.
+            def message_properties($finding):
+              ($finding.message.text | if . == null then "" else . end) as $message |
+              if ($message | type) != "string" then
+                error("Expected SARIF message text to be a string")
+              else
+                ([$message | capture(" in (?<package>[^\\s@]+)@(?<package_version>[^\\s;,]+)")] | first // {}) +
+                ([$message | capture("upgrade to (?<recommended_fix_version>[^\\s,;]+) or later"; "ig")] | last // {})
+              end;
+
+            def description_fix($rule):
+              (
+                if $rule.fullDescription.text != null then $rule.fullDescription.text
+                elif $rule.fullDescription.markdown != null then $rule.fullDescription.markdown
+                else ""
+                end
+              ) as $description |
+              if ($description | type) != "string" then
+                error("Expected SARIF rule description to be a string")
+              else
+                [$description | capture("upgrade to (?<version>[^\\s,;]+) or later"; "ig")] |
+                last | .version
+              end;
+
+            def finding_properties($rule; $finding):
+              ($rule.properties | if . == null then {} else . end) as $rule_properties |
+              ($finding.rule.properties | if . == null then {} else . end) as $inline_properties |
+              ($finding.properties | if . == null then {} else . end) as $finding_properties |
+              if ($rule_properties | type) != "object" or
+                 ($inline_properties | type) != "object" or
+                 ($finding_properties | type) != "object" then
+                error("Expected SARIF properties to be an object")
+              else
+                message_properties($finding) as $message_properties |
+                ($message_properties + $inline_properties + $finding_properties) as $context |
+                (
+                  if ($context | has("package")) and
+                     reported_text($context; "package") != reported_text($rule_properties; "package") then
+                    $rule_properties | del(.package, .package_version, .recommended_fix_version)
+                  elif ($context | has("package_version")) and
+                       reported_text($context; "package_version") != reported_text($rule_properties; "package_version") then
+                    $rule_properties | del(.package_version, .recommended_fix_version)
+                  else
+                    $rule_properties
+                  end
+                ) as $matched_rule_properties |
+                $message_properties + $matched_rule_properties + $inline_properties + $finding_properties
+              end;
+
+            if length != 1 then
+              error("Expected exactly one SARIF report")
+            else
+              .[0]
+            end |
+            if type != "object" then
+              error("Expected the SARIF report to be an object")
+            elif .version != "2.1.0" or (.runs | type) != "array" then
+              error("Expected a SARIF 2.1.0 report with a runs array")
+            else
+              [
+                .runs[] as $run |
+                [
+                  (
+                    $run |
+                    if type != "object" then
+                      error("Expected each SARIF run to be an object")
+                    elif has("results") and (.results | type) != "array" then
+                      error("Expected SARIF results to be an array")
+                    else
+                      .results[]?
+                    end
+                  ) as $finding |
+                  if ($finding | type) != "object" then
+                    error("Expected each SARIF result to be an object")
+                  else
+                    finding_rule($run; $finding) as $rule |
+                    {finding: $finding, rule: $rule, properties: finding_properties($rule; $finding)}
+                  end
+                ] |
+                group_by(.rule.id // .finding.ruleId // .finding.ruleIndex)[] |
+                # Do not reuse a rule fix across different packages or versions.
+                (map([.properties.package, .properties.package_version]) | unique | length == 1) as $single_package_version |
+                .[] as $record |
+                $record.properties as $properties |
+                (
+                  if $single_package_version and
+                     ($properties | has("recommended_fix_version") | not) and
+                     reported_text($properties; "package") != null and
+                     reported_text($properties; "package_version") != null and
+                     (reported_text($record.rule.properties; "package") == null or
+                      reported_text($record.rule.properties; "package") == reported_text($properties; "package")) and
+                     (reported_text($record.rule.properties; "package_version") == null or
+                      reported_text($record.rule.properties; "package_version") == reported_text($properties; "package_version")) then
+                    $properties + {recommended_fix_version:
+                      (reported_text($record.rule.properties; "recommended_fix_version") // description_fix($record.rule))}
+                  else
+                    $properties
+                  end
+                ) as $properties |
+                [
+                  $record.finding.ruleId,
+                  $record.finding.rule.id,
+                  $record.finding.message.text,
+                  $record.finding.message.markdown,
+                  $record.rule.id,
+                  property_strings($record.rule.properties; "tags"),
+                  property_strings($record.rule.properties; "aliases"),
+                  property_strings($record.finding.rule.properties; "tags"),
+                  property_strings($record.finding.rule.properties; "aliases"),
+                  property_strings($record.finding.properties; "aliases")
+                ][] |
+                select(. != null) |
+                if type != "string" then
+                  error("Expected SARIF vulnerability identifiers and messages to be strings")
+                else
+                  scan("\\bCVE-[0-9]{4}-[0-9]{4,}\\b"; "i") |
+                  ascii_upcase as $cve |
+                  {
+                    cve: $cve,
+                    package: reported_text($properties; "package"),
+                    version: reported_text($properties; "package_version"),
+                    fix_version: reported_text($properties; "recommended_fix_version")
+                  }
+                end
+              ] | group_by(.cve) |
+              if length == 0 then
+                "No CVEs found in scan results."
+              else
+                "Detected CVEs (\(length) unique):",
+                (
+                  .[] |
+                  "- \(.[0].cve)",
+                  (
+                    group_by([.package, .version])[] |
+                    "  - Package: \(.[0].package // "Not reported")",
+                    "    - Vulnerable version: \(.[0].version // "Not reported")",
+                    "    - Fixed in version(s): \([.[].fix_version | select(. != null)] | unique | if length == 0 then "Not reported" else join(", ") end)"
+                  )
+                )
+              end
+            end
+          ' "${sarif_file}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload SARIF artifact
         if: always()
@@ -183,11 +422,11 @@ jobs:
           binary: ${{ steps.extract.outputs.binary }}
           config-path: .release/security-scan.hcl
           sarif-profile: github
+          fail-on-detection: true
 
-      - name: Read SARIF output
-        if: always()
-        shell: bash
-        run: jq . results.sarif
+      - *check-scan-results
+
+      - *list-cves
 
       - name: Upload SARIF artifact
         if: always()
@@ -245,6 +484,29 @@ jobs:
           docker image inspect "${image}"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare container scan configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '
+            /^container[[:space:]]*\{/ {
+              print
+              print "  local_daemon = true"
+              in_container = 1
+              found = 1
+              next
+            }
+            in_container && /^[[:space:]]*local_daemon[[:space:]]*=/ { next }
+            in_container && /^}/ { in_container = 0 }
+            { print }
+            END {
+              if (!found) {
+                print "::error::No container block in .release/security-scan.hcl" > "/dev/stderr"
+                exit 1
+              }
+            }
+          ' .release/security-scan.hcl > "${RUNNER_TEMP}/security-scan.hcl"
+
       - name: Clone Security Scanner repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -258,36 +520,13 @@ jobs:
         uses: ./security-scanner
         with:
           container: ${{ steps.load.outputs.image }}
+          config-path: ${{ runner.temp }}/security-scan.hcl
           sarif-profile: github
-          # Retain the container suppressions from .release/security-scan.hcl.
-          # local_daemon ensures we inspect the image loaded above.
-          config: |
-            container {
-              dependencies    = true
-              alpine_security = true
-              osv             = true
-              go_modules      = true
-              local_daemon    = true
+          fail-on-detection: true
 
-              secrets {
-                all = true
-              }
+      - *check-scan-results
 
-              triage {
-                suppress {
-                  vulnerabilities = [
-                    # ESM does not use the busybox tar or netstat programs.
-                    "CVE-2025-46394",
-                    "CVE-2024-58251",
-                  ]
-                }
-              }
-            }
-
-      - name: Read SARIF output
-        if: always()
-        shell: bash
-        run: jq . results.sarif
+      - *list-cves
 
       - name: Upload SARIF artifact
         if: always()

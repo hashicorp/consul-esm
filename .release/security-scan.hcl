@@ -1,10 +1,21 @@
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
+repository {
+	go_modules = true
+	osv        = true
+
+	secrets {
+		all = true
+	}
+}
+
 container {
-	dependencies = true
-	alpine_secdb = true
-	secrets      = true
+	dependencies    = true
+	alpine_security = true
+	osv             = true
+	go_modules      = true
+	secrets         = true
 
 	# Triage items that are _safe_ to ignore here. Note that this list should be
 	# periodically cleaned up to remove items that are no longer found by the scanner.
