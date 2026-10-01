@@ -1,0 +1,304 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+# Build Consul ESM release artifacts for the selected branch, then scan
+# the repository, binaries, and production container images on GitHub runners.
+# Calling build.yml as a reusable workflow attaches its artifacts to this run.
+# Binary and container settings follow .release/security-scan.hcl; container
+# scans use the local Docker daemon rather than pulling published images.
+# Scans require PRODSEC_SCANNER_READ_ONLY for the private security-scanner repo
+# and only run in hashicorp/consul-esm, not forks.
+name: Scan Binaries and Containers
+
+on:
+  workflow_dispatch:
+  # Temporary: run on every push while testing before merging to main.
+  push:
+
+# Only allow one run of this workflow per ref at a time.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Required for the discover-artifacts job to list this run's artifacts, and
+  # for the scan jobs to download them, via the GitHub Actions API.
+  actions: read
+  security-events: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  # Source scanning can run in parallel with the build.
+  scan-repository:
+    name: Scan repository
+    runs-on: ubuntu-latest
+    # Skip on forks, which lack the PRODSEC_SCANNER_READ_ONLY secret.
+    if: github.repository == 'hashicorp/consul-esm'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Clone Security Scanner repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: hashicorp/security-scanner
+          token: ${{ secrets.PRODSEC_SCANNER_READ_ONLY }}
+          path: security-scanner
+          ref: main
+
+      - name: Scan repository
+        id: scan
+        uses: ./security-scanner
+        with:
+          repository: ${{ github.workspace }}
+          sarif-profile: github
+          config: |
+            repository {
+              go_modules = true
+              osv        = true
+
+              secrets {
+                all = true
+              }
+            }
+
+      - name: Read SARIF output
+        if: always()
+        shell: bash
+        run: jq . results.sarif
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: sarif-repository
+          path: results.sarif
+          if-no-files-found: warn
+
+      - name: Upload SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@c4fb451437765abf5018c6fbf22cce1a7da1e5cc # codeql-bundle-v2.17.1
+        with:
+          sarif_file: results.sarif
+          category: repository
+
+  discover-artifacts:
+    name: Discover scan targets
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.repository == 'hashicorp/consul-esm'
+    outputs:
+      binaries: ${{ steps.discover.outputs.binaries }}
+      images: ${{ steps.discover.outputs.images }}
+    steps:
+      - name: List build artifacts
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          names=$(gh api --paginate --slurp \
+            "repos/${GH_REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.expired == false) | .name]')
+          echo "Run artifacts:"
+          jq -r '.[]' <<< "${names}"
+
+          binaries=$(jq -c '[.[] | select(startswith("consul-esm_") and endswith(".zip"))] | sort' <<< "${names}")
+          # Dev/Red Hat tarballs contain the same image under different tags.
+          images=$(jq -c '[.[] | select(startswith("consul-esm_") and endswith(".docker.tar"))] | sort' <<< "${names}")
+
+          if [[ "${binaries}" == '[]' || "${images}" == '[]' ]]; then
+            echo "::error::The Consul ESM build did not upload the expected binary ZIPs and production container images."
+            exit 1
+          fi
+
+          echo "binaries=${binaries}" >> "$GITHUB_OUTPUT"
+          echo "images=${images}"     >> "$GITHUB_OUTPUT"
+
+          echo "Discovered $(echo "${binaries}" | jq 'length') binaries and $(echo "${images}" | jq 'length') container images to scan."
+
+  scan-binaries:
+    name: Scan ${{ matrix.artifact }}
+    needs: [discover-artifacts]
+    runs-on: ubuntu-latest
+    # Needs the PRODSEC_SCANNER_READ_ONLY secret, so skip on forks.
+    if: github.repository == 'hashicorp/consul-esm' && needs.discover-artifacts.outputs.binaries != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJSON(needs.discover-artifacts.outputs.binaries) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
+        with:
+          name: ${{ matrix.artifact }}
+          path: scan-target
+
+      - name: Extract binary
+        id: extract
+        working-directory: scan-target
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+        run: |
+          set -euo pipefail
+          binary=consul-esm
+          if [[ "${ARTIFACT_NAME}" == *_windows_*.zip ]]; then
+            binary+=.exe
+          fi
+          unzip -o -j "${ARTIFACT_NAME}" "${binary}"
+          echo "binary=${PWD}/${binary}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Security Scanner repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: hashicorp/security-scanner
+          token: ${{ secrets.PRODSEC_SCANNER_READ_ONLY }}
+          path: security-scanner
+          ref: main
+
+      - name: Scan binary
+        id: scan
+        uses: ./security-scanner
+        with:
+          binary: ${{ steps.extract.outputs.binary }}
+          config-path: .release/security-scan.hcl
+          sarif-profile: github
+
+      - name: Read SARIF output
+        if: always()
+        shell: bash
+        run: jq . results.sarif
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: sarif-binary-${{ matrix.artifact }}
+          path: results.sarif
+          if-no-files-found: warn
+
+      - name: Upload SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@c4fb451437765abf5018c6fbf22cce1a7da1e5cc # codeql-bundle-v2.17.1
+        with:
+          sarif_file: results.sarif
+          category: binary-${{ matrix.artifact }}
+
+  scan-containers:
+    name: Scan ${{ matrix.artifact }}
+    needs: [discover-artifacts]
+    runs-on: ubuntu-latest
+    # Needs the PRODSEC_SCANNER_READ_ONLY secret, so skip on forks.
+    if: github.repository == 'hashicorp/consul-esm' && needs.discover-artifacts.outputs.images != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJSON(needs.discover-artifacts.outputs.images) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Download image artifact
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4.1.7
+        with:
+          name: ${{ matrix.artifact }}
+          path: scan-target
+
+      - name: Load container image
+        id: load
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+        run: |
+          set -euo pipefail
+          archive="scan-target/${ARTIFACT_NAME}"
+          docker load -i "${archive}"
+          # Select a tag from this archive, not an unrelated runner image.
+          if ! image=$(tar -xOf "${archive}" manifest.json | jq -er '.[0].RepoTags[0] | select(type == "string" and length > 0)'); then
+            echo "::error::The container archive does not contain a tagged image."
+            exit 1
+          fi
+          docker image inspect "${image}"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Security Scanner repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: hashicorp/security-scanner
+          token: ${{ secrets.PRODSEC_SCANNER_READ_ONLY }}
+          path: security-scanner
+          ref: main
+
+      - name: Scan container
+        id: scan
+        uses: ./security-scanner
+        with:
+          container: ${{ steps.load.outputs.image }}
+          sarif-profile: github
+          # Retain the container suppressions from .release/security-scan.hcl.
+          # local_daemon ensures we inspect the image loaded above.
+          config: |
+            container {
+              dependencies    = true
+              alpine_security = true
+              osv             = true
+              go_modules      = true
+              local_daemon    = true
+
+              secrets {
+                all = true
+              }
+
+              triage {
+                suppress {
+                  vulnerabilities = [
+                    # ESM does not use the busybox tar or netstat programs.
+                    "CVE-2025-46394",
+                    "CVE-2024-58251",
+                  ]
+                }
+              }
+            }
+
+      - name: Read SARIF output
+        if: always()
+        shell: bash
+        run: jq . results.sarif
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: sarif-container-${{ matrix.artifact }}
+          path: results.sarif
+          if-no-files-found: warn
+
+      - name: Upload SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@c4fb451437765abf5018c6fbf22cce1a7da1e5cc # codeql-bundle-v2.17.1
+        with:
+          sarif_file: results.sarif
+          category: container-${{ matrix.artifact }}

@@ -577,4 +577,17 @@ Or to run a specific test in the suite:
 go test ./... -run SomeTestFunction_name
 ```
 
+### Security scans
+
+Maintainers can manually run the [Scan Binaries and Containers workflow](.github/workflows/scan-binaries-containers.yml)
+from the GitHub Actions tab for a selected branch. It calls the build workflow,
+then scans the repository source, release binaries, and production Docker images.
+Results are uploaded as SARIF artifacts and to GitHub code scanning.
+
+Scans only run in `hashicorp/consul-esm` and require the
+`PRODSEC_SCANNER_READ_ONLY` repository secret to read the private
+`hashicorp/security-scanner` repository. Binary scans use the release scan
+configuration; container scans retain its suppressions and inspect locally
+built Docker images.
+
 [releases]: https://releases.hashicorp.com/consul-esm "Consul ESM Releases"
