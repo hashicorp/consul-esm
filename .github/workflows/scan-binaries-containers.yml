@@ -108,9 +108,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          # gh cannot combine --slurp with its --jq flag.
           names=$(gh api --paginate --slurp \
-            "repos/${GH_REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
-            --jq '[.[].artifacts[] | select(.expired == false) | .name]')
+            "repos/${GH_REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" |
+            jq -c '[.[].artifacts[] | select(.expired == false) | .name]')
           echo "Run artifacts:"
           jq -r '.[]' <<< "${names}"
 
