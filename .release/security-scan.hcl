@@ -31,6 +31,11 @@ container {
 				#
 				# ESM does not shell out to the busybox netstat program.
 				"CVE-2024-58251",
+				
+				# golang.org/x/crypto/openpgp package is not used by ESM.
+				# Also this openpgp package is no longer maintained.
+				# Suppressing as it is not relevant to ESM.
+				"GO-2026-5932",
 			]
 		}
 	}
@@ -48,6 +53,10 @@ binary {
 			vulnerabilites = [
 				"GO-2022-0635",
 				"GO-2025-3408",
+				# golang.org/x/crypto/openpgp package is not used by ESM.
+				# Also this openpgp package is no longer maintained.
+				# Suppressing as it is not relevant to ESM.
+				"GO-2026-5932",
 			]
 		}
 	}
