@@ -9,7 +9,7 @@ name: build
 #
 #   https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#onpushbranchestagsbranches-ignoretags-ignore
 #
-on: [workflow_dispatch, push, pull_request]
+on: [workflow_dispatch, push, pull_request, workflow_call]
 
 env:
   PKG_NAME: "consul-esm"
@@ -249,4 +249,3 @@ jobs:
           dev_tags: |
             hashicorppreview/${{ env.repo }}:${{ env.version }}-dev
             docker.io/hashicorppreview/${{ env.repo }}:${{ env.version }}-${{ github.sha }}
-
