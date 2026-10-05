@@ -13,8 +13,6 @@ name: Scan Binaries and Containers
 
 on:
   workflow_dispatch:
-  # Temporary: run on every push while testing before merging to main.
-  push:
 
 # Only allow one run of this workflow per ref at a time.
 concurrency:
