@@ -1,7 +1,19 @@
-## v0.11.0 (Unreleased)
+## v0.11.0 (Jul 09, 2026)
 
 SECURITY FIXES:
 * Upgrade to Go 1.26.4 to pick up the latest standard library security fixes [[GH-378](https://github.com/hashicorp/consul-esm/pull/378)]
+* Bump google.golang.org/grpc from 1.75.0 to 1.79.3 to address gRPC server authorization bypass vulnerability [[GH-366](https://github.com/hashicorp/consul-esm/pull/366)]
+
+IMPROVEMENTS:
+* Allow disabling agentless check update batching and document the batch_flush_interval config option [[GH-373](https://github.com/hashicorp/consul-esm/pull/373)]
+* Add gRPC health check support to ESM alongside existing HTTP and TCP checks [[GH-319](https://github.com/hashicorp/consul-esm/pull/319)]
+* Add Go test coverage reporting with CI integration and coverage badge [[GH-377](https://github.com/hashicorp/consul-esm/pull/377)]
+* Update serf and consul/api dependencies to latest versions [[GH-386](https://github.com/hashicorp/consul-esm/pull/386)]
+* Make fetching nodes faster when getting health checks by using regex-filtered, stale-read queries to the Consul server [[GH-365](https://github.com/hashicorp/consul-esm/pull/365)]
+
+BUG FIXES:
+* Fix stale_read_nodes not being decoded or merged from config by adding missing HumanConfig and MergeConfig bindings [[GH-380](https://github.com/hashicorp/consul-esm/pull/380)]
+
 
 ## v0.10.0 (Mar 16, 2026)
 

@@ -1,0 +1,3 @@
+```release-note:security
+security: Upgrade `google.golang.org/grpc` to v1.82.2 to address upstream security vulnerabilities.
+```
