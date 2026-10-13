@@ -1,0 +1,3 @@
+```release-note:security
+security: Update Dockerfile to pick latest OS packages to address upstream security vulnerabilities.
+```
