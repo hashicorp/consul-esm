@@ -1,3 +1,13 @@
+## v0.11.1 (Oct 13, 2026)
+
+SECURITY FIXES:
+* Upgrade Go to v1.26.8 to pick the latest standard library security fixes [[GH-395](https://github.com/hashicorp/consul-esm/pull/395)]
+
+* Upgrade `golang.org/x/crypto` to v0.57.0, `google.golang.org/protobuf` to v1.36.12, `golang.org/x/net` to v0.59.0, `golang.org/x/sys` to v0.48.0, `golang.org/x/tools` to v0.49.0, `golang.org/x/text` to v0.42.0 to address security vulnerabilities.[[GH-395](https://github.com/hashicorp/consul-esm/pull/395)]
+
+* Upgrade `google.golang.org/grpc` to v1.83.2 to address upstream security vulnerabilities.[[GH-394](https://github.com/hashicorp/consul-esm/pull/394)]
+
+
 ## v0.11.0 (Jul 09, 2026)
 
 SECURITY FIXES:
