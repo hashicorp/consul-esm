@@ -8,6 +8,8 @@
 # ===================================
 FROM alpine:3.23 AS release-default
 
+RUN apk upgrade --no-cache zlib
+
 ARG BIN_NAME=consul-esm
 # Export BIN_NAME for the CMD below, it can't see ARGs directly.
 ENV BIN_NAME=$BIN_NAME
@@ -40,4 +42,3 @@ ENTRYPOINT ["/bin/docker-entrypoint.sh"]
 
 USER ${BIN_NAME}:${BIN_NAME}
 CMD /bin/$BIN_NAME
-
