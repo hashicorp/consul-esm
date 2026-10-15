@@ -64,7 +64,7 @@ jobs:
     # Only meaningful on pull requests: patch coverage measures the lines a PR
     # adds/modifies. Pushes to main have no "patch" to evaluate. Draft PRs are
     # skipped until marked ready for review.
-    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     env:
       # Minimum required coverage of the lines a PR adds/modifies (patch
@@ -107,9 +107,7 @@ jobs:
             exit 0
           fi
 
-          PCT="${PATCH%\%}"
-
-          if awk "BEGIN { exit !(${PCT} >= ${PATCH_THRESHOLD}) }"; then
+          if awk -v covered=${COVERED} -v coverable=${COVERABLE} -v threshold=${PATCH_THRESHOLD} 'BEGIN { exit !(covered*100 >= threshold*coverable) }'; then
             echo "::notice::Patch coverage ${PATCH} meets the ${PATCH_THRESHOLD}% threshold."
             {
               echo "### ✅ Coverage gate passed"
