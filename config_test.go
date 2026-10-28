@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul/lib"
+	"github.com/hashicorp/go-metrics/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
