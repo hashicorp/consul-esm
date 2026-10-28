@@ -73,7 +73,7 @@ binary {
 
 	triage {
 		suppress {
-			vulnerabilites = [
+			vulnerabilities = [
 				"GO-2022-0635",
 				"GO-2025-3408",
 				# golang.org/x/crypto/openpgp package is not used by ESM.
