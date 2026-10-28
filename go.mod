@@ -5,8 +5,8 @@ go 1.26.10
 require (
 	github.com/go-ping/ping v1.2.0
 	github.com/hashicorp/consul v1.11.0-alpha.0.20260909175235-a3eb721c21d4
-	github.com/hashicorp/consul/api v1.34.4
-	github.com/hashicorp/consul/sdk v0.18.1
+	github.com/hashicorp/consul/api v1.35.0
+	github.com/hashicorp/consul/sdk v0.19.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-metrics v0.6.0
 	github.com/hashicorp/go-multierror v1.1.1
@@ -49,7 +49,8 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/consul-net-rpc v0.0.0-20260422052036-0160352460d6 // indirect
-	github.com/hashicorp/consul/envoyextensions v0.10.3 // indirect
+	github.com/hashicorp/consul/envoyextensions v0.11.1 // indirect
+	github.com/hashicorp/consul/proto-public v0.9.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-bexpr v0.1.14 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
