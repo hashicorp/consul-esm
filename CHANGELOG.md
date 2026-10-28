@@ -1,3 +1,12 @@
+## v0.11.2 (Oct 28, 2026)
+
+SECURITY FIXES:
+
+* Upgrade `hashicorp/consul` to v2.0.4 (a3eb721c21d4) and GO to 1.26.10 to address security vulnerabilities. [[GH-405](https://github.com/hashicorp/consul-esm/pull/405)]
+
+* Update docker file to fetch latest zlib package to address upstream security vulnerabilities.[[GH-398](https://github.com/hashicorp/consul-esm/pull/398)]
+
+
 ## v0.11.1 (Oct 13, 2026)
 
 SECURITY FIXES:
