@@ -38,7 +38,7 @@ jobs:
     if: github.repository == 'hashicorp/consul-esm'
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -46,7 +46,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Clone Security Scanner repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hashicorp/security-scanner
           token: ${{ secrets.PRODSEC_SCANNER_READ_ONLY }}
@@ -378,7 +378,7 @@ jobs:
         artifact: ${{ fromJSON(needs.discover-artifacts.outputs.binaries) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -406,7 +406,7 @@ jobs:
           echo "binary=${PWD}/${binary}" >> "$GITHUB_OUTPUT"
 
       - name: Clone Security Scanner repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hashicorp/security-scanner
           token: ${{ secrets.PRODSEC_SCANNER_READ_ONLY }}
@@ -453,7 +453,7 @@ jobs:
         artifact: ${{ fromJSON(needs.discover-artifacts.outputs.images) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -506,7 +506,7 @@ jobs:
           ' .release/security-scan.hcl > "${RUNNER_TEMP}/security-scan.hcl"
 
       - name: Clone Security Scanner repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: hashicorp/security-scanner
           token: ${{ secrets.PRODSEC_SCANNER_READ_ONLY }}
