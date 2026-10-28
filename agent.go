@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
-	prommetrics "github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/consul-esm/version"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/go-metrics"
+	prommetrics "github.com/hashicorp/go-metrics/prometheus"
 	promclient "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -269,7 +269,7 @@ func (a *Agent) Run() error {
 	}()
 
 	a.ready <- struct{}{} // used for testing
-	defer func() { // be sure to drain it between calls
+	defer func() {        // be sure to drain it between calls
 		select {
 		case <-a.ready:
 		default:
