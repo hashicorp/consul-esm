@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/go-ping/ping v1.2.0
-	github.com/hashicorp/consul v1.11.0-alpha.0.20260909175235-a3eb721c21d4
+	github.com/hashicorp/consul v1.11.0-alpha.0.20260922143634-a221db5d588a
 	github.com/hashicorp/consul/api v1.35.0
 	github.com/hashicorp/consul/sdk v0.19.0
 	github.com/hashicorp/go-hclog v1.6.3
@@ -33,7 +33,7 @@ require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.9 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.43.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bgentry/speakeasy v0.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -106,3 +106,9 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 )
+
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.11.0-alpha.0.20260922143634-a221db5d588a
+
+replace github.com/hashicorp/consul/troubleshoot => github.com/hashicorp/consul/troubleshoot v0.0.0-20260922143634-a221db5d588a
+
+replace github.com/hashicorp/consul/sdk => github.com/hashicorp/consul/sdk v0.19.0
