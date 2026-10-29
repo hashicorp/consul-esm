@@ -1,3 +1,20 @@
+## v0.11.2 (Oct 28, 2026)
+
+SECURITY FIXES:
+
+* Upgrade `hashicorp/consul` to v2.1.0-dev (a221db5d588a) [[GH-408](https://github.com/hashicorp/consul-esm/pull/408)]
+
+* Upgrade `golang.org/x/net` to v0.62.0 and the Submodules `github.com/hashicorp/consul/api` to v1.35.0, `github.com/hashicorp/consul/sdk`to v0.19.0, `github.com/hashicorp/consul/envoyextensions` v0.11.1, `github.com/hashicorp/consul/proto-public`to v0.9.0 to address security vulnerabilities. [[GH-407](https://github.com/hashicorp/consul-esm/pull/407)]
+
+* Upgrade `hashicorp/consul` to v2.0.4 (a3eb721c21d4) and GO to 1.26.10 to address security vulnerabilities. [[GH-405](https://github.com/hashicorp/consul-esm/pull/405)]
+
+* Bump google.golang.org/grpc from 1.83.2 to 1.84.0 to address security vulnerabilities. [[GH-401](https://github.com/hashicorp/consul-esm/pull/401)]
+
+* Bump `github.com/prometheus/client_golang` to 1.25.0 and `github.com/stretchr/testify` v1.12.1 to address security vulnerabilities. [[GH-400](https://github.com/hashicorp/consul-esm/pull/400)]
+
+* Update docker file to fetch latest zlib package to address upstream security vulnerabilities.[[GH-398](https://github.com/hashicorp/consul-esm/pull/398)]
+
+
 ## v0.11.1 (Oct 13, 2026)
 
 SECURITY FIXES:
