@@ -125,6 +125,46 @@ jobs:
 
           go tool cover -html=merged-coverage.out -o coverage.html
 
+      - name: Upload pkg-summary artifact
+        # Upload pkg-summary.txt so the regression gate job can download it.
+        # Must run before the "Update coverage badge" step to ensure the file
+        # exists as an artifact regardless of badge push outcome.
+        if: steps.coverage.outputs.total != 'N/A'
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: pkg-summary
+          path: pkg-summary.txt
+          if-no-files-found: ignore
+
+      - name: Commit coverage baseline to main
+        # On every merge to main, commit the updated pkg-summary.txt as the
+        # authoritative per-package baseline for the regression gate.
+        # PRs compare their per-package averages against this file to detect
+        # regressions before they can be merged.
+        if: github.ref == 'refs/heads/main' && steps.coverage.outputs.total != 'N/A'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          # Pull latest main to avoid conflicts with concurrent badge commits.
+          git fetch origin main --depth=1
+          git pull --ff-only origin main
+
+          mkdir -p .github
+          cp pkg-summary.txt .github/coverage-baseline.txt
+          git add .github/coverage-baseline.txt
+          if git diff --staged --quiet; then
+            echo "Coverage baseline unchanged, skipping commit"
+          else
+            git commit -m "ci: update coverage baseline [skip ci]"
+            git push origin HEAD:main
+          fi
+
+
       - name: Compute patch coverage
         id: patch
         if: inputs.pr-number != '' && steps.coverage.outputs.total != 'N/A'
