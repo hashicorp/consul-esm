@@ -506,7 +506,12 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 	}
 
 	check.mu.Lock()
-	defer check.mu.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			check.mu.Unlock()
+		}
+	}()
 
 	// Do nothing if update is idempotent
 	if check.Status == status && check.Output == output {
@@ -583,6 +588,13 @@ func (c *CheckRunner) UpdateCheck(checkID structs.CheckID, status, output string
 		check.Output = output
 	}
 
+	if c.batcher != nil {
+		// Release the lock before queueing. Add flushes synchronously once the
+		// batch is full, and a failed flush reverts this check through
+		// revertCheckState, which takes check.mu again.
+		check.mu.Unlock()
+		locked = false
+	}
 	c.handleCheckUpdate(&check.HealthCheck, status, output, oldStatus, oldOutput)
 }
 

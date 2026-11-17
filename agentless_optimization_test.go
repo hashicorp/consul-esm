@@ -5,9 +5,14 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/types"
 	"github.com/hashicorp/go-hclog"
@@ -378,4 +383,77 @@ func TestCheckRunner_OriginalStateInBatcher(t *testing.T) {
 	}
 
 	t.Log("Batcher correctly receives and stores original state with each update")
+}
+
+// TestCheckRunner_SizeFlushRevertNoDeadlock verifies that a check update which
+// fills the batch (and so flushes it synchronously from UpdateCheck) does not
+// deadlock when the flush fails and reverts that same check's local state.
+func TestCheckRunner_SizeFlushRevertNoDeadlock(t *testing.T) {
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		// What Consul servers answer while there is no raft leader.
+		http.Error(w, "No cluster leader", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   "test",
+		Level:  hclog.LevelFromString("INFO"),
+		Output: LOGOUT,
+	})
+	cfg := api.DefaultConfig()
+	cfg.Address = srv.URL
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Long flush interval so only the size limit triggers a flush.
+	runner := NewCheckRunner(logger, client, 0, 0, &tls.Config{}, 0, 0, true, time.Hour)
+
+	hashes := make([]types.CheckID, 0, maxTxnOps)
+	for i := 0; i < maxTxnOps; i++ {
+		check := &esmHealthCheck{
+			HealthCheck: api.HealthCheck{
+				Node:      fmt.Sprintf("node-%d", i),
+				CheckID:   "health",
+				ServiceID: "web",
+				Status:    api.HealthPassing,
+				Output:    "ok",
+			},
+		}
+		hash := hashCheck(&check.HealthCheck)
+		runner.checks.Store(hash, check)
+		hashes = append(hashes, hash)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, hash := range hashes {
+			runner.UpdateCheck(structs.CheckID{ID: hash}, api.HealthCritical, "down")
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("UpdateCheck did not return within 10s after a failed size-triggered flush (%d HTTP requests seen)",
+			atomic.LoadInt32(&requests))
+	}
+	runner.Stop()
+
+	// The failed flush must have reverted every check so the next run retries.
+	for _, hash := range hashes {
+		check, ok := runner.checks.Load(hash)
+		if !ok {
+			t.Fatalf("check %s missing", hash)
+		}
+		check.mu.Lock()
+		status := check.Status
+		check.mu.Unlock()
+		if status != api.HealthPassing {
+			t.Fatalf("check %s: status %q after failed flush, want %q", hash, status, api.HealthPassing)
+		}
+	}
 }
